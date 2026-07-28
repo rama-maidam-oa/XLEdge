@@ -1,0 +1,145 @@
+﻿<utils:DpiAwareWindow x:Class="XLEdge.Views.XLEdgeOptions"
+                      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                      xmlns:utils="clr-namespace:XLEdge.Utilities"
+                      xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                      WindowStartupLocation="CenterScreen"
+                      WindowStyle="None"
+                      ResizeMode="CanResize"
+                      SizeToContent="Manual"
+                      MinWidth="640"
+                      MinHeight="390"
+                      Background="White"
+                      ShowInTaskbar="False"
+                      DataContext="{Binding RelativeSource={RelativeSource Self}}">
+    <utils:DpiAwareWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/XLEdge;component/Themes/GlobalStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Bug fix ("make windows in sync with the shared styles"): this used to define its own
+                 un-keyed, implicit CheckBox style (plain black text, normal weight), which silently
+                 overrides the shared ModernCheckBox style app-wide for every CheckBox in THIS window
+                 only - so these 6 preference checkboxes rendered as plain black text instead of the
+                 bold PrimaryBrush-blue look every other checkbox in the app uses. Removed; each
+                 CheckBox below now explicitly opts into Style="{StaticResource ModernCheckBox}" so
+                 this window matches the rest of the app instead of quietly diverging from it. -->
+        </ResourceDictionary>
+    </utils:DpiAwareWindow.Resources>
+
+    <!-- Bug fix ("all windows: card style not looking good, make it simple like GLSense"): this
+         previously used a floating-card treatment (AllowsTransparency="True" window + a transparent
+         bleed margin + DropShadowEffect + a rounded, separately-bordered inner card). GLSense's own
+         windows are plain, flat, opaque, square-cornered (native chrome, no floating-card illusion) -
+         simplified to match: the Window itself is now a plain opaque Background="White" (set above,
+         no AllowsTransparency), with a single flat 1px border directly around the content and no
+         rounded corners/shadow. -->
+    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="139*"/>
+            <ColumnDefinition Width="161*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" Grid.ColumnSpan="2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="User Preferences" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Bug fix: the local Background="#F8F9FA" here overrode ContentBorderStyle's own
+             Background="White" setter, so this card rendered off-white/gray instead of matching
+             every other ContentBorderStyle card in the app (a plain white rounded card). Removed. -->
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,10" Padding="0" Grid.ColumnSpan="2">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
+                    <CheckBox x:Name="chkParameterValuesInSameSheet"
+                              Style="{StaticResource ModernCheckBox}"
+                              Content="Parameter values in same sheet"
+                              IsChecked="{Binding ParameterValuesInSameSheet, Mode=TwoWay}"/>
+                </Border>
+
+                <Border Grid.Row="1" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,2,0,1" Padding="14,10">
+                    <CheckBox x:Name="chkDownloadScheduledOutputsToExistingSheets"
+                              Style="{StaticResource ModernCheckBox}"
+                              Content="Download scheduled outputs to the existing sheets"
+                              IsChecked="{Binding DownloadScheduledOutputsToExistingSheets, Mode=TwoWay}"/>
+                </Border>
+
+                <Border Grid.Row="2" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,2,0,4" Padding="14,10">
+                    <CheckBox x:Name="chkSyncWithReportDefinition"
+                              Style="{StaticResource ModernCheckBox}"
+                              Content="On refresh sync with the report definition"
+                              IsChecked="{Binding SyncWithReportDefinition, Mode=TwoWay}"/>
+                </Border>
+
+                <Border Grid.Row="3" Padding="14,10">
+                    <CheckBox x:Name="chkOverrideSheetNameForScheduledOutputs"
+                              Style="{StaticResource ModernCheckBox}"
+                              Content="Override sheet name for the scheduled process outputs"
+                              IsChecked="{Binding OverrideSheetNameForScheduledOutputs, Mode=TwoWay}"/>
+                </Border>
+                <Border Grid.Row="4" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
+                    <CheckBox x:Name="chkCalendarControl"
+                              Style="{StaticResource ModernCheckBox}"
+                              Content="Show calendar control in control sheet."
+                              IsChecked="{Binding ShowCalendarControl, Mode=TwoWay}"/>
+                </Border>
+                <Border Grid.Row="5" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
+                    <CheckBox x:Name="chkOverrideFormats"
+                              Style="{StaticResource ModernCheckBox}"
+                              Content="Override formats on sheet or book refresh."
+                              IsChecked="{Binding OverrideFormats, Mode=TwoWay}"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Grid.ColumnSpan="2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           FontFamily="Segoe UI"
+                           FontSize="11"
+                           Text="Configure your preferred workbook behavior."/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="btnApply" Content="Apply" Style="{StaticResource DynamicContentButton}" Click="BtnApply_Click" Margin="0,0,8,0"/>
+                    <Button x:Name="btnSave" Content="Save" Style="{StaticResource DynamicContentButton}" Click="BtnSave_Click" Margin="0,0,8,0"/>
+                    <Button x:Name="btnClose" Content="Close" Style="{StaticResource DynamicContentButton}" Click="BtnClose_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+    </Border>
+</utils:DpiAwareWindow>

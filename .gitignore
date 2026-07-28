@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / IDE
+.vs/
+*.user
+*.suo
+*.cache
+
+# NuGet package cache (restored via NuGet, not tracked)
+packages/
+
+# Misc build/debug artifacts (not applicable to checked-in dependency DLLs
+# under Interops/ or Loader/, which are intentionally tracked)
+*.log
+*.tlb
+*.reg
+*.nupkg

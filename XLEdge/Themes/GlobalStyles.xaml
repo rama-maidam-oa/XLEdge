@@ -1,0 +1,1755 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+					xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+					xmlns:views="clr-namespace:XLEdge.Views" >
+
+    <!-- ==================== Color Resources (orbit application color #149fdb ==================== -->
+    <Color x:Key="PrimaryColor">#149FDB</Color>
+    <Color x:Key="PrimaryDarkColor">#108CB1</Color>
+    <Color x:Key="PrimaryDarkerColor">#0D7591</Color>
+    <Color x:Key="SecondaryColor">#6C757D</Color>
+	<Color x:Key="SecondaryDarkColor">#5A6268</Color>
+	<Color x:Key="SecondaryDarkerColor">#495057</Color>
+	<Color x:Key="DangerColor">#EC616E</Color>
+	<Color x:Key="DangerDarkColor">#E62E40</Color>
+	<Color x:Key="DangerDarkerColor">#D02B3B</Color>
+	<Color x:Key="SuccessColor">#28A745</Color>
+	<Color x:Key="WarningColor">#FFC107</Color>
+    <Color x:Key="InfoColor">#32ABD9</Color>
+    <Color x:Key="TextPrimaryColor">#212529</Color>
+	<Color x:Key="TextSecondaryColor">#6C757D</Color>
+	<Color x:Key="BackgroundColor">#F8F9FA</Color>
+	<Color x:Key="BorderColor">#DEE2E6</Color>
+	<Color x:Key="BorderLightColor">#E9ECEF</Color>
+	<Color x:Key="TooltipBackgroundColor">#FFF9DB</Color>
+	<Color x:Key="TooltipBorderColor">#FBB41A</Color>
+
+	<!-- ==================== Brush Resources ==================== -->
+	<SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}"/>
+	<SolidColorBrush x:Key="PrimaryDarkBrush" Color="{StaticResource PrimaryDarkColor}"/>
+	<SolidColorBrush x:Key="PrimaryDarkerBrush" Color="{StaticResource PrimaryDarkerColor}"/>
+	<SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource SecondaryColor}"/>
+	<SolidColorBrush x:Key="SecondaryDarkBrush" Color="{StaticResource SecondaryDarkColor}"/>
+	<SolidColorBrush x:Key="SecondaryDarkerBrush" Color="{StaticResource SecondaryDarkerColor}"/>
+	<SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+	<SolidColorBrush x:Key="DangerDarkBrush" Color="{StaticResource DangerDarkColor}"/>
+	<SolidColorBrush x:Key="DangerDarkerBrush" Color="{StaticResource DangerDarkerColor}"/>
+	<SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+	<SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+	<SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}"/>
+	<SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+	<SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+	<SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
+	<SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+	<SolidColorBrush x:Key="BorderLightBrush" Color="{StaticResource BorderLightColor}"/>
+	<SolidColorBrush x:Key="TooltipBackgroundBrush" Color="{StaticResource TooltipBackgroundColor}"/>
+	<SolidColorBrush x:Key="TooltipBorderBrush" Color="{StaticResource TooltipBorderColor}"/>
+
+	<!-- ==================== Warning ToolTip Styles ==================== -->
+	<!-- Warning ToolTip (red background) -->
+	<Style x:Key="WarningToolTipStyle" TargetType="ToolTip">
+		<Setter Property="Background" Value="#FFF0F0"/>
+		<Setter Property="Foreground" Value="#DC3545"/>
+		<Setter Property="BorderBrush" Value="#DC3545"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="Padding" Value="8,4"/>
+		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="HasDropShadow" Value="True"/>
+		<Setter Property="Placement" Value="Bottom"/>
+		<Style.Triggers>
+			<Trigger Property="Placement" Value="Bottom">
+				<Setter Property="VerticalOffset" Value="5"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- Validation Error Template (optional visual indicator) -->
+	<Style x:Key="ValidationErrorStyle" TargetType="Control">
+		<Setter Property="Validation.ErrorTemplate">
+			<Setter.Value>
+				<ControlTemplate>
+					<DockPanel LastChildFill="True">
+						<Border BorderBrush="#DC3545"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            DockPanel.Dock="Top">
+							<AdornedElementPlaceholder/>
+						</Border>
+					</DockPanel>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- ==================== ToolTip Styles ==================== -->
+	<!-- Simple Browser ToolTip (yellow background) -->
+	<Style x:Key="SimpleBrowserToolTip" TargetType="ToolTip">
+		<Setter Property="Background" Value="{StaticResource TooltipBackgroundBrush}"/>
+		<Setter Property="Foreground" Value="#3C3C3C"/>
+		<Setter Property="BorderBrush" Value="{StaticResource TooltipBorderBrush}"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="Padding" Value="10,8"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="HasDropShadow" Value="True"/>
+	</Style>
+
+	<!-- Chrome-style ToolTip WITH Header -->
+	<Style x:Key="ChromeStyleToolTip" TargetType="ToolTip">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Padding" Value="0"/>
+		<Setter Property="HasDropShadow" Value="True"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="ToolTip">
+					<Border Background="{StaticResource TooltipBackgroundBrush}"
+                            BorderBrush="{StaticResource TooltipBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            MaxWidth="400">
+						<Border.Effect>
+							<DropShadowEffect Color="Black"
+                                              Opacity="0.15"
+                                              BlurRadius="8"
+                                              ShadowDepth="2"
+                                              Direction="315"/>
+						</Border.Effect>
+						<Grid>
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="*"/>
+							</Grid.RowDefinitions>
+							<!-- Chrome-style Tip Header -->
+							<Border Grid.Row="0"
+                                    Background="{StaticResource TooltipBorderBrush}"
+                                    CornerRadius="4,4,0,0"
+                                    Padding="10,6">
+								<StackPanel Orientation="Horizontal">
+									<iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
+                                                                    Width="12"
+                                                                    Height="12"
+                                                                    Foreground="Black"
+                                                                    Margin="0,0,6,0"
+                                                                    VerticalAlignment="Center"/>
+									<TextBlock Text="TIP"
+                                               FontWeight="Bold"
+                                               FontSize="11"
+                                               Foreground="Black"
+                                               VerticalAlignment="Center"/>
+								</StackPanel>
+							</Border>
+							<!-- Content Area -->
+							<Border Grid.Row="1" Padding="12,10">
+								<ContentPresenter ContentSource="Content"/>
+							</Border>
+						</Grid>
+					</Border>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- ==================== ToolTipService Default Timing ==================== -->
+	<!-- Base style for all FrameworkElements to set consistent ToolTip timing -->
+	<Style TargetType="FrameworkElement">
+		<Setter Property="ToolTipService.InitialShowDelay" Value="50"/>
+		<Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+		<Setter Property="ToolTipService.ShowDuration" Value="8000"/>
+		<Setter Property="ToolTipService.Placement" Value="Mouse"/>
+		<Setter Property="ToolTipService.HorizontalOffset" Value="10"/>
+		<Setter Property="ToolTipService.VerticalOffset" Value="10"/>
+	</Style>
+
+	<!-- ==================== TextBox Styles ==================== -->
+	<!-- Modern TextBox Style - FIXED vertical alignment issue -->
+	<Style x:Key="ModernTextBox" TargetType="TextBox">
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+		<Setter Property="Padding" Value="8,6"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Height" Value="32"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="HorizontalContentAlignment" Value="Left"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="TextBox">
+					<Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4"
+                            SnapsToDevicePixels="True">
+						<ScrollViewer x:Name="PART_ContentHost"
+                                      Focusable="False"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Hidden"
+                                      VerticalAlignment="Center"
+                                      Padding="{TemplateBinding Padding}"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsEnabled" Value="False">
+							<Setter TargetName="border" Property="Opacity" Value="0.56"/>
+							<Setter TargetName="border" Property="Background" Value="#F5F5F5"/>
+						</Trigger>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+						</Trigger>
+						<Trigger Property="IsFocused" Value="True">
+							<Setter TargetName="border" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+							<Setter TargetName="border" Property="BorderThickness" Value="2"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Read-Only TextBox Style -->
+	<Style x:Key="ReadOnlyTextBox" TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
+		<Setter Property="IsReadOnly" Value="True"/>
+		<Setter Property="Background" Value="#F5F5F5"/>
+	</Style>
+
+
+
+	<!-- ==================== Button Styles ==================== -->
+	<!-- Base style for dynamic, content-driven buttons -->
+	<Style x:Key="DynamicContentButton" TargetType="Button">
+		<Setter Property="Background" Value="#F8F9FA"/>
+		<Setter Property="Foreground" Value="Black"/>
+		<Setter Property="BorderBrush" Value="#D0D4D8"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="MinWidth" Value="80"/>
+		<Setter Property="MinHeight" Value="32"/>
+		<Setter Property="Height" Value="Auto"/>
+		<Setter Property="Padding" Value="16,8"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border x:Name="border"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        Padding="{TemplateBinding Padding}"
+                        CornerRadius="4">
+						<ContentPresenter HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      RecognizesAccessKey="True"/>
+					</Border>
+
+					<ControlTemplate.Triggers>
+						<!-- Hover -->
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+							<Setter TargetName="border" Property="BorderBrush" Value="#256D8F"/>
+							<Setter Property="Foreground" Value="White"/>
+						</Trigger>
+
+						<!-- Pressed -->
+						<Trigger Property="IsPressed" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#256D8F"/>
+							<Setter TargetName="border" Property="BorderBrush" Value="#1E5775"/>
+							<!-- darker version of hover -->
+						</Trigger>
+
+						<!-- Disabled -->
+						<Trigger Property="IsEnabled" Value="False">
+							<Setter TargetName="border" Property="Background" Value="#D3D8DC"/>
+							<Setter TargetName="border" Property="BorderBrush" Value="#B0B6BC"/>
+							<Setter Property="Foreground" Value="#6C757D"/>
+							<Setter Property="Opacity" Value="0.75"/>
+							<Setter Property="Cursor" Value="Arrow"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Close Button Style (inherits from DynamicContentButton) -->
+	<Style x:Key="CloseButtonStyle" TargetType="Button" BasedOn="{StaticResource DynamicContentButton}">
+		<!-- Close button specific properties -->
+		<Setter Property="Content" Value="Close"/>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Click to close this window!"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Cancel Button Style (inherits from DynamicContentButton) -->
+	<Style x:Key="CancelButtonStyle" TargetType="Button" BasedOn="{StaticResource DynamicContentButton}">
+		<!-- Cancel button specific properties -->
+		<Setter Property="Content" Value="Cancel"/>
+		<Setter Property="MaxWidth" Value="100"/>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Click to cancel process!"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Cancel Button Style (inherits from DynamicContentButton) -->
+	<Style x:Key="InsertButtonStyle" TargetType="Button" BasedOn="{StaticResource DynamicContentButton}">
+		<!-- Cancel button specific properties -->
+		<Setter Property="Content" Value="Insert"/>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Inserts formula or values to the selected cell reference!" TextWrapping="Wrap"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- Modern Primary Button Style -->
+	<Style x:Key="ModernButton" TargetType="Button">
+		<Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="Foreground" Value="White"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Height" Value="32"/>
+		<Setter Property="MinWidth" Value="30"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="Padding" Value="16,6"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border x:Name="border"
+                         Background="{TemplateBinding Background}"
+                         CornerRadius="4"
+                         BorderThickness="0"
+                         Padding="{TemplateBinding Padding}">
+						<ContentPresenter HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="{StaticResource PrimaryDarkBrush}"/>
+						</Trigger>
+						<Trigger Property="IsPressed" Value="True">
+							<Setter TargetName="border" Property="Background" Value="{StaticResource PrimaryDarkerBrush}"/>
+						</Trigger>
+						<Trigger Property="IsEnabled" Value="False">
+							<Setter TargetName="border" Property="Opacity" Value="0.5"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- Add item from left data grid to right data grid Button Style (inherits from DynamicContentButton) -->
+	<Style x:Key="AddToRightButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="0,0,0,8"/>
+		<Setter Property="Height" Value="Auto"/>
+		<Setter Property="Width" Value="Auto"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="RightLongSolid"
+                      Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<StackPanel>
+						<TextBlock Text="Adds the selected items to right grid"
+                               TextWrapping="Wrap"/>
+						<Border Background="#FBB41A"
+                            CornerRadius="3"
+                            Padding="8,6"
+                            Margin="0,8,0,0">
+							<StackPanel Orientation="Horizontal">
+								<iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
+                                                           Width="12"
+                                                           Height="12"
+                                                           Foreground="Black"
+                                                           Margin="0,0,6,0"
+                                                           VerticalAlignment="Center"/>
+								<TextBlock Text="Select all in a page by pressing Ctrl+A"
+                                       FontSize="11"
+                                       FontStyle="Italic"
+                                       Foreground="Black"/>
+							</StackPanel>
+						</Border>
+					</StackPanel>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+
+		<!-- Slightly larger min size since it's icon-only -->
+		<Setter Property="MinWidth"  Value="44"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding"   Value="10,6"/>
+	</Style>
+	<!-- Remove items from right data grid Button Style (inherits from ModernButton) -->
+	<Style x:Key="RemoveFromRightGridButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="0,0,0,8"/>
+		<Setter Property="Height" Value="Auto"/>
+		<Setter Property="Width" Value="Auto"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="LeftLongSolid"
+                  Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<StackPanel>
+						<TextBlock Text="Removes the selected items from right grid"
+                           TextWrapping="Wrap"/>
+						<Border Background="#FBB41A"
+                        CornerRadius="3"
+                        Padding="8,6"
+                        Margin="0,8,0,0">
+							<StackPanel Orientation="Horizontal">
+								<iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
+                                                       Width="12"
+                                                       Height="12"
+                                                       Foreground="Black"
+                                                       Margin="0,0,6,0"
+                                                       VerticalAlignment="Center"/>
+								<TextBlock Text="Select all in a page by pressing Ctrl+A"
+                                   FontSize="11"
+                                   FontStyle="Italic"
+                                   Foreground="Black"/>
+							</StackPanel>
+						</Border>
+					</StackPanel>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+
+		<!-- Slightly larger min size since it's icon-only -->
+		<Setter Property="MinWidth"  Value="44"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding"   Value="10,6"/>
+	</Style>
+	<!-- Select first and last seleted items from data grid Button Style (inherits from ModernButton) -->
+	<Style x:Key="BetweenGridButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="0,0,0,8"/>
+		<Setter Property="Height" Value="Auto"/>
+		<Setter Property="Width" Value="Auto"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="RightLeftSolid"
+                           Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<StackPanel>
+						<TextBlock Text="Adds first and last items from selection as a range to right grid"
+                       TextWrapping="Wrap"/>
+						<Border Background="#FBB41A"
+                    CornerRadius="3"
+                    Padding="8,6"
+                    Margin="0,8,0,0">
+							<StackPanel Orientation="Horizontal">
+								<iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
+                                                   Width="12"
+                                                   Height="12"
+                                                   Foreground="Black"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"/>
+								<TextBlock Text="Select any 2 items holding Ctrl key or select a range with holding Shift key"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               Foreground="Black"/>
+							</StackPanel>
+						</Border>
+					</StackPanel>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+
+		<!-- Slightly larger min size since it's icon-only -->
+		<Setter Property="MinWidth"  Value="44"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding"   Value="10,6"/>
+	</Style>
+	<!-- Select first and last seleted items from data grid as Not Between Button Style (inherits from ModernButton) -->
+	<Style x:Key="NotBetweenGridButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="0,0,0,8"/>
+		<Setter Property="Height" Value="Auto"/>
+		<Setter Property="Width" Value="Auto"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<Grid Width="22" Height="22">
+						<!-- Main arrow icon (background layer) -->
+						<iconPacks:PackIconFontAwesome Kind="RightLeftSolid"
+                                                       Width="20"
+                                                       Height="20"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"/>
+
+						<!-- Ban overlay (smaller, red, slightly offset or centered) -->
+						<iconPacks:PackIconFontAwesome Kind="BanSolid"
+                                                   Width="16"
+                                                   Height="16"
+                                                   Foreground="Red"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center"
+                                                   Opacity="0.85"/>
+						<!-- optional: slight transparency for better look -->
+					</Grid>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<StackPanel>
+						<TextBlock Text="Adds range from selected items, but excludes them from calculations"
+                       TextWrapping="Wrap"/>
+						<Border Background="#FBB41A"
+                    CornerRadius="3"
+                    Padding="8,6"
+                    Margin="0,8,0,0">
+							<StackPanel Orientation="Horizontal">
+								<iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
+                                                   Width="12"
+                                                   Height="12"
+                                                   Foreground="Black"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"/>
+								<TextBlock Text="Select any 2 items holding Ctrl key or select a range with holding Shift key"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               Foreground="Black"/>
+							</StackPanel>
+						</Border>
+					</StackPanel>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+
+		<!-- Slightly larger min size since it's icon-only -->
+		<Setter Property="MinWidth"  Value="44"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding"   Value="10,6"/>
+	</Style>
+	<!-- Select items from data grid as Exclude from calculation Button Style (inherits from ModernButton) -->
+	<Style x:Key="ExcludeButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="0,0,0,8"/>
+		<Setter Property="Height" Value="Auto"/>
+		<Setter Property="Width" Value="Auto"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="BanSolid"
+                             Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<StackPanel>
+						<TextBlock Text="Adds selected items as exclusions from calculations"
+                       TextWrapping="Wrap"/>
+						<Border Background="#FBB41A"
+                    CornerRadius="3"
+                    Padding="8,6"
+                    Margin="0,8,0,0">
+							<StackPanel Orientation="Horizontal">
+								<iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
+                                                   Width="12"
+                                                   Height="12"
+                                                   Foreground="Black"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"/>
+								<TextBlock Text="Select all in a page by pressing Ctrl+A"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               Foreground="Black"/>
+							</StackPanel>
+						</Border>
+					</StackPanel>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+
+		<!-- Slightly larger min size since it's icon-only -->
+		<Setter Property="MinWidth"  Value="44"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding"   Value="10,6"/>
+	</Style>
+	<!-- === Pagination Button Style (inherits from ModernButton) === -->
+	<!-- First Page Button Style -->
+	<Style x:Key="FirstPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="2,0"/>
+		<Setter Property="MinWidth" Value="18"/>
+		<Setter Property="Padding" Value="10,6"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="BackwardStepSolid"
+                            Width="12" Height="12" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Go to first page"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- Previous Page Button Style -->
+	<Style x:Key="PreviousPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="2,0"/>
+		<Setter Property="MinWidth" Value="18"/>
+		<Setter Property="Padding" Value="10,6"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="CaretLeftSolid"
+                            Width="12" Height="12" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Go to previous page"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- Next Page Button Style -->
+	<Style x:Key="NextPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="2,0"/>
+		<Setter Property="MinWidth" Value="18"/>
+		<Setter Property="Padding" Value="10,6"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="CaretRightSolid"
+                            Width="12" Height="12" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Go to next page"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- Last Page Button Style -->
+	<Style x:Key="LastPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Margin" Value="2,0"/>
+		<Setter Property="MinWidth" Value="14"/>
+		<Setter Property="Padding" Value="10,6"/>
+		<Setter Property="ContentTemplate">
+			<Setter.Value>
+				<DataTemplate>
+					<iconPacks:PackIconFontAwesome Kind="ForwardStepSolid"
+                            Width="12" Height="12" FontWeight="Normal" VerticalAlignment="Center"/>
+				</DataTemplate>
+			</Setter.Value>
+		</Setter>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<TextBlock Text="Go to last page"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- ==================== TextBlock Styles ==================== -->
+	<!-- Header TextBlock Style -->
+	<Style x:Key="HeaderTextBlock" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="FontSize" Value="13"/>
+	</Style>
+
+
+	<!-- Title Header TextBlock Style -->
+	<Style x:Key="TitleHeaderTextBlock" TargetType="TextBlock">
+		<Setter Property="Margin" Value="6,0,0,0"/>
+		<Setter Property="Foreground" Value="White"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="FontSize" Value="14"/>
+	</Style>
+
+	<!-- ==================== Icon Styles ==================== -->
+	<!-- Small Icon Style -->
+	<Style x:Key="SmallIcon" TargetType="iconPacks:PackIconFontAwesome">
+		<Setter Property="Width" Value="14"/>
+		<Setter Property="Height" Value="14"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+	</Style>
+
+	<!-- Very Small Icon Style -->
+	<Style x:Key="VerySmallIcon" TargetType="iconPacks:PackIconFontAwesome">
+		<Setter Property="Width" Value="12"/>
+		<Setter Property="Height" Value="12"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+	</Style>
+
+	<!-- Medium Icon Style -->
+	<Style x:Key="MediumIcon" TargetType="iconPacks:PackIconFontAwesome">
+		<Setter Property="Width" Value="16"/>
+		<Setter Property="Height" Value="16"/>
+		<Setter Property="Foreground" Value="White"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+	</Style>
+
+	<!-- Large Icon Style -->
+	<Style x:Key="LargeIcon" TargetType="iconPacks:PackIconFontAwesome">
+		<Setter Property="Width" Value="20"/>
+		<Setter Property="Height" Value="20"/>
+		<Setter Property="Foreground" Value="White"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+	</Style>
+
+	<!-- ==================== CheckBox Style ==================== -->
+	<Style x:Key="ModernCheckBox" TargetType="CheckBox">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="Padding" Value="4,0,0,0"/>
+		<Setter Property="Cursor" Value="Hand"/>
+	</Style>
+
+	<!-- ==================== RadioButton Style ==================== -->
+	<Style x:Key="ModernRadioButton" TargetType="RadioButton">
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="Padding" Value="4,0,0,0"/>
+		<Setter Property="Margin" Value="5,0,0,0" />
+		<Setter Property="Cursor" Value="Hand"/>
+	</Style>
+
+	<!-- ==================== Border Styles ==================== -->
+	<!-- Content Border Style -->
+	<Style x:Key="ContentBorderStyle" TargetType="Border">
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="CornerRadius" Value="6"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
+		<Setter Property="Padding" Value="16"/>
+		<Setter Property="Margin" Value="0,0,0,12"/>
+	</Style>
+
+	<!-- Card Border Style -->
+	<Style x:Key="CardBorderStyle" TargetType="Border">
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
+		<Setter Property="Padding" Value="20"/>
+		<Setter Property="Effect">
+			<Setter.Value>
+				<DropShadowEffect Color="Black" Opacity="0.08" BlurRadius="10" ShadowDepth="2"/>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Header Border Style -->
+	<Style x:Key="HeaderBorderStyle" TargetType="Border">
+		<Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="CornerRadius" Value="6"/>
+		<Setter Property="Padding" Value="15,10"/>
+	</Style>
+
+	<!-- ==================== Label with Icon Border Style ==================== -->
+	<Style x:Key="LabelIconBorderStyle" TargetType="Border">
+		<Setter Property="Background" Value="{StaticResource BackgroundBrush}"/>
+		<Setter Property="CornerRadius" Value="4"/>
+		<Setter Property="Padding" Value="8,6"/>
+	</Style>
+
+	<!-- ==================== Status Message Styles ==================== -->
+   <Style x:Key="SuccessMessageBorder" TargetType="Border">
+		<Setter Property="Background" Value="#D4EDDA"/>
+		<Setter Property="BorderBrush" Value="#C3E6CB"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="CornerRadius" Value="4"/>
+	</Style>
+
+	<Style x:Key="ErrorMessageBorder" TargetType="Border">
+		<Setter Property="Background" Value="#F8D7DA"/>
+		<Setter Property="BorderBrush" Value="#F5C6CB"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="CornerRadius" Value="4"/>
+	</Style>
+
+	<Style x:Key="WarningMessageBorder" TargetType="Border">
+		<Setter Property="Background" Value="#FFF3CD"/>
+		<Setter Property="BorderBrush" Value="#FFEEBA"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="CornerRadius" Value="4"/>
+	</Style>
+
+	<Style x:Key="InfoMessageBorder" TargetType="Border">
+		<Setter Property="Background" Value="#D1ECF1"/>
+		<Setter Property="BorderBrush" Value="#BEE5EB"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="CornerRadius" Value="4"/>
+	</Style>
+
+	<Style x:Key="SuccessMessage" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="#155724"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Padding" Value="12,8"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+	</Style>
+
+	<Style x:Key="ErrorMessage" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="#721C24"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Padding" Value="12,8"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+	</Style>
+
+	<Style x:Key="WarningMessage" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="#856404"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Padding" Value="12,8"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+	</Style>
+
+	<Style x:Key="InfoMessage" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="#0C5460"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Padding" Value="12,8"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+	</Style>
+
+	<!-- ==================== DataGrid Styles ==================== -->
+	<Style x:Key="ModernDataGridText" TargetType="TextBlock">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Padding" Value="12,8"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+	</Style>
+
+	<Style x:Key="EditableDataGridText" TargetType="TextBox">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="Padding" Value="12,8"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Style.Triggers>
+			<Trigger Property="IsFocused" Value="True">
+				<Setter Property="Background" Value="#FFFFFF"/>
+				<Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+				<Setter Property="BorderThickness" Value="1"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- ==================== ListBox Styles ==================== -->
+	<Style x:Key="ModernListBoxItem" TargetType="ListBoxItem">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Padding" Value="12,8"/>
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Style.Triggers>
+			<Trigger Property="IsMouseOver" Value="True">
+				<Setter Property="Background" Value="#E6F3FF"/>
+			</Trigger>
+			<Trigger Property="IsSelected" Value="True">
+				<Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+				<Setter Property="Foreground" Value="White"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- ==================== Separator Style ==================== -->
+	<Style x:Key="ModernSeparator" TargetType="Separator">
+		<Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
+		<Setter Property="Height" Value="1"/>
+		<Setter Property="Margin" Value="0,10"/>
+	</Style>
+
+	<!-- ==================== ProgressBar Style ==================== -->
+	<Style x:Key="ModernProgressBar" TargetType="ProgressBar">
+		<Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="Height" Value="15"/>
+		<Setter Property="BorderThickness" Value="0"/>
+	</Style>
+
+	<!-- ==================== Slider Style ==================== -->
+	<Style x:Key="ModernSlider" TargetType="Slider">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="Height" Value="24"/>
+	</Style>
+
+	<!-- ==================== TabControl Styles ==================== -->
+	<Style x:Key="ModernTabItem" TargetType="TabItem">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Padding" Value="16,8"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Style.Triggers>
+			<Trigger Property="IsSelected" Value="True">
+				<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+				<Setter Property="FontWeight" Value="SemiBold"/>
+			</Trigger>
+			<Trigger Property="IsMouseOver" Value="True">
+				<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- ==================== Compact Styles for Forms ==================== -->
+	<!-- Compact Button Style -->
+	<Style x:Key="CompactButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="MinWidth" Value="60"/>
+		<Setter Property="Padding" Value="12,4"/>
+	</Style>
+
+	<!-- Progress Button Style -->
+	<!-- Bug fix (bottom-right Close/Cancel button spec: "gray background black foreground and on
+	     hover blue background and white foreground, blue = title bar fill color"): this style (used
+	     by XLEdgeWaitWindow's Cancel button) had a dark gray background with a hardcoded WHITE
+	     foreground at rest, and hovered to an even darker gray - matching neither half of the spec.
+	     Realigned to the same gray-at-rest/blue-on-hover colors as DynamicContentButton (the style
+	     already used for every other bottom-right Close/Cancel/OK/Save button in the app), so this is
+	     now consistent app-wide: light gray background/black foreground at rest, PrimaryBrush (the
+	     title bar's own blue) background/white foreground on hover and press. -->
+	<Style x:Key="ProgressButton" TargetType="Button">
+		<Setter Property="Background" Value="#F8F9FA"/>
+		<Setter Property="Foreground" Value="Black"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Height" Value="28"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="Padding" Value="12,4"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="0">
+						<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+							<Setter Property="Foreground" Value="White"/>
+						</Trigger>
+						<Trigger Property="IsPressed" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#0F7FB3"/>
+							<Setter Property="Foreground" Value="White"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Compact TextBox Style -->
+	<Style x:Key="CompactTextBox" TargetType="TextBox">
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+		<Setter Property="Padding" Value="6,4"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="Height" Value="28"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Style.Triggers>
+			<Trigger Property="IsFocused" Value="True">
+				<Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+				<Setter Property="BorderThickness" Value="2"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- Compact CheckBox Style -->
+	<Style x:Key="CompactCheckBox" TargetType="CheckBox">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="Margin" Value="4,0,0,0"/>
+		<Style.Triggers>
+			<Trigger Property="IsEnabled" Value="False">
+				<Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+				<Setter Property="Cursor" Value="Arrow"/>
+				<Setter Property="Opacity" Value="0.7"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- Single Click CheckBox Style (for DataGrid) -->
+	<Style x:Key="SingleClickCheckBoxStyle" TargetType="CheckBox">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Focusable" Value="False"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="HorizontalAlignment" Value="Center"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+	</Style>
+
+	<!-- ==================== Label Styles ==================== -->
+	<!-- Header Label Style -->
+	<Style x:Key="HeaderLabel" TargetType="Label">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+	</Style>
+
+	<!-- Label Style -->
+	<Style x:Key="LabelStyle" TargetType="Label">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="Normal"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Margin" Value="0,0,8,0"/>
+		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Padding" Value="0"/>
+	</Style>
+
+	<!-- Label Style for TextBlock -->
+	<Style x:Key="TextBlockLabelStyle" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="Normal"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Margin" Value="0,0,8,0"/>
+		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+	</Style>
+
+	<!-- Section Header Style -->
+	<Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+	</Style>
+
+	<!-- ==================== Compact Border Styles ==================== -->
+	<!-- Compact Border Style -->
+	<Style x:Key="CompactBorderStyle" TargetType="Border">
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="CornerRadius" Value="6"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
+		<Setter Property="Padding" Value="12,4"/>
+		<Setter Property="Margin" Value="0,0,0,8"/>
+	</Style>
+
+	<!-- Compact Card Style (for compact dialogs) -->
+	<Style x:Key="CompactCardStyle" TargetType="Border">
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="CornerRadius" Value="6"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
+		<Setter Property="Padding" Value="12,8"/>
+	</Style>
+
+	<!-- Header Bar Style -->
+	<Style x:Key="HeaderBar" TargetType="Border">
+		<Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="CornerRadius" Value="8,8,8,8"/>
+		<Setter Property="Padding" Value="10,8"/>
+	</Style>
+
+	<!-- ==================== Wait Window Specific Styles ==================== -->
+	<!-- Surface Color/Brush for transparent windows -->
+	<Color x:Key="SurfaceColor">#FFFFFF</Color>
+	<Color x:Key="ToastBackground">#323232</Color>
+	<SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
+	<SolidColorBrush x:Key="ToastBackgroundBrush" Color="{StaticResource ToastBackground}"/>
+
+	<!-- Indeterminate ProgressBar Style -->
+	<Style x:Key="IndeterminateProgressBar" TargetType="ProgressBar">
+		<Setter Property="Background" Value="{StaticResource BorderBrush}"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Height" Value="12"/>
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="ProgressBar">
+					<Border Background="{TemplateBinding Background}" CornerRadius="4">
+						<Grid ClipToBounds="True">
+							<Rectangle x:Name="Indicator" Width="120" Height="12" RadiusX="4" RadiusY="4" HorizontalAlignment="Left">
+								<Rectangle.RenderTransform>
+									<TranslateTransform x:Name="IndicatorTransform" X="0"/>
+								</Rectangle.RenderTransform>
+								<Rectangle.Fill>
+									<LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+										<GradientStop Color="{StaticResource PrimaryColor}" Offset="0"/>
+										<GradientStop Color="{StaticResource PrimaryDarkColor}" Offset="1"/>
+									</LinearGradientBrush>
+								</Rectangle.Fill>
+							</Rectangle>
+						</Grid>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsIndeterminate" Value="True">
+							<Trigger.EnterActions>
+								<BeginStoryboard>
+									<Storyboard RepeatBehavior="Forever">
+										<DoubleAnimation Storyboard.TargetName="IndicatorTransform" Storyboard.TargetProperty="X" From="-150" To="300" Duration="0:0:1.2"/>
+									</Storyboard>
+								</BeginStoryboard>
+							</Trigger.EnterActions>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- ==================== ScrollBar Styles ==================== -->
+	<!-- Slim ScrollBar Thumb Style (for ComboBox/Popup - thin like WebView2) -->
+	<Style x:Key="SlimScrollBarThumb" TargetType="{x:Type Thumb}">
+		<Setter Property="SnapsToDevicePixels" Value="True"/>
+		<Setter Property="OverridesDefaultStyle" Value="True"/>
+		<Setter Property="IsTabStop" Value="False"/>
+		<Setter Property="Focusable" Value="False"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type Thumb}">
+					<Border x:Name="ThumbBorder"
+                            Background="#C0C0C0"
+                            CornerRadius="3"
+                            Margin="1"/>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="ThumbBorder" Property="Background" Value="#A0A0A0"/>
+						</Trigger>
+						<Trigger Property="IsDragging" Value="True">
+							<Setter TargetName="ThumbBorder" Property="Background" Value="#808080"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Slim ScrollBar Style (for ComboBox/Popup - thin like WebView2) -->
+	<Style x:Key="SlimScrollBar" TargetType="{x:Type ScrollBar}">
+		<Setter Property="SnapsToDevicePixels" Value="True"/>
+		<Setter Property="OverridesDefaultStyle" Value="True"/>
+		<Style.Triggers>
+			<Trigger Property="Orientation" Value="Vertical">
+				<Setter Property="Width" Value="8"/>
+				<Setter Property="MinWidth" Value="8"/>
+				<Setter Property="Template">
+					<Setter.Value>
+						<ControlTemplate TargetType="{x:Type ScrollBar}">
+							<Grid Background="Transparent">
+								<Track x:Name="PART_Track" IsDirectionReversed="True" Width="6">
+									<Track.Thumb>
+										<Thumb Style="{StaticResource SlimScrollBarThumb}"/>
+									</Track.Thumb>
+								</Track>
+							</Grid>
+						</ControlTemplate>
+					</Setter.Value>
+				</Setter>
+			</Trigger>
+			<Trigger Property="Orientation" Value="Horizontal">
+				<Setter Property="Height" Value="8"/>
+				<Setter Property="MinHeight" Value="8"/>
+				<Setter Property="Template">
+					<Setter.Value>
+						<ControlTemplate TargetType="{x:Type ScrollBar}">
+							<Grid Background="Transparent">
+								<Track x:Name="PART_Track" IsDirectionReversed="False" Height="6">
+									<Track.Thumb>
+										<Thumb Style="{StaticResource SlimScrollBarThumb}"/>
+									</Track.Thumb>
+								</Track>
+							</Grid>
+						</ControlTemplate>
+					</Setter.Value>
+				</Setter>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- ==================== DataGrid ScrollBar Styles (wider for better usability) ==================== -->
+	<!-- App ScrollBar Thumb Style (for DataGrid - wider) -->
+	<Style x:Key="AppScrollThumbStyle" TargetType="{x:Type Thumb}">
+		<Setter Property="SnapsToDevicePixels" Value="True"/>
+		<Setter Property="OverridesDefaultStyle" Value="True"/>
+		<Setter Property="IsTabStop" Value="False"/>
+		<Setter Property="Focusable" Value="False"/>
+		<Setter Property="Background" Value="{StaticResource SecondaryBrush}"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type Thumb}">
+					<Border x:Name="ThumbBorder"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="5"
+                            Margin="1"/>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="ThumbBorder" Property="Background" Value="{StaticResource SecondaryDarkBrush}"/>
+						</Trigger>
+						<Trigger Property="IsDragging" Value="True">
+							<Setter TargetName="ThumbBorder" Property="Background" Value="{StaticResource SecondaryDarkerBrush}"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- App ScrollBar Style (for DataGrid - wider, more visible) -->
+	<Style x:Key="AppScrollBarStyle" TargetType="{x:Type ScrollBar}">
+		<Setter Property="SnapsToDevicePixels" Value="True"/>
+		<Setter Property="OverridesDefaultStyle" Value="True"/>
+		<Setter Property="Background" Value="#E8E8E8"/>
+		<Style.Triggers>
+			<Trigger Property="Orientation" Value="Vertical">
+				<Setter Property="Width" Value="12"/>
+				<Setter Property="MinWidth" Value="12"/>
+				<Setter Property="Template">
+					<Setter.Value>
+						<ControlTemplate TargetType="{x:Type ScrollBar}">
+							<Grid Background="{TemplateBinding Background}">
+								<Track x:Name="PART_Track" IsDirectionReversed="True" Width="10">
+									<Track.Thumb>
+										<Thumb Style="{StaticResource AppScrollThumbStyle}"/>
+									</Track.Thumb>
+								</Track>
+							</Grid>
+						</ControlTemplate>
+					</Setter.Value>
+				</Setter>
+			</Trigger>
+			<Trigger Property="Orientation" Value="Horizontal">
+				<Setter Property="Height" Value="12"/>
+				<Setter Property="MinHeight" Value="12"/>
+				<Setter Property="Template">
+					<Setter.Value>
+						<ControlTemplate TargetType="{x:Type ScrollBar}">
+							<Grid Background="{TemplateBinding Background}">
+								<Track x:Name="PART_Track" IsDirectionReversed="False" Height="10">
+									<Track.Thumb>
+										<Thumb Style="{StaticResource AppScrollThumbStyle}"/>
+									</Track.Thumb>
+								</Track>
+							</Grid>
+						</ControlTemplate>
+					</Setter.Value>
+				</Setter>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- ========== ScrollBar Styles ========== -->
+	<!-- ScrollBar Line Button Style -->
+	<Style x:Key="ScrollBarLineButton" TargetType="{x:Type RepeatButton}">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="IsTabStop" Value="False"/>
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+		<Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type RepeatButton}">
+					<Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}">
+						<ContentPresenter x:Name="contentPresenter"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+					</Border>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- Standard ScrollBar Style -->
+	<Style x:Key="StandardScrollBar" TargetType="{x:Type ScrollBar}">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="Stylus.IsPressAndHoldEnabled" Value="False"/>
+		<Setter Property="Stylus.IsFlicksEnabled" Value="False"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type ScrollBar}">
+					<Grid x:Name="Bg" Background="Transparent">
+						<Grid.RowDefinitions>
+							<RowDefinition MaxHeight="{DynamicResource {x:Static SystemParameters.VerticalScrollBarButtonHeightKey}}"/>
+							<RowDefinition Height="*"/>
+							<RowDefinition MaxHeight="{DynamicResource {x:Static SystemParameters.VerticalScrollBarButtonHeightKey}}"/>
+						</Grid.RowDefinitions>
+
+						<!-- Track -->
+						<Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="True">
+							<Track.DecreaseRepeatButton>
+								<RepeatButton Command="ScrollBar.PageUpCommand" Background="Transparent"/>
+							</Track.DecreaseRepeatButton>
+							<Track.Thumb>
+								<Thumb BorderThickness="1" x:Name="Thumb"
+                                   Background="{StaticResource PrimaryBrush}"
+                                   BorderBrush="#80FFFFFF"
+                                   Opacity="0.6">
+									<Thumb.Resources>
+										<Style TargetType="{x:Type Border}">
+											<Setter Property="CornerRadius" Value="4"/>
+										</Style>
+									</Thumb.Resources>
+								</Thumb>
+							</Track.Thumb>
+							<Track.IncreaseRepeatButton>
+								<RepeatButton Command="ScrollBar.PageDownCommand" Background="Transparent"/>
+							</Track.IncreaseRepeatButton>
+						</Track>
+
+						<!-- Top Button (optional - hide by default) -->
+						<RepeatButton Grid.Row="0" Style="{StaticResource ScrollBarLineButton}"
+                                  Command="ScrollBar.LineUpCommand"
+                                  Content="?"
+                                  Visibility="Collapsed"/>
+
+						<!-- Bottom Button (optional - hide by default) -->
+						<RepeatButton Grid.Row="2" Style="{StaticResource ScrollBarLineButton}"
+                                  Command="ScrollBar.LineDownCommand"
+                                  Content="?"
+                                  Visibility="Collapsed"/>
+					</Grid>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsEnabled" Value="False">
+							<Setter TargetName="Thumb" Property="Background" Value="#FF888888"/>
+						</Trigger>
+						<Trigger Property="IsEnabled" Value="True">
+							<Setter TargetName="Thumb" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+						</Trigger>
+						<Trigger SourceName="Thumb" Property="IsMouseOver" Value="True">
+							<Setter TargetName="Thumb" Property="Opacity" Value="0.9"/>
+							<Setter TargetName="Thumb" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+						</Trigger>
+						<Trigger SourceName="Thumb" Property="IsDragging" Value="True">
+							<Setter TargetName="Thumb" Property="Opacity" Value="1"/>
+							<Setter TargetName="Thumb" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- ScrollViewer Style with visible scrollbar -->
+	<Style x:Key="ModernScrollViewer" TargetType="{x:Type ScrollViewer}">
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type ScrollViewer}">
+					<Grid Background="{TemplateBinding Background}">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*"/>
+							<ColumnDefinition Width="Auto"/>
+						</Grid.ColumnDefinitions>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="*"/>
+							<RowDefinition Height="Auto"/>
+						</Grid.RowDefinitions>
+
+						<ScrollContentPresenter x:Name="ScrollContentPresenter"
+                                            Grid.Row="0"
+                                            Grid.Column="0"
+                                            CanContentScroll="{TemplateBinding CanContentScroll}"
+                                            CanHorizontallyScroll="False"
+                                            CanVerticallyScroll="False"
+                                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            Content="{TemplateBinding Content}"
+                                            Margin="{TemplateBinding Padding}"/>
+
+						<!-- Vertical ScrollBar -->
+						<ScrollBar x:Name="PART_VerticalScrollBar"
+                              Grid.Row="0"
+                              Grid.Column="1"
+                              Style="{StaticResource StandardScrollBar}"
+                              AutomationProperties.AutomationId="VerticalScrollBar"
+                              Cursor="Arrow"
+                              Maximum="{TemplateBinding ScrollableHeight}"
+                              Minimum="0"
+                              Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
+                              Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
+                              ViewportSize="{TemplateBinding ViewportHeight}"
+                              Orientation="Vertical"/>
+
+						<!-- Horizontal ScrollBar -->
+						<ScrollBar x:Name="PART_HorizontalScrollBar"
+                              Grid.Row="1"
+                              Grid.Column="0"
+                              Style="{StaticResource StandardScrollBar}"
+                              AutomationProperties.AutomationId="HorizontalScrollBar"
+                              Cursor="Arrow"
+                              Maximum="{TemplateBinding ScrollableWidth}"
+                              Minimum="0"
+                              Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"
+                              Value="{Binding HorizontalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
+                              ViewportSize="{TemplateBinding ViewportWidth}"
+                              Orientation="Horizontal"/>
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- ==================== Additional Section Header Styles ==================== -->
+	<!-- Section Header Style (Primary colored, SemiBold) - Alias for consistency -->
+	<Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource SectionHeaderStyle}"/>
+
+	<!-- Section Header Style 1 (Alternate with normal weight) -->
+	<Style x:Key="SectionHeaderStyle1" TargetType="TextBlock">
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="FontWeight" Value="Normal"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+	</Style>
+
+	<!-- =================== Start of DATAGRID STYLES ========================= -->
+	<!-- DataGrid Row Style  -->
+	<Style x:Key="ModernDataGridRow" TargetType="DataGridRow">
+		<Setter Property="Background" Value="White"/>
+		<Setter Property="Foreground" Value="Black"/>
+		<Setter Property="FontFamily" Value="Segoe UI" />
+		<Setter Property="MinHeight" Value="32"/>
+		<Setter Property="VerticalAlignment" Value="Stretch"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+
+		<Style.Triggers>
+			<!-- Hover state - Light blue background with BLACK text for entire row -->
+			<Trigger Property="IsMouseOver" Value="True">
+				<Setter Property="Background" Value="#E3F2FD"/>
+				<Setter Property="Foreground" Value="Black"/>
+			</Trigger>
+
+			<!-- Selected state - Blue background with WHITE text for entire row -->
+			<Trigger Property="IsSelected" Value="True">
+				<Setter Property="Background" Value="#9BCEE4"/>
+				<Setter Property="BorderBrush" Value="#149FDB"/>
+				<Setter Property="Foreground" Value="White"/>
+			</Trigger>
+
+			<!-- Selected + Hover state - Darker blue with WHITE text -->
+			<MultiTrigger>
+				<MultiTrigger.Conditions>
+					<Condition Property="IsSelected" Value="True"/>
+					<Condition Property="IsMouseOver" Value="True"/>
+				</MultiTrigger.Conditions>
+				<MultiTrigger.Setters>
+					<Setter Property="Background" Value="#1B6B93"/>
+					<Setter Property="Foreground" Value="White"/>
+				</MultiTrigger.Setters>
+			</MultiTrigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- DataGridCell Style - Make cells transparent so row background shows through -->
+	<Style x:Key="ModernDataGridCell" TargetType="DataGridCell">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Padding" Value="4,0"/>
+		<Setter Property="BorderThickness" Value="0"/>
+
+		<Style.Triggers>
+			<Trigger Property="IsSelected" Value="True">
+				<Setter Property="Background" Value="Transparent"/>
+				<Setter Property="BorderBrush" Value="Transparent"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- Style for TextBlock inside DataGrid cells -->
+	<Style x:Key="ModernDataGridTextBlock" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Margin" Value="4,0"/>
+		<Setter Property="FontWeight" Value="Normal"/>
+		<Setter Property="Background" Value="Transparent"/>
+
+		<Style.Triggers>
+			<DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True">
+				<Setter Property="Foreground" Value="White"/>
+			</DataTrigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- Ensure checkbox columns maintain visibility and inherit row colors -->
+	<Style x:Key="ModernDataGridCheckBoxColumn" TargetType="CheckBox">
+		<Setter Property="HorizontalAlignment" Value="Center"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+
+		<Style.Triggers>
+			<DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True">
+				<Setter Property="Foreground" Value="White"/>
+			</DataTrigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- ==================== DataGrid Column Header Style ==================== -->
+	<Style x:Key="ModernDataGridColumnHeader" TargetType="DataGridColumnHeader">
+		<Setter Property="Background" Value="#149FDB"/>
+		<Setter Property="Foreground" Value="White"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="Height" Value="36"/>
+		<Setter Property="BorderBrush" Value="#1B6B93"/>
+		<Setter Property="BorderThickness" Value="0,0,1,1"/>
+		<Setter Property="HorizontalContentAlignment" Value="Center"/>
+	</Style>
+
+	<!-- =================== End of DATAGRID STYLES ========================= -->
+
+	<!-- ==================== Pagination Styles ==================== -->
+	<!-- Pagination Button Style -->
+	<Style x:Key="PaginationButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+		<Setter Property="Width" Value="32"/>
+		<Setter Property="Height" Value="28"/>
+		<Setter Property="Padding" Value="0"/>
+		<Setter Property="Margin" Value="2,0"/>
+		<Setter Property="MinWidth" Value="32"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+	</Style>
+
+	<!-- Pagination Info Style -->
+	<Style x:Key="PaginationInfoText" TargetType="TextBlock">
+		<Setter Property="Foreground" Value="#495057"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Margin" Value="4,0"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+	</Style>
+
+	<!-- Small TextBox Style for Pagination -->
+	<Style x:Key="SmallTextBox" TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
+		<Setter Property="Width" Value="50"/>
+		<Setter Property="Height" Value="28"/>
+		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="Padding" Value="4,2"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+	</Style>
+
+	<!-- Bug fix (direct, explicit user spec, latest round): the X should sit flush with the title
+	     bar - white icon on the SAME blue as the header (PrimaryBrush), not a white box with a dark
+	     icon - filling solid red on hover, matching GLSense's own title-bar close button convention
+	     (transparent/blends-with-header at rest, white icon, red on hover). Two earlier rounds of
+	     this same style each got one half of the spec backwards (first: blue bg/white icon at rest
+	     with no hover distinction; then: white bg/dark icon at rest) - this is the third, user-
+	     confirmed-correct version: Background is explicitly the header's own PrimaryBrush blue (not
+	     Transparent) so it matches regardless of exactly where it sits, Foreground is White at rest,
+	     and hover/press still turn the background red with a white icon, unchanged from before. -->
+	<Style x:Key="CustomWindowCloseButtonStyle" TargetType="Button">
+		<Setter Property="HorizontalAlignment" Value="Right"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="FontWeight" Value="Bold"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+
+		<!-- Use MinWidth/MinHeight to ensure minimum hit area -->
+		<Setter Property="MinWidth" Value="30"/>
+		<Setter Property="MinHeight" Value="30"/>
+		<Setter Property="Padding" Value="8"/>
+
+		<!-- Default foreground for the icon: white at rest, against the blue header background -->
+		<Setter Property="Foreground" Value="White"/>
+
+		<!-- Bug fix ("increase red height/width so the X is like inside the box" - the hover box was
+		     rendering as a tiny shape barely bigger than the X glyph itself): the Border used
+		     Margin="{TemplateBinding Padding}", which SHRINKS the border inward by the padding amount
+		     (8px each side) instead of giving it internal breathing room - since the button's own hit
+		     area is only MinWidth/MinHeight="30", an 8px margin on all sides left a border only
+		     30-16=14px square, exactly the icon's own 14x14 size, with zero space between the X and the
+		     box edges (small enough that the CornerRadius="4" rounding made it read as a tiny circle
+		     rather than a proper button). Fixed by removing that Margin entirely, so the border now
+		     fills the button's full 30x30 hit area with the 14x14 icon comfortably centered inside it -
+		     an actual, appropriately-sized box around the X instead of a shrink-wrapped sliver. -->
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="4">
+						<iconPacks:PackIconFontAwesome Kind="XmarkSolid"
+                                                       Width="14" Height="14"
+                                                       Foreground="{TemplateBinding Foreground}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#E81123"/>
+							<Setter Property="Foreground" Value="White"/>
+						</Trigger>
+						<Trigger Property="IsPressed" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#A50F1A"/>
+							<Setter Property="Foreground" Value="White"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+					<StackPanel>
+						<TextBlock Text="Click to close this window" TextWrapping="Wrap"/>
+					</StackPanel>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- TabControl Style - Remove any margin/padding that might trim tabs -->
+	<Style x:Key="ModernTabControl" TargetType="TabControl">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Padding" Value="0"/>
+		<Setter Property="Margin" Value="0"/>
+		<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+		<Setter Property="VerticalContentAlignment" Value="Stretch"/>
+
+		<!-- Template to ensure tabs are fully visible -->
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="TabControl">
+					<Grid>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto"/>
+							<RowDefinition Height="*"/>
+						</Grid.RowDefinitions>
+
+						<!-- Tab headers with no clipping -->
+						<ScrollViewer Grid.Row="0"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  Margin="0,0,0,-1">
+							<TabPanel x:Name="HeaderPanel"
+                                  IsItemsHost="true"
+                                  Margin="0,0,0,0"
+                                  Background="Transparent"/>
+						</ScrollViewer>
+
+						<!-- Content area -->
+						<Border Grid.Row="1"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="#CED4DA"
+                            BorderThickness="1"
+                            CornerRadius="0,0,6,6">
+							<ContentPresenter x:Name="PART_SelectedContentHost"
+                                          ContentSource="SelectedContent"
+                                          Margin="{TemplateBinding Padding}"/>
+						</Border>
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Fixed TabItem Style -->
+	<Style x:Key="TabItemStyle" TargetType="TabItem">
+		<Setter Property="Padding" Value="16,8"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontSize" Value="14"/>
+		<Setter Property="Margin" Value="0,0,0,0"/>
+		<Setter Property="MinWidth" Value="100"/>
+
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="TabItem">
+					<Border x:Name="border"
+                        Background="#E9ECEF"
+                        BorderBrush="#CED4DA"
+                        BorderThickness="1,1,1,0"
+                        CornerRadius="6,6,0,0"
+                        Padding="{TemplateBinding Padding}"
+                        SnapsToDevicePixels="True">
+
+						<ContentPresenter
+                        ContentSource="Header"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        RecognizesAccessKey="True"/>
+					</Border>
+
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsSelected" Value="True">
+							<Setter TargetName="border" Property="Background" Value="White"/>
+							<Setter TargetName="border" Property="BorderBrush" Value="#149FDB"/>
+							<Setter TargetName="border" Property="BorderThickness" Value="1,1,1,1"/>
+							<Setter TargetName="border" Property="Margin" Value="0,0,0,-1"/>
+						</Trigger>
+
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#F8F9FA"/>
+						</Trigger>
+
+						<Trigger Property="IsEnabled" Value="False">
+							<Setter TargetName="border" Property="Opacity" Value="0.6"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	
+</ResourceDictionary>
