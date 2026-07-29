@@ -280,6 +280,16 @@ namespace XLEdge.Helpers
 
             bool isDrilldownRequest = !string.IsNullOrWhiteSpace(paramsJsonPayload);
 
+            // Mirrors VB.NET's AddinModule.vb (FollowDrilldown = True right before Edge_ThreadProgress()
+            // in the drilldown hyperlink handler, reset to False for a plain, non-drilldown run). Set
+            // fresh on every call rather than relying on a separate "operation completed" reset, so it
+            // always reflects THIS invocation regardless of how the previous one finished. This is what
+            // RewriteParameterSectionRows reads to write IT1 = "Child Report" on the parameter sheet,
+            // which the ribbon Refresh/Refresh All/Run handlers check to block re-running child reports -
+            // without this, IT1 stayed empty for every drilldown-generated report and refresh wasn't
+            // actually blocked for them.
+            XLEdgeAppState.Instance.FollowDrilldown = isDrilldownRequest;
+
             if (string.IsNullOrWhiteSpace(title))
             {
                 await DisplayErrorAsync("Title is empty. Cannot generate report.");
