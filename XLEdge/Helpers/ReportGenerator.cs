@@ -49,10 +49,15 @@ namespace XLEdge.Helpers
         {
             if (_showWaitWindow && _waitWindow != null)
             {
+                // Matches FormProcessBar.vb's error handling: Edge_CloseProgress() followed by a
+                // separate XLEdgeMsgDisplay MessageBox call. SetProcessMessage+RequestClose alone
+                // (the previous behavior) closed the wait window immediately after setting its
+                // label text, so the message was never actually visible - MessageFunctions.XLEdgeMessage
+                // is the C# port of XLEdgeMsgDisplay and shows a real, independent dialog instead.
                 await UiDispatcher.RunAsync(() =>
                 {
-                    _waitWindow.SetProcessMessage(message);
                     _waitWindow.RequestClose();
+                    MessageFunctions.XLEdgeMessage(message, System.Windows.Forms.MessageBoxIcon.Error);
                 });
             }
             else
@@ -1051,7 +1056,7 @@ namespace XLEdge.Helpers
             //Attempting to freeae the columns based on metadata settings
             try
             {
-                int columnLockCount = reportMeta.LockedColumnsCount + 1;
+                int columnLockCount = reportMeta.LockedColumnsCount;
                 if (columnLockCount > 0 && columnLockCount < mappings.Count)
                 {
                     excelApp.ActiveWindow.SplitColumn = columnLockCount;
@@ -2657,21 +2662,20 @@ namespace XLEdge.Helpers
                     {
                         ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
 
-                        // The Sleep intervals below run on a background thread on purpose: Excel's
-                        // own STA/message-pump thread must stay free to actually process the
-                        // synthetic SendKeys input between each step. Only the Excel COM calls
-                        // themselves are marshalled onto that STA thread via UiDispatcher.Run -
-                        // calling them directly from this background thread would access the
-                        // Excel.Application RCW from the wrong apartment.
+                        // Nudge keyboard focus off the WebView2 control by actually selecting a
+                        // different cell then reselecting the original one - a real COM selection
+                        // change, not a synthetic keystroke. This used to be preceded by SendKeys
+                        // {F2}/{ESC} "dummy key" presses, which were found to be flipping the user's
+                        // NumLock state on every report run (SendKeys/Application.SendKeys shares the
+                        // same low-level toggle-key-detection path implicated in that). Removed -
+                        // the Sleep below still runs on a background thread so Excel's own
+                        // STA/message-pump thread stays free to process the COM selection calls,
+                        // which are marshalled onto it via UiDispatcher.Run.
                         await Task.Run(() =>
                         {
                             try
                             {
                                 Thread.Sleep(50);
-                                UiDispatcher.Run(() => excelApp.SendKeys("{F2}"));
-                                Thread.Sleep(30);
-                                UiDispatcher.Run(() => excelApp.SendKeys("{ESC}"));
-                                Thread.Sleep(30);
 
                                 Excel.Range originalCell = null;
                                 UiDispatcher.Run(() =>

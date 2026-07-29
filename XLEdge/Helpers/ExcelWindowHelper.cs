@@ -215,20 +215,12 @@ namespace XLEdge.Helpers
                     System.Threading.Thread.Sleep(10);
                 }
 
-                // Send a dummy key to force Excel to recognize focus. SendKeys is Excel COM access,
-                // marshalled onto the correct thread the same way as the .Hwnd read above.
-                try
-                {
-                    UiDispatcher.Run(() => excelApp.SendKeys("{F2}"));
-                    System.Threading.Thread.Sleep(20);
-                    UiDispatcher.Run(() => excelApp.SendKeys("{ESC}"));
-                    System.Threading.Thread.Sleep(20);
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogError($"{nameof(ActivateExcelMainWindow)}: SendKeys failed - {ex.Message}");
-                }
-
+                // Deliberately not sending a dummy {F2}/{ESC} keystroke here (VB.NET's own
+                // equivalent cleanup step has this same SendKeys call commented out). SendKeys goes
+                // through the same low-level keyboard-injection path used to detect toggle-key state,
+                // and was found to be flipping the user's NumLock on every report run. The
+                // SetForegroundWindow/BringWindowToTop/SetFocus(gridHwnd) sequence above already gives
+                // the worksheet grid real OS keyboard focus without it.
                 LogUtility.LogDebug($"{nameof(ActivateExcelMainWindow)}: Successfully activated Excel window");
             }
             catch (Exception ex)
@@ -344,7 +336,7 @@ namespace XLEdge.Helpers
         }
 
         /// <summary>
-        /// Resets keyboard focus by simulating alt-tab behavior
+        /// Resets keyboard focus by forcing a real cell selection change (not simulated keystrokes).
         /// </summary>
         private static void ResetKeyboardFocus(Excel.Application excelApp)
         {
@@ -352,39 +344,13 @@ namespace XLEdge.Helpers
             {
                 if (excelApp == null) return;
 
-                // Method 1: Send F2 then ESC
-                try
-                {
-                    excelApp.SendKeys("{F2}");
-                    Thread.Sleep(30);
-                    excelApp.SendKeys("{ESC}");
-                    Thread.Sleep(30);
-                    System.Windows.Forms.Application.DoEvents();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogError($"{nameof(ResetKeyboardFocus)}: F2/ESC failed - {ex.Message}");
-                }
+                // The SendKeys {F2}/{ESC} and {DOWN}/{UP} "methods" that used to be tried here first
+                // were removed - SendKeys/Application.SendKeys was found to be flipping the user's
+                // NumLock state on every report run. The selection-change approach below (already
+                // present as a third fallback) forces the same real keyboard-focus change through an
+                // actual COM selection instead of a synthetic keystroke, without that side effect.
 
-                // Method 2: Try selecting a cell and sending a key
-                try
-                {
-                    if (excelApp.ActiveCell != null)
-                    {
-                        var cell = excelApp.ActiveCell;
-                        // This forces Excel to recognize keyboard input
-                        excelApp.SendKeys("{DOWN}");
-                        Thread.Sleep(20);
-                        excelApp.SendKeys("{UP}");
-                        Thread.Sleep(20);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogError($"{nameof(ResetKeyboardFocus)}: DOWN/UP failed - {ex.Message}");
-                }
-
-                // Method 3: Force a selection change
+                // Force a selection change
                 try
                 {
                     if (excelApp.ActiveSheet != null && excelApp.ActiveCell != null)

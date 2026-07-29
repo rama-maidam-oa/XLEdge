@@ -405,14 +405,12 @@ namespace XLEdge
                     if (excelApp != null)
                     {
                         // Use Windows API to bring Excel to foreground
-                        IntPtr excelHandle = new IntPtr(excelApp.Hwnd);
                         ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
 
-                        // Send a dummy key to force Excel to recognize focus
-                        excelApp.SendKeys("{F2}");
-                        System.Threading.Thread.Sleep(10);
-                        excelApp.SendKeys("{ESC}");
-                        System.Threading.Thread.Sleep(10);
+                        // Deliberately not sending a dummy {F2}/{ESC} keystroke here - SendKeys was
+                        // found to be flipping the user's NumLock state on every report run.
+                        // ActivateExcelMainWindow above already sets real OS keyboard focus on the
+                        // worksheet grid via SetForegroundWindow/SetFocus.
                     }
                 }
                 catch (Exception ex)
