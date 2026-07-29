@@ -58,24 +58,22 @@ namespace XLEdge.Helpers
             }
             writer.WriteEndArray();
 
-            // 3. extraParameters (lowercase) - null when there's nothing to send, not "{}"
+            // 3. extraParameters (lowercase) - an empty object "{}" when there's nothing to send
+            // (matches the VB.NET original: New Object() serializes the same way), populated with
+            // raw values (ORACLE_RESP_ID, ORACLE_GL_SEGMENT_VALUES, etc.) when present.
             writer.WritePropertyName("extraParameters");
+            writer.WriteStartObject();
             var extraParams = request.ExtraParameters as Dictionary<string, object>;
-            if (extraParams != null && extraParams.Count > 0)
+            if (extraParams != null)
             {
-                writer.WriteStartObject();
                 foreach (var kvp in extraParams)
                 {
                     writer.WritePropertyName(kvp.Key);
                     // --- CRITICAL: ORACLE_RESP_ID is ALWAYS a string ---
                     writer.WriteStringValue(kvp.Value?.ToString() ?? string.Empty);
                 }
-                writer.WriteEndObject();
             }
-            else
-            {
-                writer.WriteNullValue();
-            }
+            writer.WriteEndObject();
 
             writer.WriteEndObject();
             writer.Flush();
