@@ -67,8 +67,10 @@ namespace XLEdge.Helpers
 
                         if (retryCount >= MaxRetries)
                         {
-                            LogUtility.LogError($"{operationName} failed after {MaxRetries} attempts");
-                            ExceptionHelper.LogDetailedException(ex, $"{operationName} - Max retries exceeded");
+                            // Single summary line only - the full exception (with stack trace) is
+                            // logged once by the caller that ultimately handles this failure, so it
+                            // isn't dumped again here on top of ApiHelper's own summary line.
+                            LogUtility.LogError($"{operationName} failed after {MaxRetries} attempts: {ex.Message}");
                             throw;
                         }
 
@@ -81,9 +83,11 @@ namespace XLEdge.Helpers
                     }
                     catch (Exception ex)
                     {
-                        // Non-transient error - don't retry
-                        LogUtility.LogError($"{operationName} failed with non-transient error");
-                        ExceptionHelper.LogDetailedException(ex, operationName);
+                        // Non-transient error - don't retry. Single summary line only - the full
+                        // exception (with stack trace) is logged once by the caller that ultimately
+                        // handles this failure, to avoid re-dumping the same trace at every layer
+                        // it passes through on its way up.
+                        LogUtility.LogError($"{operationName} failed with non-transient error: {ex.Message}");
                         throw;
                     }
                 }

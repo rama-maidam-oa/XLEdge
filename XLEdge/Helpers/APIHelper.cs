@@ -279,7 +279,12 @@ namespace XLEdge.Helpers
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, $"API call failed for {sendURL}");
+                // Single summary line only. The full exception (with stack trace) is logged once by
+                // whichever caller ultimately handles/displays this failure (e.g. ReportGenerator,
+                // XLEdgeCTP's broadcast fetch) - re-dumping the full trace here as well just duplicates
+                // it, since ApiOperationHelper.ExecuteWithRetry and that caller both see this same
+                // exception again as it propagates up.
+                LogUtility.LogWarn($"API call failed for {sendURL}: {ex.Message}");
                 throw;
             }
         }
