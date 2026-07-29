@@ -116,6 +116,8 @@ namespace XLEdge.Views
         {
             if (Toast == null) return;
 
+            CollapseBusyOverlayForToast();
+
             this.Visibility = Visibility.Visible;
             UpdateToastMaxHeight();
             Toast.Visibility = Visibility.Visible;
@@ -162,6 +164,8 @@ namespace XLEdge.Views
             _activeToastTcs?.TrySetResult(true);
             var tcs = new TaskCompletionSource<bool>();
             _activeToastTcs = tcs;
+
+            CollapseBusyOverlayForToast();
 
             this.Visibility = Visibility.Visible;
             UpdateToastMaxHeight();
@@ -406,6 +410,23 @@ namespace XLEdge.Views
             });
 
             await tcs.Task;
+        }
+
+        /// <summary>
+        /// Immediately collapses the busy overlay if it's visible, so a toast about to be shown
+        /// isn't hidden behind it. BusyOverlay and ToastOverlay share the same Panel.ZIndex (10000)
+        /// in AppOverlay.xaml, and BusyOverlay is declared later, so without this a toast fired
+        /// while a busy spinner is up would render underneath the busy overlay's dark scrim -
+        /// the taskpane just looks stuck/blurred with no visible message. Skips the normal
+        /// HideBusyAsync fade since the toast is about to cover the same area anyway.
+        /// </summary>
+        private void CollapseBusyOverlayForToast()
+        {
+            if (BusyOverlay.Visibility != Visibility.Visible) return;
+
+            StopBusyTimer();
+            BusyOverlay.Visibility = Visibility.Collapsed;
+            SetWebView2HiddenState(ref _busyHidesWebView2, false);
         }
 
         private void StopBusyTimer()

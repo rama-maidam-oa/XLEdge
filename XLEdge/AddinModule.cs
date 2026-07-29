@@ -628,11 +628,11 @@ namespace XLEdge
 
                     int row = selectedRange.Row;
                     int col = selectedRange.Column;
-                    if (row < 4 || (col != 9 && col != 10))
+                    if (row < 4 || (col != 10 && col != 11))
                         return;
 
-                    Excel.Range range1 = (Excel.Range)selectedSheet.Cells[row, 7];
-                    Excel.Range range2 = (Excel.Range)selectedSheet.Cells[row, 8];
+                    Excel.Range range1 = (Excel.Range)selectedSheet.Cells[row, 8];
+                    Excel.Range range2 = (Excel.Range)selectedSheet.Cells[row, 9];
 
                     string gVal = Convert.ToString(range1.Value).ToUpper();
                     string hVal = Convert.ToString(range2.Value).ToUpper();
@@ -640,7 +640,7 @@ namespace XLEdge
                     if (!gVal.Contains("DATE"))
                         return;
 
-                    if (!hVal.Contains("BETWEEN") && col != 9)
+                    if (!hVal.Contains("BETWEEN") && col != 11)
                         return;
                 }
 

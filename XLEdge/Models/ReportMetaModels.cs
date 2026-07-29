@@ -161,6 +161,11 @@ namespace XLEdge.Models
         [JsonPropertyName("procesStartTime")]
         [JsonConverter(typeof(NumericJsonConverter))]
         public object ProcessStartTime { get; set; }
+        // Plain int - NumericJsonConverter is JsonConverter<object> and is only valid on
+        // ProcessStartTime above (typed as object). Applying it here throws
+        // "converter ... not compatible with System.Int32" on every deserialize.
+        [JsonPropertyName("lockedColumnsCount")]
+        public int LockedColumnsCount { get; set; } = 0;
     }
 
     public sealed class DrillParameter
@@ -223,36 +228,10 @@ namespace XLEdge.Models
         public string Formula { get; set; }
     }
 
-    /// <summary>The outbound request body for refreshing/submitting a report with edited
-    /// parameter values, built from the "orb_params_control" sheet. Ported from the private
-    /// "ReportRequest"/"Parameter" classes nested inside XLEdgeParamsData.vb.</summary>
-    public sealed class ReportParameterRequest
-    {
-        [JsonPropertyName("reportId")]
-        [JsonConverter(typeof(NumericJsonConverter))]
-        public object ReportId { get; set; }
-
-        [JsonPropertyName("parameters")]
-        public List<ReportParameterValue> Parameters { get; set; } = new List<ReportParameterValue>();
-
-        [JsonPropertyName("extraParameters")]
-        [JsonConverter(typeof(NumericJsonConverter))]
-        public Dictionary<string, string> ExtraParameters { get; set; }
-    }
-
-    public sealed class ReportParameterValue
-    {
-        [JsonPropertyName("name")]
-        public string Name { get; set; }
-
-        [JsonPropertyName("value")]
-        [JsonConverter(typeof(NumericJsonConverter))]
-        public object Value { get; set; }
-
-        [JsonPropertyName("values")]
-        public List<object> Values { get; set; }
-
-        [JsonPropertyName("operator")]
-        public string Operator { get; set; }
-    }
+    // Note: the outbound request body for refreshing/submitting a report with edited parameter
+    // values ("ReportParameterRequest"/"ReportParameterValue") lives in XLEdge.Helpers
+    // (XLEdgeParamsBuilder.cs) - that's the version every real call site (DrilldownRequestBuilder,
+    // ReportParameterRequestSerializer) actually resolves to. A duplicate, unused pair of classes
+    // with the same names used to live here too; removed to avoid the same-name shadowing trap
+    // that caused the ExtraParameters/NumericJsonConverter bug.
 }

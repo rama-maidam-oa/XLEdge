@@ -930,6 +930,16 @@ namespace XLEdge.Helpers
 
             sheet.Activate();
 
+            //unfreezing the columns and rows if they are frozen
+            try
+            {
+                excelApp.ActiveWindow.FreezePanes = false;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to unfreeze panes on report sheet");
+            }
+
             object[,] headerArr = new object[1, mappings.Count];
             for (int c = 0; c < mappings.Count; c++)
             {
@@ -1044,6 +1054,23 @@ namespace XLEdge.Helpers
             catch (Exception)
             {
                 // Cosmetic-only (column width/font size); safe to ignore if it fails.
+            }
+
+            //Attempting to freeae the columns based on metadata settings
+            try
+            {
+                int columnLockCount = reportMeta.LockedColumnsCount + 1;
+                if (columnLockCount > 0 && columnLockCount < mappings.Count)
+                {
+                    excelApp.ActiveWindow.SplitColumn = columnLockCount;
+                    excelApp.ActiveWindow.SplitRow = 0;
+                    excelApp.ActiveWindow.FreezePanes = true;
+                }
+
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to freeze panes on report sheet");
             }
 
             if (!string.IsNullOrEmpty(companionSheetToDelete))
