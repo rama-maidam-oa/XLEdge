@@ -298,6 +298,106 @@ namespace XLEdge.Helpers
                 return;
             }
 
+            // Fetch report definition (Meta) first - always needed, and for drilldowns this is also
+            // what establishes the child report's context (business object/category) with the
+            // server. Requesting CSV data before this round trip (the previous order) is why
+            // drilldowns were failing server-side with "businessObject is null": the runner
+            // endpoint had never seen this report's definition yet.
+            await SetMessage("Fetching report definition...");
+            string metaUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/report-definition?reportId={_edgeRequest.ReportId}&runId={_edgeRequest.ReportRunId}&isDrillDown={(isDrilldownRequest ? "true" : "false")}";
+            string metaResponse = string.Empty;
+
+            try
+            {
+                metaResponse = await ApiHelper.ServerAPI(metaUrl, "Form", "", "GET", _ctsHelper.GetToken());
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Report definition fetch cancelled by user.");
+                await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
+                await DisplayErrorAsync("Report definition fetch was cancelled by the user.");
+                await CleanupAsync();
+                return;
+            }
+            catch (ApiTimeoutException ex)
+            {
+                LogUtility.LogException(ex, "Report definition fetch timed out");
+                await DisplayErrorAsync("The request timed out. Please try again.");
+                await CleanupAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Unhandled error fetching report definition");
+                await DisplayErrorAsync($"An unexpected error occurred while fetching report definition.{Environment.NewLine}{ex.Message}");
+                await CleanupAsync();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(metaResponse))
+            {
+                LogUtility.LogWarn("Report definition response is empty. Cannot generate report.");
+                await DisplayErrorAsync("Failed to fetch report definition. The response was empty.");
+                await CleanupAsync();
+                return;
+            }
+
+            LogResponsePayload("Report definition response (metaResponse)", metaResponse);
+
+            // Fetch report parameters. For a drilldown, paramsJsonPayload is the request body built
+            // by DrilldownRequestBuilder (reportId/parameters/extraParameters scoped to the clicked
+            // row) - it has to be POSTed to this endpoint and the actual response captured, the same
+            // as any other params fetch. It is not itself the params list and must not be reused
+            // as-is (that was the bug: drilldowns skipped this round trip entirely).
+            string paramsResponse;
+            await SetMessage("Fetching report parameters...");
+            string paramsUrl = isDrilldownRequest
+                ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/params?runId=&type={_edgeRequest.ReportType}"
+                : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/params?runId={_edgeRequest.ReportRunId}&type={_edgeRequest.ReportType}";
+
+            try
+            {
+                paramsResponse = isDrilldownRequest
+                    ? await ApiHelper.ServerAPI(paramsUrl, "JSON", paramsJsonPayload, "POST", _ctsHelper.GetToken())
+                    : await ApiHelper.ServerAPI(paramsUrl, "Form", "", "GET", _ctsHelper.GetToken());
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Report parameters fetch cancelled by user.");
+                await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
+                await DisplayErrorAsync("Report parameters fetch was cancelled by the user.");
+                await CleanupAsync();
+                return;
+            }
+            catch (ApiTimeoutException ex)
+            {
+                LogUtility.LogException(ex, "Report parameters fetch timed out");
+                await DisplayErrorAsync("The request timed out. Please try again.");
+                await CleanupAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Unhandled error fetching report parameters");
+                await DisplayErrorAsync($"An unexpected error occurred while fetching report parameters.{Environment.NewLine}{ex.Message}");
+                await CleanupAsync();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(paramsResponse))
+            {
+                LogUtility.LogWarn("Report parameters response is empty. Cannot generate report.");
+                await DisplayErrorAsync("Failed to fetch report parameters. The response was empty.");
+                await CleanupAsync();
+                return;
+            }
+
+            LogResponsePayload("Report parameters response (paramsResponse)", paramsResponse);
+
+            // Download report data. For a drilldown, the child report's meta/params round trips
+            // above have now registered its context with the server, so this runner call (which has
+            // no runId of its own to key off) can resolve it instead of failing with a null
+            // businessObject.
             string csvResponse = null;
             try
             {
@@ -357,110 +457,6 @@ namespace XLEdge.Helpers
                     await CleanupAsync();
                     return;
                 }
-            }
-
-            // Reuse the already-supplied params payload directly instead of calling the API again.
-            string paramsResponse = null;
-
-            if (!string.IsNullOrEmpty(paramsJsonPayload))
-            {
-                // We already have the parameters from the control sheet - use it directly
-                paramsResponse = paramsJsonPayload;
-                LogUtility.LogDebug($"CreateReportFromTitleAsync|Using control-sheet params payload for report {_edgeRequest.ReportId}");
-            }
-
-            // Step-4: Fetch report definition (Meta) - always need this from API
-            await SetMessage("Fetching report definition...");
-            string metaUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/report-definition?reportId={_edgeRequest.ReportId}&runId={_edgeRequest.ReportRunId}&isDrillDown={(isDrilldownRequest ? "true" : "false")}";
-            string metaResponse = string.Empty;
-
-            try
-            {
-                metaResponse = await ApiHelper.ServerAPI(metaUrl, "Form", "", "GET", _ctsHelper.GetToken());
-            }
-            catch (OperationCanceledException)
-            {
-                LogUtility.LogWarn("Report definition fetch cancelled by user.");
-                await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
-                await DisplayErrorAsync("Report definition fetch was cancelled by the user.");
-                await CleanupAsync();
-                return;
-            }
-            catch (ApiTimeoutException ex)
-            {
-                LogUtility.LogException(ex, "Report definition fetch timed out");
-                await DisplayErrorAsync("The request timed out. Please try again.");
-                await CleanupAsync();
-                return;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "Unhandled error fetching report definition");
-                await DisplayErrorAsync($"An unexpected error occurred while fetching report definition.{Environment.NewLine}{ex.Message}");
-                await CleanupAsync();
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(metaResponse))
-            {
-                LogUtility.LogWarn("Report definition response is empty. Cannot generate report.");
-                await DisplayErrorAsync("Failed to fetch report definition. The response was empty.");
-                await CleanupAsync();
-                return;
-            }
-
-            LogResponsePayload("Report definition response (metaResponse)", metaResponse);
-
-            // Only fetch params from the API if we don't already have them.
-            if (string.IsNullOrEmpty(paramsResponse))
-            {
-                await SetMessage("Fetching report parameters...");
-                string paramsUrl = isDrilldownRequest
-                    ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/params?runId=&type={_edgeRequest.ReportType}"
-                    : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/params?runId={_edgeRequest.ReportRunId}&type={_edgeRequest.ReportType}";
-
-                try
-                {
-                    paramsResponse = isDrilldownRequest
-                        ? await ApiHelper.ServerAPI(paramsUrl, "JSON", paramsJsonPayload, "POST", _ctsHelper.GetToken())
-                        : await ApiHelper.ServerAPI(paramsUrl, "Form", "", "GET", _ctsHelper.GetToken());
-                }
-                catch (OperationCanceledException)
-                {
-                    LogUtility.LogWarn("Report parameters fetch cancelled by user.");
-                    await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
-                    await DisplayErrorAsync("Report parameters fetch was cancelled by the user.");
-                    await CleanupAsync();
-                    return;
-                }
-                catch (ApiTimeoutException ex)
-                {
-                    LogUtility.LogException(ex, "Report parameters fetch timed out");
-                    await DisplayErrorAsync("The request timed out. Please try again.");
-                    await CleanupAsync();
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Unhandled error fetching report parameters");
-                    await DisplayErrorAsync($"An unexpected error occurred while fetching report parameters.{Environment.NewLine}{ex.Message}");
-                    await CleanupAsync();
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(paramsResponse))
-                {
-                    LogUtility.LogWarn("Report parameters response is empty. Cannot generate report.");
-                    await DisplayErrorAsync("Failed to fetch report parameters. The response was empty.");
-                    await CleanupAsync();
-                    return;
-                }
-
-                LogResponsePayload("Report parameters response (paramsResponse)", paramsResponse);
-            }
-            else
-            {
-                // Already logged above (line ~337) when the control-sheet payload was first accepted.
             }
 
             ReportMeta reportMeta;

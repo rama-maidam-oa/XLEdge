@@ -58,23 +58,24 @@ namespace XLEdge.Helpers
             }
             writer.WriteEndArray();
 
-            // 3. extraParameters (lowercase)
+            // 3. extraParameters (lowercase) - null when there's nothing to send, not "{}"
             writer.WritePropertyName("extraParameters");
-            writer.WriteStartObject();
-            if (request.ExtraParameters != null)
+            var extraParams = request.ExtraParameters as Dictionary<string, object>;
+            if (extraParams != null && extraParams.Count > 0)
             {
-                var extraParams = request.ExtraParameters as Dictionary<string, object>;
-                if (extraParams != null)  // ← Add null check
+                writer.WriteStartObject();
+                foreach (var kvp in extraParams)
                 {
-                    foreach (var kvp in extraParams)
-                    {
-                        writer.WritePropertyName(kvp.Key);
-                        // --- CRITICAL: ORACLE_RESP_ID is ALWAYS a string ---
-                        writer.WriteStringValue(kvp.Value?.ToString() ?? string.Empty);
-                    }
+                    writer.WritePropertyName(kvp.Key);
+                    // --- CRITICAL: ORACLE_RESP_ID is ALWAYS a string ---
+                    writer.WriteStringValue(kvp.Value?.ToString() ?? string.Empty);
                 }
+                writer.WriteEndObject();
             }
-            writer.WriteEndObject();
+            else
+            {
+                writer.WriteNullValue();
+            }
 
             writer.WriteEndObject();
             writer.Flush();
