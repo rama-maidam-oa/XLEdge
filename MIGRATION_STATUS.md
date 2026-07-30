@@ -1520,3 +1520,35 @@ Went through the full outstanding punch list from the previous pass. Status of e
 3. Test the legacy-workbook CustomXMLParts fallback (#2 above) against a real VB-created workbook if you have one available - this was written without the ability to run Excel in this environment.
 4. Decide whether "Process"/scheduled reports and the HTML-fallback image-embedding behavior are actually needed (see #3/#4 above) - both were confirmed out of scope for now, but only you know if they're used.
 5. Optional cleanup: the remaining low-severity COM leaks noted in #6 above.
+
+## 2026-07-30: GLSense logout wasn't logging XLEdge out too
+
+**Bug report** (from GLSense's own log): clicking GLSense's Logout ribbon button threw
+`COMException 0x80020006 (DISP_E_UNKNOWNNAME)` - "Unknown name" - while GLSense tried to tell
+XLEdge to log out too, via late-bound COM reflection
+(`edgeAddin.GetType().InvokeMember("LogoffFromAddin", BindingFlags.InvokeMethod, null,
+edgeAddin, new object[] { })` in `GLSense\FinalWorkingCode\GLSense\AddinModule.cs`'s
+`RibLogout_OnClick`). GLSense caught and logged the exception, so the user-visible symptom
+was subtler than a crash: GLSense's own session logged out fine, but XLEdge's session
+(ribbon still showing "Logout <instance name>", task panes still logged in) silently stayed
+logged in.
+
+**Root cause**: no method named `LogoffFromAddin` ever existed on `AddinModule` - the real
+logout logic lives in `LogoffFromXLEdgeAddin` (`private async Task`, used only internally by
+this add-in's own `RibEdgeLogout_OnClick`). GLSense's caller was written against a method
+name/contract that was either planned but never added during the VB→C# migration, or existed
+in the old VB add-in under that name and was dropped when the logout logic got renamed/
+rewritten here. Either way, IDispatch had nothing to resolve `LogoffFromAddin` to, hence
+`DISP_E_UNKNOWNNAME` - not a marshaling bug, not a threading bug, just a missing public
+entry point. This mirrors `InvokedFromGLSense` above (the working GLSense→XLEdge *login*
+contract) - that one already exists and works; this is its missing logout counterpart.
+
+**Fix**: added a public `AddinModule.LogoffFromAddin()` method - a thin wrapper that calls
+the existing `LogoffFromXLEdgeAddin()` + `ApplyRibbonState("LoggedOut")` sequence already
+used by `RibEdgeLogout_OnClick`, so XLEdge's own internal logout flow is completely
+unchanged; this only adds the missing public name GLSense's existing (unmodified) call site
+already expects. Fire-and-forget by design, matching how GLSense's own call site already
+discards the result and matching `InvokedFromGLSense`'s synchronous-void COM-callable shape.
+
+No change needed on the GLSense side - its call site already had the right contract in mind,
+XLEdge just wasn't honoring it.

@@ -944,6 +944,45 @@ namespace XLEdge
 
             XLEdgePreferencesManager.Instance.ResetRuntimeFromSaved();
         }
+
+        /// <summary>
+        /// Entry point invoked by the sibling GLSense add-in (via COM reflection:
+        /// InvokeMember("LogoffFromAddin", ...)) when the user logs out of GLSense, so this
+        /// XLEdge session gets logged out in lockstep - the reverse direction of
+        /// InvokedFromGLSense above. GLSense's caller (AddinModule.RibLogout_OnClick) invokes
+        /// this synchronously via late-bound COM reflection and discards the result (same
+        /// fire-and-forget pattern it already uses), so this is a thin public wrapper around
+        /// the existing LogoffFromXLEdgeAddin/ApplyRibbonState sequence already used by this
+        /// add-in's own Logout ribbon button (RibEdgeLogout_OnClick) - no change to that
+        /// existing logic, just exposing it under the name GLSense already expects to call.
+        /// Previously GLSense called InvokeMember("LogoffFromAddin", ...), but no method with
+        /// that exact name existed on this class (the real method is the private
+        /// LogoffFromXLEdgeAddin) - IDispatch could only report DISP_E_UNKNOWNNAME ("COM
+        /// object that has been separated from its underlying RCW cannot be used" as
+        /// GLSense's wrapper reported it), silently skipping the entire logoff so GLSense
+        /// logged itself out while this XLEdge session stayed logged in.
+        /// </summary>
+        public void LogoffFromAddin()
+        {
+            const string MethodName = "LogoffFromAddin";
+            LogUtility.LogDebug($"{MethodName}|Logout invoked from GLSense.");
+
+            _ = LogoffFromAddinAsync();
+        }
+
+        private async Task LogoffFromAddinAsync()
+        {
+            try
+            {
+                await LogoffFromXLEdgeAddin();
+                ApplyRibbonState("LoggedOut");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "LogoffFromAddin|Error during logoff invoked from GLSense.");
+            }
+        }
+
         private async void RibEdgeLogout_OnClick(object sender, IRibbonControl control, bool pressed)
         {
 
