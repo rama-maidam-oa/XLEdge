@@ -313,6 +313,16 @@ namespace XLEdge.Helpers
                 return;
             }
 
+            // "Process" titles are submitted/scheduled report runs, not live ad-hoc ("Edge") ones -
+            // matches VB.NET's FormProcessBar.vb ReturnHTTP/MetaInfo, which both branch on this same
+            // type segment (var(0)/strIDs(0)) to hit an entirely different set of endpoints
+            // (/rest/secure/process/... with a processId, GET+Form, no post body) instead of the
+            // live-run endpoints (/rest/secure/report/..., runId, POST+JSON). A drilldown always
+            // takes the live-run shape regardless of the parent report's type, matching VB's
+            // FollowDrilldown check taking priority over the type check in both functions.
+            bool isProcessReport = !isDrilldownRequest &&
+                string.Equals(_edgeRequest.ReportType, "Process", StringComparison.OrdinalIgnoreCase);
+
             // Download report data first, matching FormProcessBar.vb's original order (StartTaskHere/
             // ReturnHTTP runs before Edge_GenerateData_Multisheet's MetaInfo/ParamInfo calls) - do not
             // reorder this.
@@ -322,12 +332,19 @@ namespace XLEdge.Helpers
                 await SetMessage("Downloading report data...");
                 string csvUrl = isDrilldownRequest
                     ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?type=csv"
-                    : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={_edgeRequest.ReportRunId}&type=csv";
+                    : isProcessReport
+                        ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/process/excel-data?processId={_edgeRequest.ReportId}&type=csv"
+                        : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={_edgeRequest.ReportRunId}&type=csv";
 
                 // Strip display values from the payload before sending it to the CSV endpoint.
                 string csvPayload = isDrilldownRequest ? StripExtraParameterDisplayValues(paramsJsonPayload) : null;
 
-                csvResponse = await ApiHelper.ServerAPI(csvUrl, "JSON", csvPayload ?? string.Empty, "POST", _ctsHelper.GetToken());
+                // Process reports fetch via a plain GET with no body (matching VB's ReturnHTTP: Form
+                // content type, empty PostData, GET, whenever it's not FollowDrilldown/"Edge"); Edge
+                // (live) reports and drilldowns both POST as JSON, same as before.
+                csvResponse = isProcessReport
+                    ? await ApiHelper.ServerAPI(csvUrl, "Form", string.Empty, "GET", _ctsHelper.GetToken())
+                    : await ApiHelper.ServerAPI(csvUrl, "JSON", csvPayload ?? string.Empty, "POST", _ctsHelper.GetToken());
                 await Task.Delay(100);
             }
             catch (OperationCanceledException)
@@ -377,9 +394,15 @@ namespace XLEdge.Helpers
                 }
             }
 
-            // Fetch report definition (Meta) - always need this from API.
+            // Fetch report definition (Meta) - always need this from API. Process reports use a
+            // different endpoint/id shape than live Edge reports or drilldowns - matches VB.NET's
+            // MetaInfo (FollowDrilldown always wins and uses the reportId+runId shape; otherwise
+            // "PROCESS" uses /rest/secure/process/report-definition?processId=..., everything else
+            // keeps the /rest/secure/report/report-definition?reportId=...&runId=... shape).
             await SetMessage("Fetching report definition...");
-            string metaUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/report-definition?reportId={_edgeRequest.ReportId}&runId={_edgeRequest.ReportRunId}&isDrillDown={(isDrilldownRequest ? "true" : "false")}";
+            string metaUrl = isProcessReport
+                ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/process/report-definition?processId={_edgeRequest.ReportId}&isDrillDown=false"
+                : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/report-definition?reportId={_edgeRequest.ReportId}&runId={_edgeRequest.ReportRunId}&isDrillDown={(isDrilldownRequest ? "true" : "false")}";
             string metaResponse = string.Empty;
 
             try
@@ -808,7 +831,14 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("No active workbook.");
             }
 
-            string tableId = $"ORB_{request.ReportId}_{request.ReportRunId}_E";
+            // Matches VB.NET's FormProcessBar.vb EETableID assignment: a submitted/scheduled
+            // ("Process") report's table is suffixed "_P" instead of "_E". AddinModule.cs's
+            // UpdateTabLabel/XLEdgeRibbonHelper.ProcessActiveWorkbook already recognize "_P" tables
+            // (showing "This sheet has a scheduled output." and disabling Refresh/Param Refresh for
+            // them) - that logic was already ported and correct, it just never actually fired because
+            // this method always produced "_E" regardless of report type.
+            bool isProcessTable = string.Equals(request.ReportType, "Process", StringComparison.OrdinalIgnoreCase);
+            string tableId = $"ORB_{request.ReportId}_{request.ReportRunId}_{(isProcessTable ? "P" : "E")}";
 
             List<List<string>> rows = ParseCsv(csvResponse).ToList();
             List<string> rawHeader = rows.Count > 0 ? rows[0] : new List<string>();
