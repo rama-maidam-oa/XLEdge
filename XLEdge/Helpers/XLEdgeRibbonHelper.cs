@@ -509,7 +509,75 @@ namespace XLEdge.Helpers
                 return;
             }
 
+            // A drilldown-generated ("Child Report") sheet must never allow Refresh/Param Refresh on
+            // itself - matches the same IT1 check RibEdgeRefresh_OnClick/RibEdgeParamRefresh_OnClick
+            // already enforce reactively (after the click). This makes the ribbon reflect that
+            // up front instead of only blocking the action after the user has already clicked it.
+            if (IsChildReportSheet(activeSheet, activeSheet.ListObjects[1], listObjectName))
+            {
+                DisableControls([RibEdgeRefresh, RibEdgeParamRefresh]);
+                if (bookHasReport)
+                {
+                    EnableControls([RibEdgeRefreshAll]);
+                }
+                else
+                {
+                    DisableControls([RibEdgeRefreshAll]);
+                }
+
+                return;
+            }
+
             EnableControls([RibEdgeRefresh, RibEdgeParamRefresh, RibEdgeRefreshAll]);
+        }
+
+        /// <summary>
+        /// Read-only check for whether <paramref name="sheet"/>'s report table is a drilldown-generated
+        /// "Child Report" - mirrors the sheet-resolution and IT1 read in AddinModule's
+        /// TryResolveInstanceAndChildFlag, but without that method's instance-mismatch check or
+        /// MessageBox popup, since this runs silently on every sheet/workbook activation and after
+        /// every report run - a popup here would fire far more often than the user clicking Refresh.
+        /// </summary>
+        private static bool IsChildReportSheet(Excel.Worksheet sheet, Excel.ListObject tableObj, string tableName)
+        {
+            Excel.Worksheet sourceSheet = sheet;
+            bool releaseSourceSheet = false;
+
+            try
+            {
+                if (tableObj.HeaderRowRange != null && tableObj.HeaderRowRange.Offset[1, 0].Row == 2)
+                {
+                    string paramSheetName = $"P_{sheet.Name}";
+                    Excel.Worksheet paramSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, tableName);
+                    if (paramSheet == null)
+                    {
+                        return false;
+                    }
+
+                    sourceSheet = paramSheet;
+                    releaseSourceSheet = true;
+                }
+
+                try
+                {
+                    object it1 = sourceSheet.Range["IT1"]?.Value;
+                    return it1 != null && string.Equals(Convert.ToString(it1), "Child Report", StringComparison.OrdinalIgnoreCase);
+                }
+                catch (Exception ex)
+                {
+                    // Safe to ignore/expected: IT1 cell may not exist on older/differently-shaped
+                    // sheets; treated the same as "not a child report".
+                    LogUtility.LogDebug($"{nameof(IsChildReportSheet)}: failed to read IT1 cell - {ex.Message}");
+                    return false;
+                }
+            }
+            finally
+            {
+                if (releaseSourceSheet && sourceSheet != null)
+                {
+                    Marshal.ReleaseComObject(sourceSheet);
+                }
+            }
         }
 
         private static bool BookHasEdgeReport(Excel.Workbook workbook)
@@ -528,8 +596,13 @@ namespace XLEdge.Helpers
                         if (sheet != null &&
                             sheet.ListObjects.Count > 0 &&
                             sheet.ListObjects[1].Name.StartsWith("ORB_", StringComparison.OrdinalIgnoreCase) &&
-                            !sheet.ListObjects[1].Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase))
+                            !sheet.ListObjects[1].Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase) &&
+                            !IsChildReportSheet(sheet, sheet.ListObjects[1], sheet.ListObjects[1].Name))
                         {
+                            // A book made up entirely of child (drilldown) reports has nothing
+                            // RibEdgeRefreshAll_OnClick would actually refresh - it already skips
+                            // every child-report sheet it encounters - so those sheets don't count
+                            // towards "this book has a refreshable report" here either.
                             return true;
                         }
                     }

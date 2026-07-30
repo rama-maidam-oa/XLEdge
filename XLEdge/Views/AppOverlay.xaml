@@ -64,7 +64,7 @@
              its sibling Toast Border's alignment - the area below the toast (where WebView2 is still
              hidden while the toast is up) now just shows the plain light panel background instead of
              an oversized dark overlay. -->
-        <Grid x:Name="ToastOverlay" Visibility="Collapsed" Background="Transparent" IsHitTestVisible="True" Focusable="True" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="10000">
+        <Grid x:Name="ToastOverlay" Visibility="Collapsed" Background="Transparent" IsHitTestVisible="True" Focusable="True" HorizontalAlignment="Stretch" VerticalAlignment="Top" Panel.ZIndex="10000">
             <!-- MaxHeight is set from code-behind (AppOverlay.UpdateToastMaxHeight), not bound here -
                  see that method for why: this whole control is Collapsed between toasts (DismissToast),
                  and a just-uncollapsed element's own ActualHeight/RootOverlay's is stale/zero until the
