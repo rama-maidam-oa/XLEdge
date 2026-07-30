@@ -81,40 +81,100 @@
                     <CheckBox x:Name="chkParameterValuesInSameSheet"
                               Style="{StaticResource ModernCheckBox}"
                               Content="Parameter values in same sheet"
-                              IsChecked="{Binding ParameterValuesInSameSheet, Mode=TwoWay}"/>
+                              IsChecked="{Binding ParameterValuesInSameSheet, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Parameter values in same sheet" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, a report's parameter values are written into rows above the data on the same sheet, instead of a separate companion parameter sheet."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
                 </Border>
 
                 <Border Grid.Row="1" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,2,0,1" Padding="14,10">
                     <CheckBox x:Name="chkDownloadScheduledOutputsToExistingSheets"
                               Style="{StaticResource ModernCheckBox}"
                               Content="Download scheduled outputs to the existing sheets"
-                              IsChecked="{Binding DownloadScheduledOutputsToExistingSheets, Mode=TwoWay}"/>
+                              IsChecked="{Binding DownloadScheduledOutputsToExistingSheets, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Download scheduled outputs to the existing sheets" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, downloading a scheduled (submitted/Process) report reuses its existing sheet instead of creating a new sheet each time it runs."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
                 </Border>
 
                 <Border Grid.Row="2" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,2,0,4" Padding="14,10">
                     <CheckBox x:Name="chkSyncWithReportDefinition"
                               Style="{StaticResource ModernCheckBox}"
                               Content="On refresh sync with the report definition"
-                              IsChecked="{Binding SyncWithReportDefinition, Mode=TwoWay}"/>
+                              IsChecked="{Binding SyncWithReportDefinition, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="On refresh sync with the report definition" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, refreshing a report removes any table columns that no longer exist in the report's current definition, keeping the sheet's columns in sync with the server."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
                 </Border>
 
                 <Border Grid.Row="3" Padding="14,10">
                     <CheckBox x:Name="chkOverrideSheetNameForScheduledOutputs"
                               Style="{StaticResource ModernCheckBox}"
                               Content="Override sheet name for the scheduled process outputs"
-                              IsChecked="{Binding OverrideSheetNameForScheduledOutputs, Mode=TwoWay}"/>
+                              IsChecked="{Binding OverrideSheetNameForScheduledOutputs, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Override sheet name for the scheduled process outputs" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, the sheet tab for a scheduled (Process) report is renamed to match the report's current name each time it's downloaded."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
                 </Border>
                 <Border Grid.Row="4" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkCalendarControl"
                               Style="{StaticResource ModernCheckBox}"
                               Content="Show calendar control in control sheet."
-                              IsChecked="{Binding ShowCalendarControl, Mode=TwoWay}"/>
+                              IsChecked="{Binding ShowCalendarControl, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Show calendar control in control sheet" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, selecting a date parameter cell in the control sheet pops up a calendar picker for entering the value, instead of typing the date directly."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
                 </Border>
                 <Border Grid.Row="5" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkOverrideFormats"
                               Style="{StaticResource ModernCheckBox}"
                               Content="Override formats on sheet or book refresh."
-                              IsChecked="{Binding OverrideFormats, Mode=TwoWay}"/>
+                              IsChecked="{Binding OverrideFormats, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Override formats on sheet or book refresh" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, refreshing a sheet or the whole book resets cell formatting to the report's defaults, overriding any manual formatting changes you've made."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
                 </Border>
             </Grid>
         </Border>

@@ -4,7 +4,7 @@ Last updated: 2026-07-30
 
 ## Live-usage bug batch (post-first-build, real Excel session) — 2026-07-30
 
-Six bugs found and fixed across a single day of actual usage (not code-reading/build-log driven like
+Seven items addressed across a single day of actual usage (not code-reading/build-log driven like
 the batch below - each item here started from a user-reported symptom in a live Excel session, cross-
 checked against `D:\Latest_Addons\XLEdge` where the fix required matching specific VB.NET behavior).
 No Windows/MSBuild toolchain in this environment, same caveat as every other entry in this file -
@@ -110,6 +110,35 @@ download failure (it only runs after a successful fetch), but `AddinModule.Updat
 `XLEdgeRibbonHelper.ProcessActiveWorkbook` already have complete, correct handling for `"_P"` tables
 (scheduled-output caption, Refresh/Param Refresh disabled) that was simply dead code until now, since
 nothing ever produced a `"_P"` table to trigger it.
+
+### XLEdgeOptions checkbox tooltips + spacing (UI polish, no behavior change)
+
+Added a `ToolTip` (using the existing `ChromeStyleToolTip` style from `GlobalStyles.xaml`, which had zero
+usages anywhere before this) to all six checkboxes in `XLEdgeOptions.xaml`, each showing the option's
+label plus a plain-language description of what it does. Descriptions for `ParameterValuesInSameSheet`
+(`ReportGenerator.cs`), `SyncWithReportDefinition` (`ReportGenerator.cs`'s stale-column cleanup on
+refresh) and `ShowCalendarControl` (`AddinModule.cs`'s calendar-popup gate) are based on real, traced
+consuming code. `DownloadScheduledOutputsToExistingSheets`, `OverrideSheetNameForScheduledOutputs`, and
+`OverrideFormats` describe the option's evident intent, but a codebase-wide search found no consuming
+logic anywhere outside their own persistence plumbing (`XLEdgeOptions.xaml.cs`,
+`XLEdgePreferencesManager.cs`) - these three settings appear to be saved/loaded but not yet wired to any
+actual behavior in the C# port. Worth a follow-up to confirm whether that's expected or a gap.
+
+Also increased the gap between a checkbox's glyph and its label by 2px, app-wide: `ModernCheckBox`'s
+`Padding` in `GlobalStyles.xaml` changed from `4,0,0,0` to `6,0,0,0` (this style has no custom
+`ControlTemplate`, so `Padding` maps directly to WPF's default glyph-to-content spacing). This affects
+every `CheckBox` using `ModernCheckBox` app-wide, not just the Options window.
+
+### Button tooltip audit across all windows (read-only check, no changes)
+
+Checked every `Button` in every `Views\*.xaml` file for a `ToolTip`. Only `XLEdgeServerConfiguration.xaml`
+(GO/Set as Default/Save/Delete/Close) and `XLEdgeWaitWindow.xaml` (Cancel) have them. Every other action
+button is missing one: `AppOverlay.xaml` (toast close, busy-cancel, Yes/No/Cancel confirm), `XLEdgeAbout.
+xaml` (Close), `XLEdgeCalendar.xaml` (OK, Close), `XLEdgeDrilldownReports.xaml` (Execute, Close),
+`XLEdgeGLAccountsWindow.xaml` (OK, Cancel), `XLEdgeLoginDetails.xaml` (Close), `XLEdgeOptions.xaml`
+(Apply, Save, Close). The custom title-bar "X" close button is untooltipped consistently across every
+single window in the app (including the two windows above that otherwise have full tooltip coverage) -
+that looks like a deliberate, consistent choice rather than an oversight.
 
 ## First real build + first real runtime bug batch — 2026-07-23
 

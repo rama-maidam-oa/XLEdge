@@ -20,3 +20,6 @@ packages/
 
 # graphify knowledge-graph output (generated, regenerate with /graphify)
 graphify-out/
+
+# local Claude Code settings (machine-specific, not shared)
+.claude/
