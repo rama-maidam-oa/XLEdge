@@ -17,3 +17,6 @@ packages/
 *.tlb
 *.reg
 *.nupkg
+
+# graphify knowledge-graph output (generated, regenerate with /graphify)
+graphify-out/
