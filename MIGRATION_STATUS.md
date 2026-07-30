@@ -1516,7 +1516,7 @@ Went through the full outstanding punch list from the previous pass. Status of e
 
 ## Next steps
 1. Build + manual test in Visual Studio — this environment can generate/edit code but cannot compile a Windows COM add-in or run the Add-in Express designer. This is now the main blocker to finding out what's actually broken.
-2. Confirm the two guessed Add-in Express delegate/event-args types compile as-is (see #7 above) - the most likely compile-time failure point.
+2. Confirm the remaining guessed Add-in Express delegate/event-args type compiles as-is (see #7 above and the 2026-07-30 note below) - `RibEdgeLogout.PropertyChanging` is still unverified; `SheetFollowHyperlink` is resolved.
 3. Test the legacy-workbook CustomXMLParts fallback (#2 above) against a real VB-created workbook if you have one available - this was written without the ability to run Excel in this environment.
 4. Decide whether "Process"/scheduled reports and the HTML-fallback image-embedding behavior are actually needed (see #3/#4 above) - both were confirmed out of scope for now, but only you know if they're used.
 5. Optional cleanup: the remaining low-severity COM leaks noted in #6 above.
@@ -1552,3 +1552,23 @@ discards the result and matching `InvokedFromGLSense`'s synchronous-void COM-cal
 
 No change needed on the GLSense side - its call site already had the right contract in mind,
 XLEdge just wasn't honoring it.
+
+## 2026-07-30: `SheetFollowHyperlink` guessed delegate type — confirmed resolved
+
+Re-checked the two guessed Add-in Express delegate/event-args types flagged in "Remaining
+pending items closed out" (#7) and `Next steps` (#2). Current `AddinModule.Designer.cs:375`
+wires `adxExcelAppEvents1.SheetFollowHyperlink` as `AddinExpress.MSO.ADXExcelHyperlink_EventHandler`
+- not the originally-guessed `ADXExcelSheet_EventHandler`. This matches the handler's actual
+3-parameter shape (`sender, sheet, hyperlink`) exactly, and no "guessed"/"confirm in Visual
+Studio" comment remains near the wiring or the handler body (`AddinModule.cs:2279`) - a
+repo-wide search for `guess|Confirm in Visual Studio|could not verify|unconfirmed` under
+`XLEdge/` turns up nothing for this handler anymore. Whoever landed on
+`ADXExcelHyperlink_EventHandler` didn't update this doc at the time, so it's being closed out
+here instead.
+
+**`RibEdgeLogout.PropertyChanging` is still open** - `AddinModule.cs:1161-1165` still carries
+its original "could not verify the exact Add-in Express delegate/event-args type name...
+best-guess names following ADX's naming convention... Confirm in Visual Studio" comment
+verbatim, and the wiring (`AddinModule.Designer.cs:130`, `ADXRibbonPropertyChanging_EventHandler`/
+`ADXRibbonPropertyChangingEventArgs`) hasn't changed. This is now the only remaining
+unconfirmed-delegate risk from the original pair.
