@@ -371,11 +371,33 @@ namespace XLEdge.Views
             {
                 if (this.Resources["HideBusy"] is not Storyboard sb)
                 {
-                    // Fallback: if storyboard missing, hide immediately
+                    // Fallback: if storyboard missing, hide immediately. No "ShowBusy"/"HideBusy"
+                    // Storyboard resources are actually defined anywhere in this control's XAML (only
+                    // ToastSlideIn/ToastSlideOut exist), so this "fallback" is in fact the ONLY path
+                    // HideBusyAsync ever takes.
+                    //
+                    // Bug fixed here: this used to collapse `this.Visibility` (the whole overlay root -
+                    // Toast, Busy and Confirm all live under it) unconditionally, with no check for
+                    // whether a Toast/Confirm was currently showing - unlike the storyboard-completion
+                    // branch below, which already guards this correctly but was unreachable dead code.
+                    // Concretely: CreateReportFromTitleAsync's catch block calls DisplayErrorAsync (shows
+                    // an error Toast) immediately followed by CleanupAsync, which calls HideBusyAsync to
+                    // dismiss the earlier "Downloading report data..." busy spinner - which, via this
+                    // fallback, collapsed the just-shown error Toast a few milliseconds after it
+                    // appeared. Worse, collapsing the root this way skipped RemoveBlurFromSiblings(), so
+                    // _toastHidesWebView2 was never cleared and the WebView2 task pane content stayed
+                    // Visibility.Hidden - genuinely blank/unusable - until the Toast's own independent
+                    // 60-second timer eventually elapsed and called DismissToast(), which is the only
+                    // thing that actually restores WebView2. Matches the reported symptom exactly: the
+                    // toast flashes and disappears immediately, but the task pane itself stays blank for
+                    // the full 60-second toast duration even though Excel's ribbon/worksheet stay usable.
                     StopBusyTimer();
                     BusyOverlay.Visibility = Visibility.Collapsed;
                     SetWebView2HiddenState(ref _busyHidesWebView2, false);
-                    this.Visibility = Visibility.Collapsed;
+
+                    if (Math.Abs(Toast.Opacity - 0) < 0.0001 && ConfirmOverlay.Visibility != Visibility.Visible)
+                        this.Visibility = Visibility.Collapsed;
+
                     tcs.TrySetResult(true);
                     return;
                 }
