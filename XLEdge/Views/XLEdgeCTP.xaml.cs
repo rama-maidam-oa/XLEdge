@@ -91,6 +91,25 @@ namespace XLEdge.Views
                         WebCtrl.CoreWebView2.DocumentTitleChanged -= WebView_DocumentTitleChanged;
                         WebCtrl.CoreWebView2.WebResourceRequested -= WebView_WebResourceRequested;
                     }
+
+                    // WebView2's Dispose() is what actually signals its underlying msedgewebview2.exe
+                    // browser process and CoreWebView2Environment to shut down cleanly - nothing else
+                    // in this control's teardown chain ever called it (ElementHost.Dispose() detaches
+                    // the WPF visual tree, which is what fires this Unloaded event, but WPF elements
+                    // aren't disposed automatically since XLEdgeCTP itself doesn't implement
+                    // IDisposable). Without this, a workbook's WebView2 browser process/profile lock on
+                    // the shared XLEdgeAppPaths.BrowserLogsFolder can outlive the closed workbook/Excel
+                    // window, which both leaves excel.exe lingering in the background after Excel is
+                    // closed and blocks a newly-opened Excel instance's own WebView2 (same shared
+                    // folder) from initializing, so its add-in appears not to load.
+                    try
+                    {
+                        WebCtrl.Dispose();
+                    }
+                    catch (Exception disposeEx)
+                    {
+                        LogUtility.LogWarn($"Failed to dispose WebCtrl during unload - {disposeEx.Message}");
+                    }
                 }
 
                 _isDisposed = true;

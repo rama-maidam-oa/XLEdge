@@ -2,6 +2,27 @@
 
 Last updated: 2026-07-31
 
+## Excel.exe lingers after close; new Excel instance's add-in fails to load — 2026-07-31
+
+User-reported: sometimes, after closing Excel, its process stays running in the background; if a new
+Excel instance is then opened while that old process is still around, the add-in doesn't load in it.
+
+Root cause: `WebView2` (the `Microsoft.Web.WebView2.Wpf.WebView2` control hosted inside `XLEdgeCTP`, one
+per open workbook's task pane) was never explicitly `Dispose()`d anywhere in the codebase. `XLEdgeCTP.
+OnUnloaded` unsubscribed its various `CoreWebView2` event handlers but never called `WebCtrl.Dispose()`.
+`Dispose()` is what actually tells WebView2's underlying `msedgewebview2.exe` browser process and its
+`CoreWebView2Environment` to shut down cleanly; without it, that browser process (and its lock on the
+environment's user data folder) can outlive the workbook/Excel window that created it. Every task pane's
+`CoreWebView2Environment` is created against the same fixed, shared folder
+(`XLEdgeAppPaths.BrowserLogsFolder`, `%LOCALAPPDATA%\ORBIT\Excel_Logs\XLEdge_Logs\BrowserLogs` - not
+unique per process or per pane) - the same sharing pattern already identified as the cause of the
+logout hang fixed earlier today. If an old Excel process's WebView2 browser process is still alive and
+holding that folder's profile lock, a newly-opened Excel instance's own task pane trying to initialize
+its own WebView2 against the same folder can hang, which is consistent with its add-in appearing not to
+load. Fixed by calling `WebCtrl.Dispose()` in `XLEdgeCTP.OnUnloaded`, after the existing event
+unsubscriptions, so the browser process and its folder lock are released as soon as the pane's WPF
+visual tree is torn down (workbook/Excel closing) rather than lingering indefinitely.
+
 ## Logout hangs / opens multiple wait windows with multiple workbooks open — 2026-07-31
 
 User-reported: clicking Logout with only one workbook open logs off smoothly, but with multiple
