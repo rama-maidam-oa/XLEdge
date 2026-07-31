@@ -2,6 +2,36 @@
 
 Last updated: 2026-07-31
 
+## Logout hangs / opens multiple wait windows with multiple workbooks open — 2026-07-31
+
+User-reported: clicking Logout with only one workbook open logs off smoothly, but with multiple
+workbooks open it hangs, and multiple "Logging Off" wait windows appear (one per workbook). User
+suspected this already worked correctly in the VB.NET version.
+
+Root cause (confirmed by diffing against VB.NET's `LogOffSessionAndWaitAsync`/`LogOffAllTaskPanesAsync`
+in `AddinModule.vb`): `XLEdgeCTP.LogoutSessionAsync` (`Views\XLEdgeCTP.xaml.cs`) called
+`await EnsureWebViewInitializedAsync();` before checking whether the pane's WebView2 was already
+initialized. Each open workbook gets its own task pane / `XLEdgeCTP` instance, and each one creates its
+own `CoreWebView2Environment` pointed at the same shared, single `XLEdgeAppPaths.BrowserLogsFolder` user
+data folder. `LogOffAllTaskPanesAsync` (`AddinModule.cs`) logs off every open task pane in a loop - for
+any workbook whose pane/WebView2 had never been initialized before (e.g. a background workbook the user
+never actually opened the report pane for), this forced a brand-new `CoreWebView2Environment` to be
+created against a profile folder another workbook's environment already had open/locked in the same
+process - a known WebView2 contention scenario that can hang indefinitely. With only one workbook open
+this never triggers, since that workbook's pane is normally already initialized from regular use. VB.NET
+never has this problem because its equivalent (`LogOffSessionAndWaitAsync`) only checks whether
+`CoreWebView2` already exists and skips the pane entirely otherwise - it never lazily creates a WebView2
+during logoff. Fixed by removing the `EnsureWebViewInitializedAsync()` call from `LogoutSessionAsync`,
+matching VB.NET: a pane with no `CoreWebView2` yet has no active session to log out of, so it's now just
+skipped.
+
+Separately, `AddinModule.LogoffFromXLEdgeAddin`'s wait window was shown via
+`GetFirstAvailableTaskPane()?.GetWpfDispatcher()` - an arbitrary open workbook's task pane dispatcher -
+instead of the single shared app-wide `UiDispatcher.Current` every other wait/busy window in this add-in
+uses (e.g. `ReportGenerator.CreateAndShowWaitWindow`). Switched to `UiDispatcher.RunAsync`, removing the
+now-unused `GetFirstAvailableTaskPane` helper, so the wait window no longer depends on which task pane
+happens to be first in the collection.
+
 ## Live-usage bug batch (post-first-build, real Excel session) — 2026-07-30
 
 Seven items addressed across a single day of actual usage (not code-reading/build-log driven like

@@ -813,31 +813,6 @@ namespace XLEdge
                 }
             }
         }
-        private ADXExcelTaskPane1 GetFirstAvailableTaskPane()
-        {
-            try
-            {
-                if (adxExcelTaskPanesCollectionItem1?.TaskPaneInstances == null ||
-                    adxExcelTaskPanesCollectionItem1.TaskPaneInstances.Count == 0)
-                {
-                    return null;
-                }
-
-                foreach (ADXExcelTaskPane1 pane in adxExcelTaskPanesCollectionItem1.TaskPaneInstances)
-                {
-                    if (pane != null)
-                    {
-                        return pane;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "Failed to get task pane instance.");
-            }
-
-            return null;
-        }
         private async Task LogoffFromXLEdgeAddin()
         {
             XLEdgeWaitWindow waitWindow = null;
@@ -845,34 +820,30 @@ namespace XLEdge
 
             try
             {
-                var pane = GetFirstAvailableTaskPane();
-                var dispatcher = pane?.GetWpfDispatcher();
-
-                // Showing the wait window is a UX nicety only - any failure to show it is caught
-                // and logged on its own here so it can never block the actual logoff work below.
-                if (dispatcher != null)
+                // Uses the single shared app-wide WPF dispatcher (UiDispatcher.Current, same as every
+                // other wait/busy window in this add-in - see ReportGenerator.CreateAndShowWaitWindow)
+                // rather than an arbitrary open workbook's task pane dispatcher. Picking "the first
+                // available" task pane here was fragile with multiple workbooks open - if that
+                // particular pane's dispatcher wasn't ready/valid for any reason, the wait window
+                // silently never showed. Showing the wait window is a UX nicety only - any failure to
+                // show it is caught and logged on its own here so it can never block the actual logoff
+                // work below.
+                try
                 {
-                    try
+                    await UiDispatcher.RunAsync(() =>
                     {
-                        await dispatcher.InvokeAsync(() =>
-                        {
-                            waitWindow = new XLEdgeWaitWindow();
+                        waitWindow = new XLEdgeWaitWindow();
 
-                            PackIconFontAwesomeKind icon = PackIconFontAwesomeKind.DoorOpenSolid;
-                            waitWindow.SetProcessTitle("Logging Off", icon);
-                            waitWindow.SetProcessMessage("Please wait...");
-                            waitWindow.Show();
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "LogoffFromAddin|Failed to show wait window - continuing logoff without it.");
-                        waitWindow = null;
-                    }
+                        PackIconFontAwesomeKind icon = PackIconFontAwesomeKind.DoorOpenSolid;
+                        waitWindow.SetProcessTitle("Logging Off", icon);
+                        waitWindow.SetProcessMessage("Please wait...");
+                        waitWindow.Show();
+                    });
                 }
-                else
+                catch (Exception ex)
                 {
-                    LogUtility.LogWarn("LogoffFromAddin|No WPF dispatcher available for showing the wait window - continuing logoff without it.");
+                    LogUtility.LogException(ex, "LogoffFromAddin|Failed to show wait window - continuing logoff without it.");
+                    waitWindow = null;
                 }
 
                 linkedCts = waitWindow != null

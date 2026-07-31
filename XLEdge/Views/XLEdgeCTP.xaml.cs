@@ -430,13 +430,20 @@ namespace XLEdge.Views
                 return false;
             }
 
-            await EnsureWebViewInitializedAsync();
-
+            // Deliberately does NOT call EnsureWebViewInitializedAsync() here - matches VB.NET's
+            // LogOffSessionAndWaitAsync, which only checks whether CoreWebView2 already exists and
+            // skips the pane otherwise; it never lazily creates a WebView2 during logoff. Each
+            // XLEdgeCTP instance (one per open workbook's task pane) creates its own
+            // CoreWebView2Environment pointed at the same shared XLEdgeAppPaths.BrowserLogsFolder -
+            // forcing that creation here for a pane that was never opened/used (so its WebView2 was
+            // never initialized) contends with another workbook's already-running environment on the
+            // same profile folder, which can hang indefinitely. A pane with no CoreWebView2 yet has no
+            // active session to log out of anyway, so it's safe to just skip it.
             return await RunOnUIAsync(async () =>
             {
                 if (WebCtrl == null || WebCtrl.CoreWebView2 == null)
                 {
-                    LogUtility.LogWarn("WebCtrl/CoreWebView2 is not ready for logout.");
+                    LogUtility.LogWarn("WebCtrl/CoreWebView2 is not ready for logout - skipping (nothing to log out of).");
                     return false;
                 }
 
