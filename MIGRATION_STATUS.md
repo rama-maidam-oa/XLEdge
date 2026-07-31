@@ -1,6 +1,6 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 ## Live-usage bug batch (post-first-build, real Excel session) — 2026-07-30
 
@@ -139,6 +139,25 @@ xaml` (Close), `XLEdgeCalendar.xaml` (OK, Close), `XLEdgeDrilldownReports.xaml` 
 (Apply, Save, Close). The custom title-bar "X" close button is untooltipped consistently across every
 single window in the app (including the two windows above that otherwise have full tooltip coverage) -
 that looks like a deliberate, consistent choice rather than an oversight.
+
+## RibEdgeRefreshAll enabled for books with no live ("_E") report — 2026-07-31
+
+`XLEdgeRibbonHelper.BookHasEdgeReport` (the function `ProcessActiveWorkbook` calls, on every sheet/
+workbook activation and after every report run, to decide whether `RibEdgeRefreshAll` should stay
+enabled when the active sheet itself doesn't qualify) only checked that a sheet's table name started
+with `"ORB_"`, wasn't `"orb_params_control"`, and wasn't a child (drilldown) report - it never checked
+the `"_E"` suffix. `RibEdgeRefreshAll_OnClick` (`AddinModule.cs`) only ever collects `"_E"`-suffixed
+tables to refresh and ignores `"_P"` (scheduled/Process) tables entirely, so a workbook containing only
+scheduled-output sheets had RefreshAll enabled even though clicking it would find nothing to refresh
+("No reports in the workbook to refresh!"). Fixed by adding
+`sheet.ListObjects[1].Name.EndsWith("_E", StringComparison.Ordinal)` to `BookHasEdgeReport`'s condition,
+matching the same suffix check `ProcessActiveWorkbook` already applies to the active sheet's own table
+(`isRefreshableReportTable`) and the one `RibEdgeRefreshAll_OnClick` uses when collecting tables to
+refresh. Also noted, not fixed: `AddinModule.UpdateTabLabel` sets `XLEdgeAppState.Instance.RefreshAll`
+(true/false) per active sheet, but nothing in the codebase reads that property - it looks like orphaned
+state, unrelated to the actual ribbon-enabled mechanism (`XLEdgeRibbonHelper.EnableControls`/
+`DisableControls`, which set the ribbon control's `Enabled` property directly via reflection and are
+what this fix touches).
 
 ## First real build + first real runtime bug batch — 2026-07-23
 

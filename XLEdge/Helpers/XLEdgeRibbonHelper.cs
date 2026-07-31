@@ -596,12 +596,14 @@ namespace XLEdge.Helpers
                         if (sheet != null &&
                             sheet.ListObjects.Count > 0 &&
                             sheet.ListObjects[1].Name.StartsWith("ORB_", StringComparison.OrdinalIgnoreCase) &&
+                            sheet.ListObjects[1].Name.EndsWith("_E", StringComparison.Ordinal) &&
                             !sheet.ListObjects[1].Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase) &&
                             !IsChildReportSheet(sheet, sheet.ListObjects[1], sheet.ListObjects[1].Name))
                         {
-                            // A book made up entirely of child (drilldown) reports has nothing
-                            // RibEdgeRefreshAll_OnClick would actually refresh - it already skips
-                            // every child-report sheet it encounters - so those sheets don't count
+                            // RibEdgeRefreshAll_OnClick only ever collects "_E" (live Edge) tables to
+                            // refresh - it ignores "_P" (scheduled/Process) tables entirely - so a book
+                            // made up only of scheduled-output sheets, or only of child (drilldown)
+                            // reports, has nothing it would actually refresh; those sheets don't count
                             // towards "this book has a refreshable report" here either.
                             return true;
                         }
