@@ -154,6 +154,8 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Images\orbit_logo.png" />
+    <Resource Include="Images\OrbitGLSense.ico" />
+    <Resource Include="Images\orbit_bitmap.bmp" />
     <Content Include="Loader\adxloader.dll" />
     <Content Include="Loader\adxloader64.dll" />
   </ItemGroup>
