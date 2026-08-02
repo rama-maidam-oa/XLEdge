@@ -788,11 +788,7 @@
 							        CornerRadius="8"
 							        Background="White"
 							        HorizontalAlignment="Left"
-							        Margin="2,0,0,0">
-								<Border.RenderTransform>
-									<TranslateTransform x:Name="ThumbTransform" X="0"/>
-								</Border.RenderTransform>
-							</Border>
+							        Margin="2,0,0,0"/>
 						</Grid>
 
 						<ContentPresenter Grid.Column="1"
@@ -803,7 +799,7 @@
 					<ControlTemplate.Triggers>
 						<Trigger Property="IsChecked" Value="True">
 							<Setter TargetName="Track" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-							<Setter TargetName="ThumbTransform" Property="X" Value="20"/>
+							<Setter TargetName="Thumb" Property="Margin" Value="22,0,0,0"/>
 						</Trigger>
 						<Trigger Property="IsEnabled" Value="False">
 							<Setter Property="Opacity" Value="0.5"/>
