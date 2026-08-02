@@ -2006,26 +2006,34 @@ namespace XLEdge.Helpers
                 Marshal.ReleaseComObject(allSheets);
             }
 
-            return TryResolveReportXmlForRefresh(workbook, listObjectName, listObject, out title, out _, out _, out metaJson, out paramsJson, out _);
+            bool found = TryResolveReportXmlForRefresh(workbook, listObjectName, listObject, out ReportXmlRefreshResult result);
+            title = result.Title;
+            metaJson = result.MetaJson;
+            paramsJson = result.ParamsJson;
+            return found;
+        }
+
+        /// <summary>
+        /// Bundles TryResolveReportXmlForRefresh's several out values - keeping this as one object
+        /// instead of a fistful of out parameters is what gets that method under the 7-parameter limit.
+        /// </summary>
+        private sealed class ReportXmlRefreshResult
+        {
+            public string Title;
+            public string ReportId;
+            public string RunId;
+            public string MetaJson;
+            public string ParamsJson;
+            public List<(string Original, string Modified, int RawIndex)> Mappings = new();
         }
 
         private static bool TryResolveReportXmlForRefresh(
             Excel.Workbook workbook,
             string listObjectName,
             Excel.ListObject listObject,
-            out string title,
-            out string reportId,
-            out string runId,
-            out string metaJson,
-            out string paramsJson,
-            out List<(string Original, string Modified, int RawIndex)> mappings)
+            out ReportXmlRefreshResult result)
         {
-            title = null;
-            reportId = null;
-            runId = null;
-            metaJson = null;
-            paramsJson = null;
-            mappings = new List<(string Original, string Modified, int RawIndex)>();
+            result = new ReportXmlRefreshResult();
 
             if (workbook == null || string.IsNullOrWhiteSpace(listObjectName))
             {
@@ -2049,18 +2057,18 @@ namespace XLEdge.Helpers
                         if (xml.Contains($"<ListObjectName>{listObjectName}</ListObjectName>"))
                         {
                             XDocument xdoc = XDocument.Parse(xml);
-                            title = xdoc.Root?.Element("Title")?.Value ?? string.Empty;
-                            metaJson = xdoc.Root?.Element("Meta")?.Value ?? string.Empty;
-                            paramsJson = xdoc.Root?.Element("Params")?.Value ?? string.Empty;
+                            result.Title = xdoc.Root?.Element("Title")?.Value ?? string.Empty;
+                            result.MetaJson = xdoc.Root?.Element("Meta")?.Value ?? string.Empty;
+                            result.ParamsJson = xdoc.Root?.Element("Params")?.Value ?? string.Empty;
 
-                            string[] titleParts = title.Split('|');
+                            string[] titleParts = result.Title.Split('|');
                             if (titleParts.Length < 3)
                             {
                                 continue;
                             }
 
-                            reportId = titleParts[1];
-                            runId = titleParts[2];
+                            result.ReportId = titleParts[1];
+                            result.RunId = titleParts[2];
 
                             XElement colsElem = xdoc.Root?.Element("Columns");
                             if (colsElem != null)
@@ -2070,7 +2078,7 @@ namespace XLEdge.Helpers
                                     string orig = ce.Attribute("original")?.Value ?? string.Empty;
                                     string mod = ce.Attribute("modified")?.Value ?? string.Empty;
                                     int.TryParse(ce.Attribute("rawIndex")?.Value ?? "0", out int idx);
-                                    mappings.Add((orig, mod, idx));
+                                    result.Mappings.Add((orig, mod, idx));
                                 }
                             }
 
@@ -2113,11 +2121,11 @@ namespace XLEdge.Helpers
                             continue;
                         }
 
-                        metaJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataMeta")?.Value ?? string.Empty;
-                        paramsJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataParam")?.Value ?? string.Empty;
-                        reportId = tableNameMatch.Groups["reportId"].Value;
-                        runId = tableNameMatch.Groups["runId"].Value;
-                        title = $"Edge|{reportId}|{runId}|{listObjectName}";
+                        result.MetaJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataMeta")?.Value ?? string.Empty;
+                        result.ParamsJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataParam")?.Value ?? string.Empty;
+                        result.ReportId = tableNameMatch.Groups["reportId"].Value;
+                        result.RunId = tableNameMatch.Groups["runId"].Value;
+                        result.Title = $"Edge|{result.ReportId}|{result.RunId}|{listObjectName}";
 
                         if (listObject?.HeaderRowRange != null)
                         {
@@ -2125,7 +2133,7 @@ namespace XLEdge.Helpers
                             foreach (Excel.Range headerCell in listObject.HeaderRowRange.Cells)
                             {
                                 string headerText = Convert.ToString(headerCell.Value) ?? string.Empty;
-                                mappings.Add((headerText, headerText, col));
+                                result.Mappings.Add((headerText, headerText, col));
                                 col++;
                             }
                         }
@@ -2916,11 +2924,17 @@ namespace XLEdge.Helpers
 
                 // --- STEP 1: Get stored report data from CustomXMLParts (Meta Data) ---
                 // This is always from cache - meta data NEVER changes during refresh
-                if (!TryResolveReportXmlForRefresh(wb, listObjectName, lo, out string title, out _, out string runId, out string storedMetaJson, out string storedParamsJson, out List<(string Original, string Modified, int RawIndex)> mappings))
+                if (!TryResolveReportXmlForRefresh(wb, listObjectName, lo, out ReportXmlRefreshResult xmlResult))
                 {
                     await HandleFailureAsync("No metadata found for this table.", waitWindow, appOverlay, useWaitWindow, collectErrors);
                     return;
                 }
+
+                string title = xmlResult.Title;
+                string runId = xmlResult.RunId;
+                string storedMetaJson = xmlResult.MetaJson;
+                string storedParamsJson = xmlResult.ParamsJson;
+                List<(string Original, string Modified, int RawIndex)> mappings = xmlResult.Mappings;
 
                 LogUtility.LogDebug($"RefreshListObjectAsync|Using meta data from CustomXMLParts for table: {listObjectName}");
 

@@ -2,6 +2,18 @@
 
 Last updated: 2026-08-02
 
+## Fixed S107 (9-parameter method) warning in ReportGenerator.cs (branch 11.1.0) — 2026-08-02
+
+`TryResolveReportXmlForRefresh` had grown to 9 parameters (3 in, 6 out) - the deferred parameter-count
+warning from the build-warnings pass above. Bundled the 6 out-values into a private nested
+`ReportXmlRefreshResult` class (`Title`, `ReportId`, `RunId`, `MetaJson`, `ParamsJson`, `Mappings`),
+bringing the method down to 4 parameters (3 in, 1 out). Updated both call sites - inside the public
+`TryGetStoredReportXml` (whose own external signature, used by `AddinModule.cs`, `ParamsControlSheetBuilder.cs`,
+and `XLEdgeParamsBuilder.cs`, was left unchanged) and inside `RefreshListObjectAsync` - to read the needed
+values off the returned result object. No behavior change; confirmed only 2 internal call sites exist
+(no external callers of `TryResolveReportXmlForRefresh` itself). The remaining 12 Cognitive Complexity
+(S3776) warnings are still deferred as a separate, larger follow-up.
+
 ## Fixed safe build-warning findings (branch 11.1.0) — 2026-08-02
 
 After the first successful build produced `Warnings.txt` (63 SonarQube/Roslyn findings, all in
