@@ -177,18 +177,11 @@ namespace XLEdge.Helpers
         /// </summary>
         private static bool TryFindExtraParametersElement(JsonElement root, out JsonElement extraParamsEl, out string extraParamsKey)
         {
-            extraParamsEl = default;
-            extraParamsKey = null;
+            JsonProperty match = root.EnumerateObject()
+                .FirstOrDefault(prop => prop.Name.Equals(ExtraParametersKey, StringComparison.OrdinalIgnoreCase));
 
-            foreach (JsonProperty prop in root.EnumerateObject())
-            {
-                if (prop.Name.Equals(ExtraParametersKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    extraParamsEl = prop.Value;
-                    extraParamsKey = prop.Name;
-                    break;
-                }
-            }
+            extraParamsEl = match.Value;
+            extraParamsKey = match.Name;
 
             if (extraParamsEl.ValueKind == JsonValueKind.Undefined || extraParamsEl.ValueKind != JsonValueKind.Object)
             {
@@ -210,29 +203,26 @@ namespace XLEdge.Helpers
                 "ORACLE_GL_SEGMENT_DISPLAY_VALUES"
             };
 
-            foreach (JsonProperty prop in extraParamsEl.EnumerateObject())
+            foreach (JsonProperty prop in extraParamsEl.EnumerateObject().Where(p => !displayKeys.Contains(p.Name)))
             {
-                if (!displayKeys.Contains(prop.Name))
+                // Keep raw values
+                if (prop.Name.Equals("ORACLE_RESP_ID", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Keep raw values
-                    if (prop.Name.Equals("ORACLE_RESP_ID", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Store as string
-                        cleanedExtraParams[prop.Name] = prop.Value.ToString();
-                    }
-                    else if (prop.Name.Equals("ORACLE_GL_SEGMENT_VALUES", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Keep GL segment values as string to preserve format
-                        cleanedExtraParams[prop.Name] = prop.Value.ToString();
-                    }
-                    else if (prop.Value.ValueKind == JsonValueKind.String)
-                    {
-                        cleanedExtraParams[prop.Name] = prop.Value.GetString();
-                    }
-                    else
-                    {
-                        cleanedExtraParams[prop.Name] = prop.Value.ToString();
-                    }
+                    // Store as string
+                    cleanedExtraParams[prop.Name] = prop.Value.ToString();
+                }
+                else if (prop.Name.Equals("ORACLE_GL_SEGMENT_VALUES", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Keep GL segment values as string to preserve format
+                    cleanedExtraParams[prop.Name] = prop.Value.ToString();
+                }
+                else if (prop.Value.ValueKind == JsonValueKind.String)
+                {
+                    cleanedExtraParams[prop.Name] = prop.Value.GetString();
+                }
+                else
+                {
+                    cleanedExtraParams[prop.Name] = prop.Value.ToString();
                 }
             }
 
