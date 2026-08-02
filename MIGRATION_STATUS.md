@@ -1,6 +1,33 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-07-31
+Last updated: 2026-08-02
+
+## Added OrbitXLEdge installer project (branch 11.1.0) — 2026-08-02
+
+For QA handoff, ported the VB.NET reference's `setupfiles\Orbit\OrbitXLEdge.vdproj` (a Visual Studio
+Installer Project, which only ever produces an .msi - no .exe bootstrapper, matching the requirement
+that only .msi is supported) to this C# port on a new `11.1.0` branch. Adapted the file list to this
+project's actual dependencies rather than copying the VB reference's wholesale: kept Add-in Express XL/
+MSO, the Office/VBE interop DLLs, NLog, and the three WebView2 assemblies; dropped Newtonsoft.Json
+(unused here - this port uses `System.Text.Json`) and `System.ValueTuple.dll` (a compile-time-only
+facade on .NET Framework 4.7+, confirmed via its own NuGet `.targets` file that it's never actually
+copied to `bin\Release`); added this port's additional real dependencies not present in VB (MahApps.
+Metro.IconPacks Core/FontAwesome, Wpf.Ui + Wpf.Ui.Abstractions, Microsoft.Xaml.Behaviors, and the full
+`System.Text.Json` polyfill chain); and, unlike the VB reference (which excluded it), kept `Microsoft.
+Web.WebView2.Wpf.dll` in the package since this port's task pane actually hosts the WPF WebView2 control.
+Same adxloader/adxregistrator custom-action install/uninstall pattern, per-user `TARGETDIR`, and
+WebView2Loader.dll native-runtime placement as the reference. Banner/icon use the user-provided
+`Images\orbit_bitmap.bmp` / `Images\OrbitGLSense.ico`. Bumped the .NET Framework prerequisite to 4.8.1
+(matching `TargetFrameworkVersion`, vs. the VB reference's mismatched 4.6.2/4.7.2) and dropped its VSTO
+runtime prerequisite (Add-in Express doesn't need it). Generated fresh ProductCode/PackageCode/
+UpgradeCode (independent of the VB installer's) - QA will manually uninstall any prior version before
+installing this one, so no upgrade-code matching was needed. Wired into `XLEdge.sln` as a second project,
+same as the VB reference's own `.sln`.
+
+Caveat: hand-authored from the reference project's structure; could not be opened/built in Visual Studio
+from this environment (no Windows/MSBuild toolchain here) to confirm it loads cleanly. First step is
+opening it in Visual Studio (with the "Visual Studio Installer Projects" extension) and doing a test
+build.
 
 ## Excel.exe lingers after close; new Excel instance's add-in fails to load — 2026-07-31
 
