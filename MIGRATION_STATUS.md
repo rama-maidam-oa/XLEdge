@@ -2,6 +2,30 @@
 
 Last updated: 2026-08-02
 
+## GL segment picker: moved from double-click to selection + made it an Options toggle — 2026-08-02
+
+The GL segment selection window (`XLEdgeGLAccountsWindow`) previously only opened via a hardcoded
+double-click handler (`adxExcelAppEvents1_SheetBeforeDoubleClick`) on column J of the
+`orb_params_control` table's `ORACLE_GL_SEGMENT_VALUES` row. Per request, made this consistent with
+how the calendar control already works: added a new `ShowSegmentSelectionWindow` preference (Options
+window, `XLEdgeAppState`, `XLEdgeUserPreferences`/`XLEdgePreferencesManager` persistence - same pattern
+as `ShowCalendarControl` end to end), removed the double-click handler and its designer wiring
+entirely, and ported its matching logic into `adxExcelAppEvents1_SheetSelectionChange` as a new
+`TryShowSegmentSelectionWindow` helper, gated on the new option and guarded by its own `_isSegmentWindowOpen`
+re-entrancy flag (mirroring `_isCalendarOpen`). Split the calendar's own inline logic out into a
+`TryShowCalendarControl` helper in the same pass, so the selection-changed event is now just two small,
+independently-gated checks - any future "pop up a window on selection" preference can be added the same
+way. Also wrapped the segment window's `ShowDialog()` in the existing `SafeInvokeWpf` WPF-thread-marshaling
+helper (the double-click handler never did this, unlike the calendar's already-careful pattern - fixed as
+part of the move rather than carrying the gap forward).
+
+Also replaced the Options window's plain checkboxes with an on/off "toggle switch" look (HTML-style),
+per request: added a new `ModernToggleSwitch` style (a retemplated `CheckBox` - track + sliding thumb,
+grey when off/`PrimaryBrush` blue when on) in `GlobalStyles.xaml`, and switched all 7 Options checkboxes
+(6 existing + the new segment-window one) to it. Deliberately did NOT change the shared `ModernCheckBox`
+style itself or touch `XLEdgeDrilldownReports.xaml` (its report picklist is a true multi-select list,
+where checkbox semantics are still correct - a toggle-switch look would be wrong there).
+
 ## Fixed S107 (9-parameter method) warning in ReportGenerator.cs (branch 11.1.0) — 2026-08-02
 
 `TryResolveReportXmlForRefresh` had grown to 9 parameters (3 in, 6 out) - the deferred parameter-count

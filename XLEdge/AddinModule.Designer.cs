@@ -369,7 +369,6 @@
             // adxExcelAppEvents1
             // 
             this.adxExcelAppEvents1.SheetSelectionChange += new AddinExpress.MSO.ADXExcelSheet_EventHandler(this.adxExcelAppEvents1_SheetSelectionChange);
-            this.adxExcelAppEvents1.SheetBeforeDoubleClick += new AddinExpress.MSO.ADXExcelSheetBefore_EventHandler(this.adxExcelAppEvents1_SheetBeforeDoubleClick);
             this.adxExcelAppEvents1.SheetActivate += new AddinExpress.MSO.ADXHostActiveObject_EventHandler(this.adxExcelAppEvents1_SheetActivate);
             this.adxExcelAppEvents1.WorkbookActivate += new AddinExpress.MSO.ADXHostActiveObject_EventHandler(this.adxExcelAppEvents1_WorkbookActivate);
             this.adxExcelAppEvents1.SheetFollowHyperlink += new AddinExpress.MSO.ADXExcelHyperlink_EventHandler(this.adxExcelAppEvents1_SheetFollowHyperlink);

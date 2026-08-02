@@ -14,6 +14,7 @@ namespace XLEdge.Views
         private bool syncWithReportDefinition;
         private bool overrideSheetNameForScheduledOutputs;
         private bool showCalendarControl;
+        private bool showSegmentSelectionWindow;
         private bool overrideFormats;
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -84,6 +85,19 @@ namespace XLEdge.Views
             }
         }
 
+        public bool ShowSegmentSelectionWindow
+        {
+            get => showSegmentSelectionWindow;
+            set
+            {
+                if (showSegmentSelectionWindow != value)
+                {
+                    showSegmentSelectionWindow = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public bool OverrideFormats
         {
             get => overrideFormats;
@@ -114,6 +128,7 @@ namespace XLEdge.Views
             SyncWithReportDefinition = appState.RefreshSync;
             OverrideSheetNameForScheduledOutputs = appState.AllowSheetNameChanges;
             ShowCalendarControl = appState.ShowCalendarControl;
+            ShowSegmentSelectionWindow = appState.ShowSegmentSelectionWindow;
             OverrideFormats = appState.OverrideFormats;
         }
 
@@ -152,6 +167,7 @@ namespace XLEdge.Views
                 RefreshSync = SyncWithReportDefinition,
                 ChangeSheetName = OverrideSheetNameForScheduledOutputs,
                 CalendarCtrlDisplay = ShowCalendarControl,
+                SegmentSelectionWindowDisplay = ShowSegmentSelectionWindow,
                 OverrideFormats = OverrideFormats
             };
         }

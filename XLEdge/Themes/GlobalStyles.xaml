@@ -756,6 +756,64 @@
 		<Setter Property="Cursor" Value="Hand"/>
 	</Style>
 
+	<!-- ==================== Toggle Switch (On/Off) Style ==================== -->
+	<!-- A CheckBox retemplated to look like an HTML-style on/off switch instead of a checkbox glyph.
+	     Scoped to XLEdgeOptions (a page of independent on/off preferences) - deliberately NOT applied
+	     to the shared ModernCheckBox style above, since that style is also used for a multi-select
+	     report picklist (XLEdgeDrilldownReports) where standard checkbox semantics are the right
+	     affordance, not an on/off switch. -->
+	<Style x:Key="ModernToggleSwitch" TargetType="CheckBox">
+		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontFamily" Value="Segoe UI"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="CheckBox">
+					<Grid Background="Transparent">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="Auto"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
+
+						<Grid Width="40" Height="20" VerticalAlignment="Center">
+							<Border x:Name="Track"
+							        CornerRadius="10"
+							        Background="{StaticResource SecondaryBrush}"
+							        BorderThickness="0"/>
+							<Border x:Name="Thumb"
+							        Width="16" Height="16"
+							        CornerRadius="8"
+							        Background="White"
+							        HorizontalAlignment="Left"
+							        Margin="2,0,0,0">
+								<Border.RenderTransform>
+									<TranslateTransform x:Name="ThumbTransform" X="0"/>
+								</Border.RenderTransform>
+							</Border>
+						</Grid>
+
+						<ContentPresenter Grid.Column="1"
+						                  Margin="10,0,0,0"
+						                  VerticalAlignment="Center"
+						                  RecognizesAccessKey="True"/>
+					</Grid>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsChecked" Value="True">
+							<Setter TargetName="Track" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+							<Setter TargetName="ThumbTransform" Property="X" Value="20"/>
+						</Trigger>
+						<Trigger Property="IsEnabled" Value="False">
+							<Setter Property="Opacity" Value="0.5"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
 	<!-- ==================== RadioButton Style ==================== -->
 	<Style x:Key="ModernRadioButton" TargetType="RadioButton">
 		<Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>

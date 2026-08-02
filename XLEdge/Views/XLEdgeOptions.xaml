@@ -8,7 +8,7 @@
                       ResizeMode="CanResize"
                       SizeToContent="Manual"
                       MinWidth="640"
-                      MinHeight="390"
+                      MinHeight="430"
                       Background="White"
                       ShowInTaskbar="False"
                       DataContext="{Binding RelativeSource={RelativeSource Self}}">
@@ -22,7 +22,7 @@
                  overrides the shared ModernCheckBox style app-wide for every CheckBox in THIS window
                  only - so these 6 preference checkboxes rendered as plain black text instead of the
                  bold PrimaryBrush-blue look every other checkbox in the app uses. Removed; each
-                 CheckBox below now explicitly opts into Style="{StaticResource ModernCheckBox}" so
+                 CheckBox below now explicitly opts into Style="{StaticResource ModernToggleSwitch}" so
                  this window matches the rest of the app instead of quietly diverging from it. -->
         </ResourceDictionary>
     </utils:DpiAwareWindow.Resources>
@@ -75,11 +75,12 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkParameterValuesInSameSheet"
-                              Style="{StaticResource ModernCheckBox}"
+                              Style="{StaticResource ModernToggleSwitch}"
                               Content="Parameter values in same sheet"
                               IsChecked="{Binding ParameterValuesInSameSheet, Mode=TwoWay}">
                         <CheckBox.ToolTip>
@@ -96,7 +97,7 @@
 
                 <Border Grid.Row="1" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,2,0,1" Padding="14,10">
                     <CheckBox x:Name="chkDownloadScheduledOutputsToExistingSheets"
-                              Style="{StaticResource ModernCheckBox}"
+                              Style="{StaticResource ModernToggleSwitch}"
                               Content="Download scheduled outputs to the existing sheets"
                               IsChecked="{Binding DownloadScheduledOutputsToExistingSheets, Mode=TwoWay}">
                         <CheckBox.ToolTip>
@@ -113,7 +114,7 @@
 
                 <Border Grid.Row="2" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,2,0,4" Padding="14,10">
                     <CheckBox x:Name="chkSyncWithReportDefinition"
-                              Style="{StaticResource ModernCheckBox}"
+                              Style="{StaticResource ModernToggleSwitch}"
                               Content="On refresh sync with the report definition"
                               IsChecked="{Binding SyncWithReportDefinition, Mode=TwoWay}">
                         <CheckBox.ToolTip>
@@ -130,7 +131,7 @@
 
                 <Border Grid.Row="3" Padding="14,10">
                     <CheckBox x:Name="chkOverrideSheetNameForScheduledOutputs"
-                              Style="{StaticResource ModernCheckBox}"
+                              Style="{StaticResource ModernToggleSwitch}"
                               Content="Override sheet name for the scheduled process outputs"
                               IsChecked="{Binding OverrideSheetNameForScheduledOutputs, Mode=TwoWay}">
                         <CheckBox.ToolTip>
@@ -146,7 +147,7 @@
                 </Border>
                 <Border Grid.Row="4" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkCalendarControl"
-                              Style="{StaticResource ModernCheckBox}"
+                              Style="{StaticResource ModernToggleSwitch}"
                               Content="Show calendar control in control sheet."
                               IsChecked="{Binding ShowCalendarControl, Mode=TwoWay}">
                         <CheckBox.ToolTip>
@@ -162,7 +163,7 @@
                 </Border>
                 <Border Grid.Row="5" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkOverrideFormats"
-                              Style="{StaticResource ModernCheckBox}"
+                              Style="{StaticResource ModernToggleSwitch}"
                               Content="Override formats on sheet or book refresh."
                               IsChecked="{Binding OverrideFormats, Mode=TwoWay}">
                         <CheckBox.ToolTip>
@@ -170,6 +171,22 @@
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Override formats on sheet or book refresh" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, refreshing a sheet or the whole book resets cell formatting to the report's defaults, overriding any manual formatting changes you've made."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
+                </Border>
+                <Border Grid.Row="6" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
+                    <CheckBox x:Name="chkSegmentSelectionWindow"
+                              Style="{StaticResource ModernToggleSwitch}"
+                              Content="Show segment selection window on selection."
+                              IsChecked="{Binding ShowSegmentSelectionWindow, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Show segment selection window on selection" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, selecting an ORACLE_GL_SEGMENT_VALUES cell in the control sheet pops up the segment selection window automatically, instead of requiring a double-click."
                                                FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
                                 </StackPanel>
                             </ToolTip>

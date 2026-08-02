@@ -32,6 +32,7 @@ namespace XLEdge
         public static NLog.Logger Logger { get; set; }
 
         private bool _isCalendarOpen;
+        private bool _isSegmentWindowOpen;
 
         // Cached reference to the sibling GLSense add-in's COM object, ported from VB's module-level
         // "addinInstance" field (resolved once via GetGLSenseAddinObject, then reused - e.g. by
@@ -594,12 +595,12 @@ namespace XLEdge
 
         private void adxExcelAppEvents1_SheetSelectionChange(object sender, object sheet, object range)
         {
-            if (_isCalendarOpen || !XLEdgeAppState.Instance.ShowCalendarControl || !XLEdgeAppState.Instance.IsLoginCompleted)
+            if (!XLEdgeAppState.Instance.IsLoginCompleted)
                 return;
 
             if (XLApp.App == null)
             {
-                LogUtility.LogError("Excel application instance is not available in SheetSelectionChange event."); 
+                LogUtility.LogError("Excel application instance is not available in SheetSelectionChange event.");
                 return;
             }
 
@@ -610,6 +611,17 @@ namespace XLEdge
                 return;
 
             if (selectedRange.Cells.Count != 1)
+                return;
+
+            // Each of these is independently gated by its own Options checkbox, so both can run off
+            // the same selection-changed event without interfering with one another.
+            TryShowCalendarControl(selectedSheet, selectedRange);
+            TryShowSegmentSelectionWindow(selectedSheet, selectedRange);
+        }
+
+        private void TryShowCalendarControl(Excel.Worksheet selectedSheet, Excel.Range selectedRange)
+        {
+            if (_isCalendarOpen || !XLEdgeAppState.Instance.ShowCalendarControl)
                 return;
 
             IntPtr excelHandle = XLApp.Handle;
@@ -667,6 +679,83 @@ namespace XLEdge
             finally
             {
                 _isCalendarOpen = false;
+            }
+        }
+
+        // Ported from the former adxExcelAppEvents1_SheetBeforeDoubleClick handler: previously this
+        // GL segment picker only opened on a double-click of column J in the control table. Per
+        // request, it's now gated by its own Options checkbox (ShowSegmentSelectionWindow) and, when
+        // enabled, opens on simple selection - consistent with how the calendar control works, and
+        // extensible the same way if more "show a picker window" options are added later.
+        private void TryShowSegmentSelectionWindow(Excel.Worksheet selectedSheet, Excel.Range selectedRange)
+        {
+            if (_isSegmentWindowOpen || !XLEdgeAppState.Instance.ShowSegmentSelectionWindow)
+                return;
+
+            if (!selectedSheet.Name.Equals("Parameters Control Sheet", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Only column J (10) - the Value1 column - triggers the segment picker.
+            if (selectedRange.Column != 10)
+                return;
+
+            _isSegmentWindowOpen = true;
+            try
+            {
+                Excel.ListObject controlTable = null;
+                foreach (Excel.ListObject lo in selectedSheet.ListObjects)
+                {
+                    if (lo.Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase))
+                    {
+                        controlTable = lo;
+                        break;
+                    }
+                }
+
+                if (controlTable == null)
+                    return;
+
+                if (selectedRange.Row < controlTable.HeaderRowRange.Row ||
+                    selectedRange.Row > controlTable.DataBodyRange.Rows.Count + controlTable.HeaderRowRange.Row)
+                    return;
+
+                Excel.Range paramTypeCell = selectedSheet.Cells[selectedRange.Row, 4] as Excel.Range;
+                string paramType = paramTypeCell?.Value2 as string ?? string.Empty;
+                if (!paramType.Equals("extraParameters", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                Excel.Range paramNameCell = selectedSheet.Cells[selectedRange.Row, 5] as Excel.Range;
+                string paramName = paramNameCell?.Value2 as string ?? string.Empty;
+                if (!paramName.Equals("ORACLE_GL_SEGMENT_VALUES", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                Excel.Range displayValueCell = selectedSheet.Cells[selectedRange.Row, 235] as Excel.Range;
+                string displayValues = displayValueCell?.Value2 as string ?? string.Empty;
+
+                if (!string.IsNullOrEmpty(displayValues))
+                {
+                    int rowNumber = selectedRange.Row;
+                    SafeInvokeWpf(() =>
+                    {
+                        var window = new XLEdgeGLAccountsWindow(selectedSheet, rowNumber, displayValues);
+                        window.ShowDialog();
+                    });
+                }
+                else
+                {
+                    MessageFunctions.XLEdgeMessage(
+                        "No segment display values found for this row.\n" +
+                        "Please ensure the GL Accounts data is properly loaded.",
+                        System.Windows.Forms.MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "SheetSelectionChange - GL Accounts segment window");
+            }
+            finally
+            {
+                _isSegmentWindowOpen = false;
             }
         }
 
@@ -2628,89 +2717,6 @@ namespace XLEdge
             }
         }
 
-        private void adxExcelAppEvents1_SheetBeforeDoubleClick(object sender, ADXExcelSheetBeforeEventArgs e)
-        {
-            try
-            {
-                // Check if the double-clicked sheet is "Parameters Control Sheet"
-                if (e.Sheet == null || !(e.Sheet is Excel.Worksheet worksheet))
-                    return;
-
-                if (!worksheet.Name.Equals("Parameters Control Sheet", StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                // Check if the double-click is within the list object
-                Excel.ListObject controlTable = null;
-                foreach (Excel.ListObject lo in worksheet.ListObjects)
-                {
-                    if (lo.Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase))
-                    {
-                        controlTable = lo;
-                        break;
-                    }
-                }
-
-                if (controlTable == null)
-                    return;
-
-                // Get the clicked cell
-                Excel.Range target = e.Range as Excel.Range;
-                if (target == null)
-                    return;
-
-                // Only handle double-clicks on column J (10) - Value1 column
-                if (target.Column != 10)
-                    return;
-
-                // Check if the clicked row is within the table
-                if (target.Row < controlTable.HeaderRowRange.Row ||
-                    target.Row > controlTable.DataBodyRange.Rows.Count + controlTable.HeaderRowRange.Row)
-                    return;
-
-                // Check column D (4) value should be "extraParameter"
-                Excel.Range paramTypeCell = worksheet.Cells[target.Row, 4] as Excel.Range;
-                if (paramTypeCell == null)
-                    return;
-
-                string paramType = paramTypeCell.Value2 as string ?? string.Empty;
-                if (!paramType.Equals("extraParameters", StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                // Check column E (5) value should be "ORACLE_GL_SEGMENT_VALUES"
-                Excel.Range paramNameCell = worksheet.Cells[target.Row, 5] as Excel.Range;
-                if (paramNameCell == null)
-                    return;
-
-                string paramName = paramNameCell.Value2 as string ?? string.Empty;
-                if (!paramName.Equals("ORACLE_GL_SEGMENT_VALUES", StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                // Cancel default double-click behavior
-                e.Cancel = true;
-
-                // Get display values from column IA (235)
-                Excel.Range displayValueCell = worksheet.Cells[target.Row, 235] as Excel.Range;
-                string displayValues = displayValueCell?.Value2 as string ?? string.Empty;
-
-                if (!string.IsNullOrEmpty(displayValues))
-                {
-                    // Open the GL Accounts window
-                    var window = new XLEdgeGLAccountsWindow(worksheet, target.Row, displayValues);
-                    window.ShowDialog();
-                }
-                else
-                {
-                    MessageFunctions.XLEdgeMessage(
-                        "No segment display values found for this row.\n" +
-                        "Please ensure the GL Accounts data is properly loaded.",
-                        System.Windows.Forms.MessageBoxIcon.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "SheetBeforeDoubleClick - GL Accounts");
-            }
-        }
     }
 }
 

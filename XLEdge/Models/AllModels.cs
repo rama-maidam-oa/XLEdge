@@ -29,6 +29,9 @@ namespace XLEdge.Models
         [JsonPropertyName("calendarCtrlDisplay")]
         public bool CalendarCtrlDisplay { get; set; }
 
+        [JsonPropertyName("segmentSelectionWindowDisplay")]
+        public bool SegmentSelectionWindowDisplay { get; set; }
+
         [JsonPropertyName("overrideFormats")]
         public bool OverrideFormats { get; set; }
 
@@ -41,6 +44,7 @@ namespace XLEdge.Models
                 RefreshSync = RefreshSync,
                 ChangeSheetName = ChangeSheetName,
                 CalendarCtrlDisplay = CalendarCtrlDisplay,
+                SegmentSelectionWindowDisplay = SegmentSelectionWindowDisplay,
                 OverrideFormats = OverrideFormats
             };
         }

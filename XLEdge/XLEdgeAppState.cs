@@ -238,6 +238,7 @@ namespace XLEdge
         public bool RefreshSync { get; set; }
         public bool AllowSheetNameChanges { get; set; }
         public bool ShowCalendarControl { get; set; }
+        public bool ShowSegmentSelectionWindow { get; set; }
         public bool OverrideFormats { get; set; }
 
         // --- Drilldown / report-navigation state ---

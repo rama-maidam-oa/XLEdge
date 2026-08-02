@@ -100,6 +100,7 @@ namespace XLEdge.Helpers
                     RefreshSync = XLEdgeAppState.Instance.RefreshSync,
                     ChangeSheetName = XLEdgeAppState.Instance.AllowSheetNameChanges,
                     CalendarCtrlDisplay = XLEdgeAppState.Instance.ShowCalendarControl,
+                    SegmentSelectionWindowDisplay = XLEdgeAppState.Instance.ShowSegmentSelectionWindow,
                     OverrideFormats = XLEdgeAppState.Instance.OverrideFormats
                 };
             }
@@ -119,6 +120,7 @@ namespace XLEdge.Helpers
                 RefreshSync = XLEdgeAppState.Instance.RefreshSync,
                 ChangeSheetName = XLEdgeAppState.Instance.AllowSheetNameChanges,
                 CalendarCtrlDisplay = XLEdgeAppState.Instance.ShowCalendarControl,
+                SegmentSelectionWindowDisplay = XLEdgeAppState.Instance.ShowSegmentSelectionWindow,
                 OverrideFormats = XLEdgeAppState.Instance.OverrideFormats
             };
         }
@@ -157,6 +159,7 @@ namespace XLEdge.Helpers
                         RefreshSync = ReadBooleanProperty(root, "refreshSync", defaults.RefreshSync, ref missingProperty),
                         ChangeSheetName = ReadBooleanProperty(root, "changeSheetName", defaults.ChangeSheetName, ref missingProperty),
                         CalendarCtrlDisplay = ReadBooleanProperty(root, "calendarCtrlDisplay", defaults.CalendarCtrlDisplay, ref missingProperty),
+                        SegmentSelectionWindowDisplay = ReadBooleanProperty(root, "segmentSelectionWindowDisplay", defaults.SegmentSelectionWindowDisplay, ref missingProperty),
                         OverrideFormats = ReadBooleanProperty(root, "overrideFormats", defaults.OverrideFormats, ref missingProperty)
                     };
 
@@ -214,6 +217,7 @@ namespace XLEdge.Helpers
             appState.RefreshSync = userPreferences.RefreshSync;
             appState.AllowSheetNameChanges = userPreferences.ChangeSheetName;
             appState.ShowCalendarControl = userPreferences.CalendarCtrlDisplay;
+            appState.ShowSegmentSelectionWindow = userPreferences.SegmentSelectionWindowDisplay;
             appState.OverrideFormats = userPreferences.OverrideFormats;
         }
     }
