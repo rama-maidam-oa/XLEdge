@@ -35,6 +35,10 @@ namespace XLEdge.Helpers
         private static AppOverlay _appOverlay;
         private static readonly string _eeLoginUrl = XLEdgeAppState.Instance.LoginUrl;
 
+        private const string ExtraParametersKey = "extraParameters";
+        private const string RequestTimedOutMessage = "The request timed out. Please try again.";
+        private const string ColumnElementName = "Column";
+
         private static void GetEdgeRequestFromTitle(string title)
         {
             if (string.IsNullOrWhiteSpace(title))
@@ -178,7 +182,7 @@ namespace XLEdge.Helpers
 
             foreach (JsonProperty prop in root.EnumerateObject())
             {
-                if (prop.Name.Equals("extraParameters", StringComparison.OrdinalIgnoreCase))
+                if (prop.Name.Equals(ExtraParametersKey, StringComparison.OrdinalIgnoreCase))
                 {
                     extraParamsEl = prop.Value;
                     extraParamsKey = prop.Name;
@@ -249,7 +253,7 @@ namespace XLEdge.Helpers
             {
                 if (prop.Name.Equals(extraParamsKey, StringComparison.OrdinalIgnoreCase))
                 {
-                    writer.WritePropertyName("extraParameters");
+                    writer.WritePropertyName(ExtraParametersKey);
                     writer.WriteStartObject();
                     foreach (var kvp in cleanedExtraParams)
                     {
@@ -330,11 +334,19 @@ namespace XLEdge.Helpers
             try
             {
                 await SetMessage("Downloading report data...");
-                string csvUrl = isDrilldownRequest
-                    ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?type=csv"
-                    : isProcessReport
-                        ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/process/excel-data?processId={_edgeRequest.ReportId}&type=csv"
-                        : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={_edgeRequest.ReportRunId}&type=csv";
+                string csvUrl;
+                if (isDrilldownRequest)
+                {
+                    csvUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?type=csv";
+                }
+                else if (isProcessReport)
+                {
+                    csvUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/process/excel-data?processId={_edgeRequest.ReportId}&type=csv";
+                }
+                else
+                {
+                    csvUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={_edgeRequest.ReportRunId}&type=csv";
+                }
 
                 // Strip display values from the payload before sending it to the CSV endpoint.
                 string csvPayload = isDrilldownRequest ? StripExtraParameterDisplayValues(paramsJsonPayload) : null;
@@ -358,7 +370,7 @@ namespace XLEdge.Helpers
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report generation request timed out");
-                await DisplayErrorAsync("The request timed out. Please try again.");
+                await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
                 return;
             }
@@ -400,9 +412,16 @@ namespace XLEdge.Helpers
             // "PROCESS" uses /rest/secure/process/report-definition?processId=..., everything else
             // keeps the /rest/secure/report/report-definition?reportId=...&runId=... shape).
             await SetMessage("Fetching report definition...");
-            string metaUrl = isProcessReport
-                ? $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/process/report-definition?processId={_edgeRequest.ReportId}&isDrillDown=false"
-                : $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/report-definition?reportId={_edgeRequest.ReportId}&runId={_edgeRequest.ReportRunId}&isDrillDown={(isDrilldownRequest ? "true" : "false")}";
+            string metaUrl;
+            if (isProcessReport)
+            {
+                metaUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/process/report-definition?processId={_edgeRequest.ReportId}&isDrillDown=false";
+            }
+            else
+            {
+                string isDrillDownFlag = isDrilldownRequest ? "true" : "false";
+                metaUrl = $"{XLEdgeAppState.Instance.LoginUrl.TrimEnd('/')}/rest/secure/report/report-definition?reportId={_edgeRequest.ReportId}&runId={_edgeRequest.ReportRunId}&isDrillDown={isDrillDownFlag}";
+            }
             string metaResponse = string.Empty;
 
             try
@@ -420,7 +439,7 @@ namespace XLEdge.Helpers
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report definition fetch timed out");
-                await DisplayErrorAsync("The request timed out. Please try again.");
+                await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
                 return;
             }
@@ -471,7 +490,7 @@ namespace XLEdge.Helpers
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report parameters fetch timed out");
-                await DisplayErrorAsync("The request timed out. Please try again.");
+                await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
                 return;
             }
@@ -642,7 +661,7 @@ namespace XLEdge.Helpers
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Process logs fetch timed out");
-                await DisplayErrorAsync("The request timed out. Please try again.");
+                await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
                 return;
             }
@@ -1650,7 +1669,7 @@ namespace XLEdge.Helpers
                 {
                     try
                     {
-                        if (!JsonHelper.TryGetProperty(item, "extraParameters", out JsonElement extraEl) ||
+                        if (!JsonHelper.TryGetProperty(item, ExtraParametersKey, out JsonElement extraEl) ||
                             extraEl.ValueKind != JsonValueKind.Object)
                         {
                             continue;
@@ -2056,7 +2075,7 @@ namespace XLEdge.Helpers
                             XElement colsElem = xdoc.Root?.Element("Columns");
                             if (colsElem != null)
                             {
-                                foreach (XElement ce in colsElem.Elements("Column"))
+                                foreach (XElement ce in colsElem.Elements(ColumnElementName))
                                 {
                                     string orig = ce.Attribute("original")?.Value ?? string.Empty;
                                     string mod = ce.Attribute("modified")?.Value ?? string.Empty;
@@ -2232,7 +2251,7 @@ namespace XLEdge.Helpers
         {
             if (string.IsNullOrWhiteSpace(baseName))
             {
-                baseName = "Column";
+                baseName = ColumnElementName;
             }
 
             string candidate = baseName;
@@ -2382,7 +2401,7 @@ namespace XLEdge.Helpers
 
                     if (string.Equals(outputType, "HYPERLINK", StringComparison.OrdinalIgnoreCase))
                     {
-                        hyperlinkCount = AddHyperlinkColumn(sheet, listObject, col, hyperlinkCount, maxHyperlinks);
+                        hyperlinkCount = AddHyperlinkColumn(listObject, col, hyperlinkCount, maxHyperlinks);
                     }
                     else if (string.Equals(outputType, "IMAGE", StringComparison.OrdinalIgnoreCase))
                     {
@@ -2440,7 +2459,7 @@ namespace XLEdge.Helpers
             return hyperlinkCount;
         }
 
-        private static int AddHyperlinkColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col, int hyperlinkCount, int maxHyperlinks)
+        private static int AddHyperlinkColumn(Excel.ListObject listObject, RptColumn col, int hyperlinkCount, int maxHyperlinks)
         {
             int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, col.Name?.Trim() ?? string.Empty);
             if (matchCol <= 0)
@@ -2605,11 +2624,11 @@ namespace XLEdge.Helpers
             {
                 var excelApp = XLApp.App;
                 if (excelApp == null)
-                    throw new Exception("Excel instance not available.");
+                    throw new InvalidOperationException("Excel instance not available.");
 
                 var sheet = excelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
                 if (sheet == null)
-                    throw new Exception("No active worksheet.");
+                    throw new InvalidOperationException("No active worksheet.");
 
                 Microsoft.Office.Interop.Excel.ListObject lo = null;
                 try
@@ -2783,7 +2802,7 @@ namespace XLEdge.Helpers
                 new XElement("Params", new XCData(paramsJson ?? string.Empty)),
                 new XElement("Columns",
                     mappings.Select(m =>
-                        new XElement("Column",
+                        new XElement(ColumnElementName,
                             new XAttribute("original", m.Original ?? string.Empty),
                             new XAttribute("modified", m.Modified ?? string.Empty),
                             new XAttribute("rawIndex", m.RawIndex)
@@ -2847,7 +2866,7 @@ namespace XLEdge.Helpers
             try
             {
                 var excelApp = XLApp.App;
-                if (excelApp == null) throw new Exception("Excel instance not available.");
+                if (excelApp == null) throw new InvalidOperationException("Excel instance not available.");
 
                 // Check edit mode
                 try
@@ -2889,7 +2908,7 @@ namespace XLEdge.Helpers
 
                 var wb = excelApp.ActiveWorkbook;
                 var sheet = excelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
-                if (sheet == null) throw new Exception("No active worksheet.");
+                if (sheet == null) throw new InvalidOperationException("No active worksheet.");
 
                 Microsoft.Office.Interop.Excel.ListObject lo = null;
                 try { lo = sheet.ListObjects[listObjectName]; }
@@ -2907,7 +2926,7 @@ namespace XLEdge.Helpers
 
                 // --- STEP 1: Get stored report data from CustomXMLParts (Meta Data) ---
                 // This is always from cache - meta data NEVER changes during refresh
-                if (!TryResolveReportXmlForRefresh(wb, listObjectName, lo, out string title, out string reportId, out string runId, out string storedMetaJson, out string storedParamsJson, out List<(string Original, string Modified, int RawIndex)> mappings))
+                if (!TryResolveReportXmlForRefresh(wb, listObjectName, lo, out string title, out _, out string runId, out string storedMetaJson, out string storedParamsJson, out List<(string Original, string Modified, int RawIndex)> mappings))
                 {
                     await HandleFailureAsync("No metadata found for this table.", waitWindow, appOverlay, useWaitWindow, collectErrors);
                     return;
@@ -2965,7 +2984,7 @@ namespace XLEdge.Helpers
                 catch (ApiTimeoutException ex)
                 {
                     LogUtility.LogException(ex, "RefreshListObjectAsync: CSV request timed out");
-                    await HandleFailureAsync("The request timed out. Please try again.", waitWindow, appOverlay, useWaitWindow, collectErrors);
+                    await HandleFailureAsync(RequestTimedOutMessage, waitWindow, appOverlay, useWaitWindow, collectErrors);
                     return;
                 }
 
@@ -3008,7 +3027,7 @@ namespace XLEdge.Helpers
 
                         string orig = rawHeader[i - 1] ?? string.Empty;
                         string baseName = orig.Trim();
-                        if (string.IsNullOrWhiteSpace(baseName)) baseName = "Column" + i;
+                        if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + i;
 
                         string mod = baseName;
                         int suffix = 1;
@@ -3131,7 +3150,7 @@ namespace XLEdge.Helpers
                 }
                 if (currentRows == 0)
                 {
-                    try { lo.ListRows.Add(); currentRows = lo.DataBodyRange.Rows.Count; }
+                    try { lo.ListRows.Add(); }
                     catch (Exception ex)
                     {
                         LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to add an initial data row to the table - {ex.Message}");
@@ -3252,7 +3271,7 @@ namespace XLEdge.Helpers
                     int lastRow = dataStartRow + targetTotalRows - 1;
                     for (int c = 1; c <= tableCols; c++)
                     {
-                        if (firstRowFormulas.TryGetValue(c, out var f))
+                        if (firstRowFormulas.TryGetValue(c, out _))
                         {
                             var topCell = (Excel.Range)sheet.Cells[dataStartRow, c];
                             var fillRange = sheet.Range[topCell, sheet.Cells[lastRow, c]];
@@ -3527,36 +3546,6 @@ namespace XLEdge.Helpers
         }
 
         /// <summary>
-        /// Gets column mappings from the table's header row
-        /// This is called from BuildCustomXml when we have a ListObject reference
-        /// </summary>
-        private static List<(string Original, string Modified, int RawIndex)> GetColumnMappings(Excel.ListObject tableObj)
-        {
-            var mappings = new List<(string Original, string Modified, int RawIndex)>();
-
-            try
-            {
-                if (tableObj?.HeaderRowRange == null)
-                {
-                    return mappings;
-                }
-
-                int col = 1;
-                foreach (Excel.Range headerCell in tableObj.HeaderRowRange.Cells)
-                {
-                    string headerText = Convert.ToString(headerCell.Value) ?? string.Empty;
-                    mappings.Add((headerText, headerText, col));
-                    col++;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "GetColumnMappings");
-            }
-
-            return mappings;
-        }
-        /// <summary>
         /// Gets column mappings for a table by name
         /// This is called from SaveUpdatedReportData when we only have the table name
         /// </summary>
@@ -3701,7 +3690,7 @@ namespace XLEdge.Helpers
                 bool hasParameters = JsonHelper.TryGetProperty(doc.RootElement, "parameters", out JsonElement parametersEl)
                     && parametersEl.ValueKind == JsonValueKind.Array;
 
-                bool hasExtraParams = JsonHelper.TryGetProperty(doc.RootElement, "extraParameters", out JsonElement extraParamsEl)
+                bool hasExtraParams = JsonHelper.TryGetProperty(doc.RootElement, ExtraParametersKey, out JsonElement extraParamsEl)
                     && extraParamsEl.ValueKind == JsonValueKind.Object
                     && extraParamsEl.EnumerateObject().Any();
 
@@ -3715,7 +3704,7 @@ namespace XLEdge.Helpers
                         JsonNode itemNode = JsonNode.Parse(item.GetRawText());
                         if (!extraAttached && hasExtraParams && itemNode is JsonObject itemObj)
                         {
-                            itemObj["extraParameters"] = JsonNode.Parse(extraParamsEl.GetRawText());
+                            itemObj[ExtraParametersKey] = JsonNode.Parse(extraParamsEl.GetRawText());
                             extraAttached = true;
                         }
 
@@ -3727,7 +3716,7 @@ namespace XLEdge.Helpers
                 {
                     var placeholder = new JsonObject
                     {
-                        ["extraParameters"] = JsonNode.Parse(extraParamsEl.GetRawText())
+                        [ExtraParametersKey] = JsonNode.Parse(extraParamsEl.GetRawText())
                     };
                     resultArray.Add(placeholder);
                 }
@@ -3744,7 +3733,7 @@ namespace XLEdge.Helpers
         {
             if (collectErrors)
             {
-                throw new Exception(message);
+                throw new InvalidOperationException(message);
             }
 
             if (useWaitWindow)
@@ -3758,7 +3747,7 @@ namespace XLEdge.Helpers
                     if (appOverlay != null)
                     {
                         await appOverlay.HideBusyAsync();
-                        appOverlay.ShowError(message);
+                        await appOverlay.ShowErrorAsync(message);
                     }
                 });
             }
@@ -3796,7 +3785,12 @@ namespace XLEdge.Helpers
                 var fields = new List<string>();
                 var sb = new StringBuilder();
                 bool inQuotes = false;
-                for (int i = 0; i < line.Length; i++)
+                // A while loop (rather than for) here so the escaped-quote branch's extra advance
+                // doesn't read as mutating a for loop's own stop-condition variable - behavior is
+                // unchanged: an escaped "" inside a quoted field advances by 2 (skipping both quote
+                // characters), every other branch advances by 1.
+                int i = 0;
+                while (i < line.Length)
                 {
                     char ch = line[i];
                     if (ch == '"')
@@ -3804,11 +3798,12 @@ namespace XLEdge.Helpers
                         if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
                         {
                             sb.Append('"');
-                            i++;
+                            i += 2;
                         }
                         else
                         {
                             inQuotes = !inQuotes;
+                            i++;
                         }
                         continue;
                     }
@@ -3817,10 +3812,12 @@ namespace XLEdge.Helpers
                     {
                         fields.Add(sb.ToString());
                         sb.Clear();
+                        i++;
                         continue;
                     }
 
                     sb.Append(ch);
+                    i++;
                 }
 
                 fields.Add(sb.ToString());
