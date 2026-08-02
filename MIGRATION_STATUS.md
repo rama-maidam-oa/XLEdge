@@ -2,6 +2,18 @@
 
 Last updated: 2026-08-02
 
+## Options window toggle-switch refinements — 2026-08-02
+
+Follow-up to the toggle-switch UI: (1) swapped `ModernToggleSwitch`'s layout so the label reads first
+with the switch pinned to the right edge, instead of switch-then-label - matches the reference
+screenshot's requested layout. (2) Reordered the Options window rows so "Show segment selection window
+on selection" sits directly under "Show calendar control in control sheet" (both are the same family of
+"pop up a window on selection" preferences), pushing "Override formats on sheet or book refresh" down
+one row - content/bindings unchanged, only row position swapped. (3) The track's "off" color was
+`SecondaryBrush` (#6C757D), which read as too dark/heavy for an off-state; added a new
+`ToggleTrackOffBrush`/`ToggleTrackOffColor` (#CED4DA - a mid-tone gray, lighter than SecondaryColor,
+darker than BorderLightColor for enough contrast against white) and pointed the track at it instead.
+
 ## Update stale "double-click" validation hint on the control sheet's GL segment cell — 2026-08-02
 
 Follow-up to the GL segment picker change below: `ParamsControlSheetBuilder.SetupGLSegmentValidation`

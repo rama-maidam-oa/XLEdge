@@ -162,22 +162,6 @@
                     </CheckBox>
                 </Border>
                 <Border Grid.Row="5" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
-                    <CheckBox x:Name="chkOverrideFormats"
-                              Style="{StaticResource ModernToggleSwitch}"
-                              Content="Override formats on sheet or book refresh."
-                              IsChecked="{Binding OverrideFormats, Mode=TwoWay}">
-                        <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
-                                <StackPanel MaxWidth="300">
-                                    <TextBlock Text="Override formats on sheet or book refresh" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
-                                    <TextBlock Text="When checked, refreshing a sheet or the whole book resets cell formatting to the report's defaults, overriding any manual formatting changes you've made."
-                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ToolTip>
-                        </CheckBox.ToolTip>
-                    </CheckBox>
-                </Border>
-                <Border Grid.Row="6" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkSegmentSelectionWindow"
                               Style="{StaticResource ModernToggleSwitch}"
                               Content="Show segment selection window on selection."
@@ -187,6 +171,22 @@
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Show segment selection window on selection" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, selecting an ORACLE_GL_SEGMENT_VALUES cell in the control sheet pops up the segment selection window automatically, instead of requiring a double-click."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </CheckBox.ToolTip>
+                    </CheckBox>
+                </Border>
+                <Border Grid.Row="6" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
+                    <CheckBox x:Name="chkOverrideFormats"
+                              Style="{StaticResource ModernToggleSwitch}"
+                              Content="Override formats on sheet or book refresh."
+                              IsChecked="{Binding OverrideFormats, Mode=TwoWay}">
+                        <CheckBox.ToolTip>
+                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                                <StackPanel MaxWidth="300">
+                                    <TextBlock Text="Override formats on sheet or book refresh" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, refreshing a sheet or the whole book resets cell formatting to the report's defaults, overriding any manual formatting changes you've made."
                                                FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
                                 </StackPanel>
                             </ToolTip>

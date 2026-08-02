@@ -21,6 +21,10 @@
 	<Color x:Key="BackgroundColor">#F8F9FA</Color>
 	<Color x:Key="BorderColor">#DEE2E6</Color>
 	<Color x:Key="BorderLightColor">#E9ECEF</Color>
+	<!-- A mid-tone gray for the toggle switch's "off" track - lighter than SecondaryColor (which read
+	     as too dark/heavy for an off-state), darker than BorderLightColor (which had too little
+	     contrast against a white background/thumb). -->
+	<Color x:Key="ToggleTrackOffColor">#CED4DA</Color>
 	<Color x:Key="TooltipBackgroundColor">#FFF9DB</Color>
 	<Color x:Key="TooltipBorderColor">#FBB41A</Color>
 
@@ -41,6 +45,7 @@
 	<SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
 	<SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
 	<SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+	<SolidColorBrush x:Key="ToggleTrackOffBrush" Color="{StaticResource ToggleTrackOffColor}"/>
 	<SolidColorBrush x:Key="BorderLightBrush" Color="{StaticResource BorderLightColor}"/>
 	<SolidColorBrush x:Key="TooltipBackgroundBrush" Color="{StaticResource TooltipBackgroundColor}"/>
 	<SolidColorBrush x:Key="TooltipBorderBrush" Color="{StaticResource TooltipBorderColor}"/>
@@ -774,14 +779,20 @@
 				<ControlTemplate TargetType="CheckBox">
 					<Grid Background="Transparent">
 						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="Auto"/>
 							<ColumnDefinition Width="*"/>
+							<ColumnDefinition Width="Auto"/>
 						</Grid.ColumnDefinitions>
 
-						<Grid Width="40" Height="20" VerticalAlignment="Center">
+						<ContentPresenter Grid.Column="0"
+						                  Margin="0,0,10,0"
+						                  HorizontalAlignment="Left"
+						                  VerticalAlignment="Center"
+						                  RecognizesAccessKey="True"/>
+
+						<Grid Grid.Column="1" Width="40" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center">
 							<Border x:Name="Track"
 							        CornerRadius="10"
-							        Background="{StaticResource SecondaryBrush}"
+							        Background="{StaticResource ToggleTrackOffBrush}"
 							        BorderThickness="0"/>
 							<Border x:Name="Thumb"
 							        Width="16" Height="16"
@@ -790,11 +801,6 @@
 							        HorizontalAlignment="Left"
 							        Margin="2,0,0,0"/>
 						</Grid>
-
-						<ContentPresenter Grid.Column="1"
-						                  Margin="10,0,0,0"
-						                  VerticalAlignment="Center"
-						                  RecognizesAccessKey="True"/>
 					</Grid>
 					<ControlTemplate.Triggers>
 						<Trigger Property="IsChecked" Value="True">
