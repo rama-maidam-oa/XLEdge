@@ -2,6 +2,29 @@
 
 Last updated: 2026-08-02
 
+## Fixed safe build-warning findings (branch 11.1.0) — 2026-08-02
+
+After the first successful build produced `Warnings.txt` (63 SonarQube/Roslyn findings, all in
+`ReportGenerator.cs`), fixed the mechanical/low-risk ones: extracted 3 repeated string literals into
+constants (`extraParameters`, the "request timed out" message, `"Column"`); extracted 2 nested ternaries
+into explicit if/else; changed 5 `throw new Exception(...)` to `throw new InvalidOperationException(...)`
+(all bubble to generic `catch (Exception ex)` callers, no behavior change); awaited `ShowErrorAsync`
+instead of calling the synchronous `ShowError` from inside an already-async lambda; rewrote a CSV-parsing
+`for` loop as an equivalent `while` loop so an intentional extra index-advance (for an escaped `""` inside
+a quoted field) doesn't read as mutating the loop's own stop-condition variable; removed an unused
+`sheet` parameter (confirmed unreferenced) and a fully dead private method (`GetColumnMappings`, zero
+call sites); removed a useless final assignment and two unused locals. Deliberately deferred: the 12
+Cognitive Complexity warnings (methods sized 16-192) and the related 9-parameter-method warning - these
+need careful, verified method-splitting that's risky to do blind without a compiler here, better done as
+a dedicated follow-up. Also left ~20 lower-severity IDE0xxx style suggestions and a build-environment
+"file access denied" warning (not a code issue) untouched.
+
+Also: a Python-based text-replace pass mid-way accidentally collapsed the file's CRLF line endings to LF
+project-wide (Python's default text-mode read/write does universal-newline translation) - caught via an
+unexpectedly huge git diff, and fixed by restoring CRLF before committing. Worth remembering for any
+future scripted edits to this codebase: prefer the Edit tool (preserves line endings exactly), or open
+scripted file I/O in binary mode / with `newline=''` when a script must touch a whole file.
+
 ## Added OrbitXLEdge installer project (branch 11.1.0) — 2026-08-02
 
 For QA handoff, ported the VB.NET reference's `setupfiles\Orbit\OrbitXLEdge.vdproj` (a Visual Studio
