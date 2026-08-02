@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-02
 
+## Update stale "double-click" validation hint on the control sheet's GL segment cell — 2026-08-02
+
+Follow-up to the GL segment picker change below: `ParamsControlSheetBuilder.SetupGLSegmentValidation`
+(which stamps the `ORACLE_GL_SEGMENT_VALUES` cell in a newly-built control sheet with a custom
+"always invalid" data validation, purely to show a message and block direct typing) still had its old
+`ErrorMessage` telling users to "DOUBLE-CLICK this cell" - stale now that the picker opens via
+selection instead. Updated `ErrorMessage` to point users at the new Options preference instead, and
+added an `InputMessage`/`InputTitle` (`ShowInput = true`) so the guidance shows proactively as Excel's
+native input-message balloon the moment the cell is selected, not just after an edit is attempted and
+rejected - matching the request to surface the "change your preference to auto-load" hint on selection.
+
 ## GL segment picker: moved from double-click to selection + made it an Options toggle — 2026-08-02
 
 The GL segment selection window (`XLEdgeGLAccountsWindow`) previously only opened via a hardcoded
