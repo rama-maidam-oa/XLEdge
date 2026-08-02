@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.37111.16
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XLEdge", "XLEdge\XLEdge.csproj", "{D090F1E0-CA8E-4529-B78D-981652FFF707}"
 EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "OrbitXLEdge", "XLEdge\setupfiles\Orbit\OrbitXLEdge.vdproj", "{B3E066F4-8695-493E-8439-C285C9054D27}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,9 @@ Global
 		{D090F1E0-CA8E-4529-B78D-981652FFF707}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D090F1E0-CA8E-4529-B78D-981652FFF707}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D090F1E0-CA8E-4529-B78D-981652FFF707}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3E066F4-8695-493E-8439-C285C9054D27}.Debug|Any CPU.ActiveCfg = Debug
+		{B3E066F4-8695-493E-8439-C285C9054D27}.Release|Any CPU.ActiveCfg = Release
+		{B3E066F4-8695-493E-8439-C285C9054D27}.Release|Any CPU.Build.0 = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

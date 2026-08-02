@@ -21,5 +21,10 @@ packages/
 # graphify knowledge-graph output (generated, regenerate with /graphify)
 graphify-out/
 
+# Installer build output (built .msi + intermediate files, not source)
+*.msi
+XLEdge/setupfiles/Orbit/Debug/
+XLEdge/setupfiles/Orbit/Release/
+
 # local Claude Code settings (machine-specific, not shared)
 .claude/
