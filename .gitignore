@@ -23,8 +23,8 @@ graphify-out/
 
 # Installer build output (built .msi + intermediate files, not source)
 *.msi
-XLEdge/setupfiles/Orbit/Debug/
-XLEdge/setupfiles/Orbit/Release/
+XLEdge/setupfiles/Debug/
+XLEdge/setupfiles/Release/
 
 # local Claude Code settings (machine-specific, not shared)
 .claude/
