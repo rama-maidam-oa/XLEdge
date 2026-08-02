@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Wpf.Ui.Appearance;
 
 namespace XLEdge.Utilities
@@ -15,6 +17,7 @@ namespace XLEdge.Utilities
     public static class WpfUiBootstrapper
     {
         private static bool _initialized;
+        private static bool _warmedUp;
         private static readonly object _lock = new object();
         private static string _currentBaseTheme;
 
@@ -117,6 +120,133 @@ namespace XLEdge.Utilities
             {
                 LogUtility.LogError($"WpfUiBootstrapper.PreloadResources: failed - {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Creates, shows, and immediately closes one throwaway, fully invisible window so the WPF
+        /// window-construction/first-render code path - HwndSource creation, DpiAwareWindow's DPI/
+        /// layout plumbing (including its GetDpiForWindow/SetWindowPos P/Invoke stubs), and the first
+        /// JIT pass over real ControlTemplates like ModernToggleSwitch's track+thumb - gets paid for
+        /// once during ribbon load, instead of on whichever real window the user happens to open
+        /// first. Deliberately synchronous, same as Init/PreloadResources above: the whole point is to
+        /// move this cost into ribbon load's existing startup latency rather than the user's first
+        /// click, so it's fine if this takes a moment.
+        /// </summary>
+        public static void WarmUpFirstWindow()
+        {
+            if (_warmedUp || !_initialized)
+            {
+                return;
+            }
+
+            try
+            {
+                var app = Application.Current;
+                if (app == null)
+                {
+                    return;
+                }
+
+                if (app.Dispatcher.CheckAccess())
+                {
+                    RunWarmUpWindow();
+                }
+                else
+                {
+                    app.Dispatcher.Invoke(RunWarmUpWindow);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"WpfUiBootstrapper.WarmUpFirstWindow: failed - {ex.Message}");
+            }
+            finally
+            {
+                // Only ever attempted once - if it failed, ribbon load already paid whatever cost it
+                // was going to pay, and the user's first real window falls back to warming up on its
+                // own the way it always has, so there's nothing to gain by retrying.
+                _warmedUp = true;
+            }
+        }
+
+        private static void RunWarmUpWindow()
+        {
+            DpiAwareWindow warmupWindow = null;
+
+            try
+            {
+                warmupWindow = new DpiAwareWindow
+                {
+                    Title = "warmup",
+                    WindowStyle = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Background = Brushes.Transparent,
+                    ShowInTaskbar = false,
+                    ShowActivated = false,
+                    ResizeMode = ResizeMode.NoResize,
+                    SizeToContent = SizeToContent.Manual,
+                    Width = 50,
+                    Height = 50,
+                    MinWidth = 10,
+                    MinHeight = 10,
+                    Left = -32000,
+                    Top = -32000,
+                    Opacity = 0
+                };
+
+                // A representative slice of the controls/styles real windows use, so their layout/
+                // render and ControlTemplate code paths get JIT'd here rather than on the first real
+                // window the user opens.
+                var stack = new StackPanel();
+                stack.Children.Add(new TextBlock { Text = "warmup" });
+
+                if (TryGetStyle("ModernToggleSwitch", out Style toggleStyle))
+                {
+                    stack.Children.Add(new CheckBox { Style = toggleStyle, Content = "warmup", IsChecked = true });
+                }
+
+                if (TryGetStyle("DynamicContentButton", out Style buttonStyle))
+                {
+                    stack.Children.Add(new Button { Style = buttonStyle, Content = "warmup" });
+                }
+
+                warmupWindow.Content = new Border { Padding = new Thickness(4), Child = stack };
+
+                warmupWindow.Loaded += (s, e) =>
+                {
+                    warmupWindow.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+                    {
+                        try
+                        {
+                            warmupWindow.Close();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"WpfUiBootstrapper.RunWarmUpWindow: close failed - {ex.Message}");
+                        }
+                    }));
+                };
+
+                warmupWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"WpfUiBootstrapper.RunWarmUpWindow: failed - {ex.Message}");
+                try
+                {
+                    warmupWindow?.Close();
+                }
+                catch (Exception closeEx)
+                {
+                    LogUtility.LogDebug($"WpfUiBootstrapper.RunWarmUpWindow: cleanup close failed - {closeEx.Message}");
+                }
+            }
+        }
+
+        private static bool TryGetStyle(string key, out Style style)
+        {
+            style = Application.Current?.TryFindResource(key) as Style;
+            return style != null;
         }
 
         private static void ApplyTheme(string baseTheme)

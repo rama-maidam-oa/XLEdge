@@ -2,6 +2,36 @@
 
 Last updated: 2026-08-02
 
+## Warm up WPF's first-window cost during ribbon load — 2026-08-02
+
+User-reported: the very first WPF window shown in an Excel session takes noticeably longer to open
+than every one after it - even a completely different window. Root cause is standard .NET/WPF
+behavior, not a bug: the CLR JITs each method the first time it actually runs, and building/laying
+out/rendering the first window touches a huge amount of WPF's framework code for the first time
+(measure/arrange/render, HwndSource creation, the DirectX/milcore rendering-surface setup); on top of
+that, `WpfUiBootstrapper` already warms up the *resource dictionaries* (Wpf.Ui theme/controls,
+`GlobalStyles.xaml`) at ribbon load via `Init`/`PreloadResources`, but nothing previously forced an
+actual `Window` through construction/layout/render, so that cost still landed on whichever real window
+the user opened first.
+
+Added `WpfUiBootstrapper.WarmUpFirstWindow()`, called right after `PreloadResources()` in
+`AddinModule_OnRibbonLoaded`. It creates one throwaway `DpiAwareWindow` - the same base class every
+real window uses - populated with a `CheckBox` styled `ModernToggleSwitch` and a `Button` styled
+`DynamicContentButton` (representative real controls/templates), shows it, and closes it on the next
+`ApplicationIdle` tick once `Loaded` has fired. This forces `DpiAwareWindow`'s full DPI/layout pipeline
+(including its `GetDpiForWindow`/`SetWindowPos` P/Invoke stubs) and the first JIT pass over real
+`ControlTemplate`s to happen during ribbon load instead of on the user's first click. Kept fully
+invisible via `AllowsTransparency` + `Opacity = 0` + off-screen `Left`/`Top` (belt-and-suspenders, since
+`DpiAwareWindow`'s own fit-to-workarea/recenter logic can otherwise pull an off-screen window back onto
+the visible desktop once it resizes to fit its content) and `ShowActivated = false`/`ShowInTaskbar =
+false` so it never steals focus or flashes on screen. Guarded by a `_warmedUp` flag so it only ever
+runs once per session, and every step is wrapped in try/catch so a warm-up failure can never break
+ribbon load itself - worst case, the user's first window just falls back to warming up the old way.
+
+Deliberately synchronous (same as `Init`/`PreloadResources`): the whole point is moving this cost into
+ribbon load's own startup latency, which the user already tolerates once, instead of the first time
+they intentionally open a window.
+
 ## Options window toggle-switch refinements — 2026-08-02
 
 Follow-up to the toggle-switch UI: (1) swapped `ModernToggleSwitch`'s layout so the label reads first
