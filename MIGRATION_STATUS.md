@@ -1,6 +1,15 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
+
+## ModernToggleSwitch: rectangular shape + ON/OFF text — 2026-08-03
+
+Per request: widened the switch (40x20 → 52x22) to fit text, squared off both `Track` and `Thumb`
+(`CornerRadius` 10/8 → 0 on both - was pill/cylindrical, now a plain rectangle), and added "ON"/"OFF"
+`TextBlock`s inside the track (white "ON" on the blue side, dark-gray "OFF" on the light-gray side),
+toggled via `Visibility` in the same `IsChecked` trigger that already flips the track color and slides
+the thumb (`Thumb` margin 22 → 32 to match the wider track). Same scope as before - `XLEdgeOptions`
+only, `ModernCheckBox`/`XLEdgeDrilldownReports` untouched.
 
 ## Task pane WebView2 rendering glitch - reverted first attempt, real cause identified — 2026-08-03
 

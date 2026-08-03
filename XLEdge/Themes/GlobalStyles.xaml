@@ -789,14 +789,31 @@
 						                  VerticalAlignment="Center"
 						                  RecognizesAccessKey="True"/>
 
-						<Grid Grid.Column="1" Width="40" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center">
+						<Grid Grid.Column="1" Width="52" Height="22" HorizontalAlignment="Right" VerticalAlignment="Center">
 							<Border x:Name="Track"
-							        CornerRadius="10"
+							        CornerRadius="0"
 							        Background="{StaticResource ToggleTrackOffBrush}"
 							        BorderThickness="0"/>
+							<TextBlock x:Name="OffText"
+							           Text="OFF"
+							           FontSize="8"
+							           FontWeight="Bold"
+							           Foreground="{StaticResource SecondaryDarkBrush}"
+							           HorizontalAlignment="Right"
+							           VerticalAlignment="Center"
+							           Margin="0,0,4,0"/>
+							<TextBlock x:Name="OnText"
+							           Text="ON"
+							           FontSize="8"
+							           FontWeight="Bold"
+							           Foreground="White"
+							           HorizontalAlignment="Left"
+							           VerticalAlignment="Center"
+							           Margin="4,0,0,0"
+							           Visibility="Collapsed"/>
 							<Border x:Name="Thumb"
-							        Width="16" Height="16"
-							        CornerRadius="8"
+							        Width="18" Height="18"
+							        CornerRadius="0"
 							        Background="White"
 							        HorizontalAlignment="Left"
 							        Margin="2,0,0,0"/>
@@ -805,7 +822,9 @@
 					<ControlTemplate.Triggers>
 						<Trigger Property="IsChecked" Value="True">
 							<Setter TargetName="Track" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-							<Setter TargetName="Thumb" Property="Margin" Value="22,0,0,0"/>
+							<Setter TargetName="Thumb" Property="Margin" Value="32,0,0,0"/>
+							<Setter TargetName="OffText" Property="Visibility" Value="Collapsed"/>
+							<Setter TargetName="OnText" Property="Visibility" Value="Visible"/>
 						</Trigger>
 						<Trigger Property="IsEnabled" Value="False">
 							<Setter Property="Opacity" Value="0.5"/>
