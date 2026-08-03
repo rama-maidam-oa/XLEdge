@@ -68,13 +68,6 @@ namespace XLEdge.Views
             {
                 _parentPane.Resize += OnParentPaneResize;
             }
-
-            // WebView2 sits inside MainScrollViewer, so a plain scroll - no resize at all - still
-            // moves it on screen; see NotifyWebViewOfPositionOrSizeChange for why that matters.
-            if (MainScrollViewer != null)
-            {
-                MainScrollViewer.ScrollChanged += OnMainScrollViewerScrollChanged;
-            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -84,11 +77,6 @@ namespace XLEdge.Views
                 if (_parentPane != null)
                 {
                     _parentPane.Resize -= OnParentPaneResize;
-                }
-
-                if (MainScrollViewer != null)
-                {
-                    MainScrollViewer.ScrollChanged -= OnMainScrollViewerScrollChanged;
                 }
 
                 if (WebCtrl != null)
@@ -234,7 +222,6 @@ namespace XLEdge.Views
                     EnsureMinimumWidth();
                     UpdateLayout();
                     MainScrollViewer?.UpdateLayout();
-                    NotifyWebViewOfPositionOrSizeChange();
                 }, DispatcherPriority.Loaded);
             }, "Error in OnLoaded");
         }
@@ -276,18 +263,13 @@ namespace XLEdge.Views
                     EnsureMinimumWidth();
                     UpdateLayout();
                     MainScrollViewer?.UpdateLayout();
-                    NotifyWebViewOfPositionOrSizeChange();
                 }, DispatcherPriority.Loaded);
             }, "Error in OnIsVisibleChanged");
         }
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            SafeFireAndForget(() => RunOnUIAsync(() =>
-            {
-                EnsureMinimumWidth();
-                NotifyWebViewOfPositionOrSizeChange();
-            }), "Error in OnSizeChanged");
+            SafeFireAndForget(() => RunOnUIAsync(() => EnsureMinimumWidth()), "Error in OnSizeChanged");
         }
 
         private void OnParentPaneResize(object sender, EventArgs e)
@@ -299,41 +281,8 @@ namespace XLEdge.Views
                     EnsureMinimumWidth();
                     UpdateLayout();
                     MainScrollViewer?.UpdateLayout();
-                    NotifyWebViewOfPositionOrSizeChange();
                 }, DispatcherPriority.Loaded);
             }, "Error in OnParentPaneResize");
-        }
-
-        private void OnMainScrollViewerScrollChanged(object sender, ScrollChangedEventArgs e)
-        {
-            // A plain scroll (no resize) still moves WebView2's on-screen position within the pane.
-            SafeFireAndForget(() => RunOnUIAsync(() => NotifyWebViewOfPositionOrSizeChange()),
-                "Error in OnMainScrollViewerScrollChanged");
-        }
-
-        /// <summary>
-        /// WebView2 requires being told explicitly whenever anything that can move or resize it
-        /// changes - otherwise child content the hosted web page has open (dropdowns, the calendar/
-        /// period-picker widgets QA has flagged as sometimes rendering incorrectly) can end up
-        /// mispositioned, clipped, or not fully redrawn, since Chromium's own compositor doesn't
-        /// automatically detect ancestor moves the way it would for a plain top-level browser window.
-        /// This control nests WebView2 inside MainScrollViewer, and is itself hosted through an extra
-        /// WinForms ElementHost layer inside the Excel task pane (unlike the VB.NET original, which
-        /// used the native WinForms WebView2 control directly with Dock = Fill and no such nesting) -
-        /// both of those extra layers are exactly the kind of scenario this notification exists for,
-        /// and nothing in this codebase called it before this fix. No-op (safely) before the WebView2
-        /// has finished initializing, since CoreWebView2Controller is null until then.
-        /// </summary>
-        private void NotifyWebViewOfPositionOrSizeChange()
-        {
-            try
-            {
-                WebCtrl?.CoreWebView2Controller?.NotifyParentWindowPositionChanged();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogDebug($"{nameof(NotifyWebViewOfPositionOrSizeChange)}: failed - {ex.Message}");
-            }
         }
 
         private void EnsureMinimumWidth()
