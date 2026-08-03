@@ -2,6 +2,43 @@
 
 Last updated: 2026-08-02
 
+## Task pane WebView2 not always redrawing its own controls correctly — 2026-08-02
+
+QA flagged (on the older VB.NET version, not yet retested on this port) that web-app controls hosted
+inside the task pane's WebView2 sometimes don't render fully/correctly - example given was the
+"Select Periods" date-range picker. Investigated what, if anything, could be done from the Excel/host
+side (as opposed to the web app itself, which this add-in doesn't control).
+
+Root cause identified: WebView2 requires being told explicitly, via `CoreWebView2Controller.
+NotifyParentWindowPositionChanged()`, whenever anything that can move or resize it changes -
+otherwise the browser's own compositor can leave open dropdowns/popups from the hosted page
+mispositioned or only partially redrawn, since (unlike a normal top-level browser window) it has no
+way to detect an ancestor's move on its own. `XLEdgeCTP.xaml.cs` (`Views/XLEdgeCTP.xaml.cs`) already
+had resize/visibility handlers (`OnSizeChanged`, `OnIsVisibleChanged`, `OnParentPaneResize`), but all
+of them stopped at WPF's own `UpdateLayout()` - nothing in the codebase called
+`NotifyParentWindowPositionChanged()` at all. Two things make this port more exposed to it than the
+VB.NET original: (1) `WebCtrl` (the WPF `WebView2`) is nested inside `MainScrollViewer`, so a plain
+scroll - no resize - still moves it on screen, and nothing was hooked to `ScrollViewer.ScrollChanged`
+before; (2) the VB version hosts the native WinForms `WebView2` directly with `Dock = Fill` (no
+ElementHost/WPF layer), so its own internal bounds-sync handled this automatically - this port's WPF-
+in-ElementHost-in-WinForms nesting doesn't get that for free.
+
+Added `NotifyWebViewOfPositionOrSizeChange()` (calls `WebCtrl.CoreWebView2Controller?.
+NotifyParentWindowPositionChanged()`, no-op safely before WebView2 finishes initializing) and wired it
+into all four existing move/resize paths (`OnLoaded`, `OnIsVisibleChanged`, `OnSizeChanged`,
+`OnParentPaneResize`) plus a new `MainScrollViewer.ScrollChanged` handler for the scroll-without-resize
+case. Purely additive - doesn't change any existing sizing/layout behavior, just tells WebView2 about
+moves it wasn't being told about before.
+
+Not changed (flagged for discussion, not touched): `MainScrollViewer`/its content `Grid` both enforce
+`MinWidth = 600` (`XLEdgeCTP.xaml` + `EnsureMinimumWidth()`), which was itself a deliberate earlier fix
+for WPF chrome (buttons/labels) clipping - see the comments already in `XLEdgeCTP.xaml`. That also means
+the WebView2 - and therefore the web app's own CSS viewport - never renders narrower than 600px even in
+a more narrowly-docked pane, unlike the VB version's plain `Dock = Fill` with no minimum. Worth
+revisiting if the web app's own responsive layout assumes it always gets exactly the pane's real width,
+but reverting it risks reintroducing the clipping it was added to fix, so left alone pending
+confirmation.
+
 ## Warm up WPF's first-window cost during ribbon load — 2026-08-02
 
 User-reported: the very first WPF window shown in an Excel session takes noticeably longer to open
