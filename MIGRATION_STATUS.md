@@ -2,6 +2,42 @@
 
 Last updated: 2026-08-02
 
+## Task pane WebView2 rendering glitch - reverted first attempt, real cause identified — 2026-08-03
+
+QA flagged (on the older VB.NET version, not yet retested on this port) that web-app controls hosted
+inside the task pane's WebView2 sometimes don't render fully/correctly - example given was the
+"Select Periods" date-range picker.
+
+First attempt (now reverted - didn't compile, and turned out to be the wrong fix regardless): added
+calls to `CoreWebView2Controller.NotifyParentWindowPositionChanged()` on every resize/visibility/scroll
+event. This doesn't compile because `Microsoft.Web.WebView2.Wpf.WebView2` doesn't publicly expose a
+`CoreWebView2Controller` property at all - only `CoreWebView2` (page/content APIs). Confirmed via
+Microsoft's own WebView2Feedback GitHub issue #222: this is deliberate ("we don't want to expose the
+controller because the WebView2 control expects to be the only one interacting with it"), not an
+oversight, and there's no supported way to reach it from WPF without reflection into a private field
+(unverified name, and not something to rely on given a private field name isn't a stable contract
+across SDK versions). Beyond not compiling, `NotifyParentWindowPositionChanged()`'s actual documented
+scope ("needed for accessibility and certain dialogs... to work correctly") doesn't cover general
+content layout/sizing anyway - that's governed entirely by `Bounds`, which the WPF control already
+keeps in sync with its own size automatically. So even a working reflection-based version of the
+original fix wouldn't have addressed this symptom.
+
+The real, Microsoft-documented root cause is different: WebView2 is always rendered as a native HWND
+child on top of all WPF-drawn content ("airspace" - WPF can't clip/composite an HWND child the way it
+composites its own visuals), and nesting it inside a scrolling/clipping container is a known, still
+partially open issue class (WebView2Feedback #919 "WebView2 is not contained within ScrollViewer",
+#2579, tracked under the umbrella issue #286). `XLEdgeCTP.xaml` nests `WebCtrl` inside
+`MainScrollViewer` (`Views/XLEdgeCTP.xaml:21,69-70`) - exactly this scenario. Microsoft's real fix for
+this class of bug is the newer `WebView2CompositionControl` (visual/DirectComposition-based rendering
+instead of an HWND child), which has its own DirectX/`.NET` version requirements that need checking
+against this project's .NET Framework 4.8.1 target before adopting.
+
+Not yet implemented - needs a decision: either (a) restructure `XLEdgeCTP.xaml` so `WebCtrl` is not a
+descendant of any scrolling/clipping container (the `MainScrollViewer`/`MinWidth = 600` setup exists
+for a different, already-fixed WPF-chrome-clipping bug - see the build-warnings-era history above -
+so this needs care to not reintroduce that one), or (b) evaluate `WebView2CompositionControl` as a
+longer-term replacement. Flagging both for a decision before either is attempted.
+
 ## Warm up WPF's first-window cost during ribbon load — 2026-08-02
 
 User-reported: the very first WPF window shown in an Excel session takes noticeably longer to open
