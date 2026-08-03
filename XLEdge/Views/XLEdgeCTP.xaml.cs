@@ -655,6 +655,21 @@ namespace XLEdge.Views
 
                             UpdateExcelTabLabel();
 
+                            // The login redirect just handed real OS keyboard focus to WebView2's
+                            // Chromium child HWND. Without explicitly releasing it back to Excel here,
+                            // the ribbon and worksheet become unresponsive until the user clicks
+                            // repeatedly (or once inside the task pane) to force it loose - the same
+                            // "WebView2 retains focus" symptom this helper was built to fix for the
+                            // report-refresh flow (ReportGenerator.CleanupAsync).
+                            try
+                            {
+                                await ReportGenerator.ReleaseKeyboardFocusFromTaskPaneAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                LogUtility.LogException(ex, "Failed to release focus to Excel after login");
+                            }
+
                             return;
                         }
 

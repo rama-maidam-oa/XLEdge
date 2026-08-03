@@ -2,6 +2,26 @@
 
 Last updated: 2026-08-03
 
+## Excel unresponsive right after login until an extra click - WebView2 focus never released — 2026-08-03
+
+User-reported: right after a successful login in the task pane, the ribbon and worksheet stop
+responding to clicks; repeated clicks (or one click inside the task pane) eventually "frees" it and
+Excel becomes responsive again.
+
+Same root cause as the earlier "keyboard freeze: WebView2 retains focus after refresh" bug (see that
+fix's history), just on a different trigger: the login redirect hands real OS keyboard focus to
+WebView2's Chromium child HWND, and nothing told Windows to hand it back to Excel afterward. That
+report-refresh flow already has a proven fix for exactly this (`ReportGenerator.
+ReleaseKeyboardFocusFromTaskPaneAsync` - blurs WebView2's active element, reactivates Excel's main
+window via `ExcelWindowHelper.ActivateExcelMainWindow`, then nudges real keyboard focus off WebView2 by
+selecting an adjacent cell and reselecting the original one via COM, all marshaled correctly between a
+background thread and Excel's STA thread) - it just was never wired into the login-success path.
+
+Added a call to it at the end of the `excel=Y#Home` branch in `XLEdgeCTP.WebCtrl_SourceChanged`
+(`Views/XLEdgeCTP.xaml.cs`), after all the existing post-login bookkeeping (cookies, ribbon caption,
+broadcast messages, GLSense sync, tab label) - the same point `ReportGenerator.CleanupAsync` calls it
+at for the refresh flow. No other code path changed.
+
 ## ModernToggleSwitch: rectangular shape + ON/OFF text — 2026-08-03
 
 Per request: widened the switch (40x20 → 52x22) to fit text, squared off both `Track` and `Thumb`
