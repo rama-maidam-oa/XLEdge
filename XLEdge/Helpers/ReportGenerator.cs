@@ -265,7 +265,34 @@ namespace XLEdge.Helpers
             return Encoding.UTF8.GetString(stream.ToArray());
         }
 
+        /// <summary>
+        /// Entry point for live ("Edge") report generation from a document title. Wraps the real work
+        /// in <see cref="CreateReportFromTitleAsyncCore"/> with a top-level safety net: this method is
+        /// invoked fire-and-forget (see XLEdgeCTP.xaml.cs's SafeFireAndForget), which only logs an
+        /// exception that escapes it - it never hides the busy overlay or shows an error. Every step
+        /// inside the core method that talks to the API or Excel already has its own try/catch that
+        /// calls DisplayErrorAsync+CleanupAsync, but a handful of things in between (progress-message/
+        /// busy-overlay updates via SetMessage, request-parsing helpers, etc.) were not covered - if
+        /// any of those ever threw, the busy spinner that was already showing would be left stuck
+        /// spinning forever with no error surfaced, since the fire-and-forget wrapper silently swallows
+        /// it. This catch-all guarantees that no matter where an exception originates, the user always
+        /// gets an immediate error toast and the busy overlay/wait window is always dismissed.
+        /// </summary>
         public static async Task CreateReportFromTitleAsync(string title, AppOverlay appOverlay = null, bool useWaitWindow = false, string paramsJsonPayload = null)
+        {
+            try
+            {
+                await CreateReportFromTitleAsyncCore(title, appOverlay, useWaitWindow, paramsJsonPayload);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "CreateReportFromTitleAsync: unhandled exception escaped report generation");
+                await DisplayErrorAsync($"An unexpected error occurred during report generation.{Environment.NewLine}{ex.Message}");
+                await CleanupAsync();
+            }
+        }
+
+        private static async Task CreateReportFromTitleAsyncCore(string title, AppOverlay appOverlay, bool useWaitWindow, string paramsJsonPayload)
         {
             using var excelBulkScope = new ExcelBulkOperationScope();
 

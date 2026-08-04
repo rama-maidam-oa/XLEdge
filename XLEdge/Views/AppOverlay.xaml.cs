@@ -116,42 +116,57 @@ namespace XLEdge.Views
         {
             if (Toast == null) return;
 
-            CollapseBusyOverlayForToast();
-
-            this.Visibility = Visibility.Visible;
-            UpdateToastMaxHeight();
-            Toast.Visibility = Visibility.Visible;
-            Toast.Opacity = 1;
-            Toast.BeginAnimation(Border.OpacityProperty, null);
-            Panel.SetZIndex(Toast, 10001);
-
-            // Block input to underlying UI while toast is visible
-            if (ToastOverlay != null)
+            // Bug fix ("busy overlay spins forever on any error"): this whole body used to run
+            // unguarded. Toast/busy-overlay updates are called from deep inside report-generation
+            // error handlers (see ReportGenerator.DisplayErrorAsync) - if any single step here threw
+            // (blur/visual-tree walking, a stale visual, etc.), the exception escaped all the way out
+            // through the fire-and-forget wrapper that kicked off the report, which only logs and
+            // never hides the busy spinner - so the error toast we were trying to show would silently
+            // never appear, and the spinner already on screen would be stuck forever. Catching here
+            // means a cosmetic failure can never prevent the error from being surfaced.
+            try
             {
-                ToastOverlay.Visibility = Visibility.Visible;
-                try
+                CollapseBusyOverlayForToast();
+
+                this.Visibility = Visibility.Visible;
+                UpdateToastMaxHeight();
+                Toast.Visibility = Visibility.Visible;
+                Toast.Opacity = 1;
+                Toast.BeginAnimation(Border.OpacityProperty, null);
+                Panel.SetZIndex(Toast, 10001);
+
+                // Block input to underlying UI while toast is visible
+                if (ToastOverlay != null)
                 {
-                    ToastOverlay.Focus();
+                    ToastOverlay.Visibility = Visibility.Visible;
+                    try
+                    {
+                        ToastOverlay.Focus();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogWarn($"Could not focus ToastOverlay: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"Could not focus ToastOverlay: {ex.Message}");
-                }
+
+                // Apply blur to underlying sibling elements (mirror/blur effect)
+                ApplyBlurToSiblings();
+
+                ToastMessage.Text = message;
+                ToastIcon.Kind = icon;
+                ToastIcon.Foreground = color;
+
+                Panel.SetZIndex(this, 9999);
+
+                _toastTimer?.Stop();
+                _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
+                _toastTimer.Tick += OnToastTimerTick;
+                _toastTimer.Start();
             }
-
-            // Apply blur to underlying sibling elements (mirror/blur effect)
-            ApplyBlurToSiblings();
-
-            ToastMessage.Text = message;
-            ToastIcon.Kind = icon;
-            ToastIcon.Foreground = color;
-
-            Panel.SetZIndex(this, 9999);
-
-            _toastTimer?.Stop();
-            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
-            _toastTimer.Tick += OnToastTimerTick;
-            _toastTimer.Start();
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ShowToast failed: {ex.Message}");
+            }
         }
 
         public void ShowSuccess(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleCheckSolid, Brushes.LimeGreen, 60);
@@ -161,68 +176,81 @@ namespace XLEdge.Views
 
         public Task ShowToastAsync(string message, PackIconFontAwesomeKind icon, Brush color, int durationSeconds = 60)
         {
-            _activeToastTcs?.TrySetResult(true);
-            var tcs = new TaskCompletionSource<bool>();
-            _activeToastTcs = tcs;
-
-            CollapseBusyOverlayForToast();
-
-            this.Visibility = Visibility.Visible;
-            UpdateToastMaxHeight();
-            Toast.Visibility = Visibility.Visible;
-            Toast.Opacity = 1;
-            Toast.BeginAnimation(Border.OpacityProperty, null);
-            Panel.SetZIndex(Toast, 10001);
-
-            // Block input to underlying UI while toast is visible
-            if (ToastOverlay != null)
+            // Same reasoning as ShowToast above: this is the toast shown from awaited error paths
+            // (DisplayErrorAsync's non-wait-window branch, broadcast messages, etc.) - if setup here
+            // throws before returning a Task, the caller awaiting this would hang indefinitely with
+            // the busy overlay/spinner never resolving. Catching and returning a completed Task keeps
+            // the caller (and, upstream, the report-generation cleanup that runs after it) moving.
+            try
             {
-                ToastOverlay.Visibility = Visibility.Visible;
-                try
+                _activeToastTcs?.TrySetResult(true);
+                var tcs = new TaskCompletionSource<bool>();
+                _activeToastTcs = tcs;
+
+                CollapseBusyOverlayForToast();
+
+                this.Visibility = Visibility.Visible;
+                UpdateToastMaxHeight();
+                Toast.Visibility = Visibility.Visible;
+                Toast.Opacity = 1;
+                Toast.BeginAnimation(Border.OpacityProperty, null);
+                Panel.SetZIndex(Toast, 10001);
+
+                // Block input to underlying UI while toast is visible
+                if (ToastOverlay != null)
                 {
-                    ToastOverlay.Focus();
+                    ToastOverlay.Visibility = Visibility.Visible;
+                    try
+                    {
+                        ToastOverlay.Focus();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogWarn($"Could not focus ToastOverlay: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
+
+                // Apply blur to underlying sibling elements (mirror/blur effect)
+                ApplyBlurToSiblings();
+
+                ToastMessage.Text = message;
+                ToastIcon.Kind = icon;
+                ToastIcon.Foreground = color;
+
+                Panel.SetZIndex(this, 9999);
+
+                _toastTimer?.Stop();
+                _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
+                _toastTimer.Tick += (s, e) =>
                 {
-                    LogUtility.LogWarn($"Could not focus ToastOverlay: {ex.Message}");
-                }
-            }
+                    _toastTimer.Stop();
+                    var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.5));
+                    fade.Completed += (s2, e2) =>
+                    {
+                        Toast.Opacity = 0;
+                        // Hide the input blocker when toast fades out
+                        if (ToastOverlay != null)
+                            ToastOverlay.Visibility = Visibility.Collapsed;
 
-            // Apply blur to underlying sibling elements (mirror/blur effect)
-            ApplyBlurToSiblings();
-
-            ToastMessage.Text = message;
-            ToastIcon.Kind = icon;
-            ToastIcon.Foreground = color;
-
-            Panel.SetZIndex(this, 9999);
-
-            _toastTimer?.Stop();
-            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
-            _toastTimer.Tick += (s, e) =>
-            {
-                _toastTimer.Stop();
-                var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.5));
-                fade.Completed += (s2, e2) =>
-                {
-                    Toast.Opacity = 0;
-                    // Hide the input blocker when toast fades out
-                    if (ToastOverlay != null)
-                        ToastOverlay.Visibility = Visibility.Collapsed;
-
-                    // Remove blur from siblings
-                    RemoveBlurFromSiblings();
-                    if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
-                        this.Visibility = Visibility.Collapsed;
-                    tcs.TrySetResult(true);
-                    if (_activeToastTcs == tcs)
-                        _activeToastTcs = null;
+                        // Remove blur from siblings
+                        RemoveBlurFromSiblings();
+                        if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
+                            this.Visibility = Visibility.Collapsed;
+                        tcs.TrySetResult(true);
+                        if (_activeToastTcs == tcs)
+                            _activeToastTcs = null;
+                    };
+                    Toast.BeginAnimation(Border.OpacityProperty, fade);
                 };
-                Toast.BeginAnimation(Border.OpacityProperty, fade);
-            };
-            _toastTimer.Start();
+                _toastTimer.Start();
 
-            return tcs.Task;
+                return tcs.Task;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ShowToastAsync failed: {ex.Message}");
+                return Task.CompletedTask;
+            }
         }
 
         public async Task ShowSuccessAsync(string message)
@@ -290,74 +318,87 @@ namespace XLEdge.Views
         }
         public void ShowBusyasyn(string message = "Please wait...", Func<Task> cancelAction = null)
         {
-            BusyMessage.Text = message ?? "Please wait...";
-            this.Visibility = Visibility.Visible;
-            this.Opacity = 1.0;
-            Panel.SetZIndex(this, 9999);
-
-            // ?? Bring to front of parent container
-            if (this.Parent is UIElement parent)
-                Panel.SetZIndex(parent, 0);
-
-            BusyOverlay.Visibility = Visibility.Visible;
-            BusyOverlay.Opacity = 1;
-            BusyOverlay.IsHitTestVisible = true;
-
-            // Hide WebView2 siblings while the busy overlay is visible
-            SetWebView2HiddenState(ref _busyHidesWebView2, true);
-
-            if (BusyCancelHandler != null)
+            // Bug fix ("busy overlay spins forever on any error"): same reasoning as ShowToast/
+            // ShowToastAsync above. ShowBusyasyn is called repeatedly for every progress-message
+            // update during report generation (ReportGenerator.SetMessage) with no try/catch at any of
+            // those call sites - if this ever threw, the exception escaped straight out of the
+            // fire-and-forget report-generation task, which only logs it, leaving the busy spinner
+            // that's already on screen stuck forever with no error ever shown.
+            try
             {
-                BtnCancelBusy.Click -= BusyCancelHandler;
-                BusyCancelHandler = null;
-            }
+                BusyMessage.Text = message ?? "Please wait...";
+                this.Visibility = Visibility.Visible;
+                this.Opacity = 1.0;
+                Panel.SetZIndex(this, 9999);
 
-            BusyCancelHandler = async (sender, e) =>
-            {
-                BtnCancelBusy.IsEnabled = false;
+                // Bring to front of parent container
+                if (this.Parent is UIElement parent)
+                    Panel.SetZIndex(parent, 0);
+
+                BusyOverlay.Visibility = Visibility.Visible;
+                BusyOverlay.Opacity = 1;
+                BusyOverlay.IsHitTestVisible = true;
+
+                // Hide WebView2 siblings while the busy overlay is visible
+                SetWebView2HiddenState(ref _busyHidesWebView2, true);
+
+                if (BusyCancelHandler != null)
+                {
+                    BtnCancelBusy.Click -= BusyCancelHandler;
+                    BusyCancelHandler = null;
+                }
+
+                BusyCancelHandler = async (sender, e) =>
+                {
+                    BtnCancelBusy.IsEnabled = false;
+                    try
+                    {
+                        // Run async cancel if provided
+                        if (cancelAction != null)
+                            await cancelAction();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Busy cancel handler");
+                    }
+                    finally
+                    {
+                        await HideBusyAsync();
+                    }
+                };
+
+                BtnCancelBusy.Click += BusyCancelHandler;
+                BtnCancelBusy.Visibility = Visibility.Visible;
+                BtnCancelBusy.IsEnabled = true;
+
+                // Start elapsed timer
                 try
                 {
-                    // ?? Run async cancel if provided
-                    if (cancelAction != null)
-                        await cancelAction();
+                    _busyStart = DateTime.UtcNow;
+                    BusyElapsed.Text = "Time Elapsed: 00:00:00";
+
+                    _busyTimer?.Stop();
+                    _busyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    _busyTimer.Tick += (s, e) =>
+                    {
+                        if (_busyStart == null) return;
+                        var span = DateTime.UtcNow - _busyStart.Value;
+                        BusyElapsed.Text = $"Time Elapsed: {FormatTimeSpan(span)}";
+                    };
+                    _busyTimer.Start();
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogException(ex, "Busy cancel handler");
+                    LogUtility.LogException(ex, "Start busy timer");
                 }
-                finally
-                {
-                    await HideBusyAsync();
-                }
-            };
 
-            BtnCancelBusy.Click += BusyCancelHandler;
-            BtnCancelBusy.Visibility = Visibility.Visible;
-            BtnCancelBusy.IsEnabled = true;
-
-            // Start elapsed timer
-            try
-            {
-                _busyStart = DateTime.UtcNow;
-                BusyElapsed.Text = "Time Elapsed: 00:00:00";
-
-                _busyTimer?.Stop();
-                _busyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-                _busyTimer.Tick += (s, e) =>
-                {
-                    if (_busyStart == null) return;
-                    var span = DateTime.UtcNow - _busyStart.Value;
-                    BusyElapsed.Text = $"Time Elapsed: {FormatTimeSpan(span)}";
-                };
-                _busyTimer.Start();
+                if (this.Resources["ShowBusy"] is Storyboard sb)
+                    sb.Begin(this);
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, "Start busy timer");
+                LogUtility.LogWarn($"ShowBusyasyn failed: {ex.Message}");
             }
-
-            if (this.Resources["ShowBusy"] is Storyboard sb)
-                sb.Begin(this);
         }
         private async void BtnHideBusy_Click(object sender, RoutedEventArgs e)
         {
