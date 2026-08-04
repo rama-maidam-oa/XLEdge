@@ -238,7 +238,11 @@ namespace XLEdge
         public bool RefreshSync { get; set; }
         public bool AllowSheetNameChanges { get; set; }
         public bool ShowCalendarControl { get; set; }
-        public bool ShowSegmentSelectionWindow { get; set; }
+        /// <summary>Defaults to true; the JSON preferences backfill in
+        /// XLEdgePreferencesManager only applies this default when the entry is missing from
+        /// the user's saved preferences file, so existing users who already have this set to
+        /// false keep their choice.</summary>
+        public bool ShowSegmentSelectionWindow { get; set; } = true;
         public bool OverrideFormats { get; set; }
 
         // --- Drilldown / report-navigation state ---
