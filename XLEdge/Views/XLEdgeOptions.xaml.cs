@@ -132,39 +132,27 @@ namespace XLEdge.Views
             OverrideFormats = appState.OverrideFormats;
         }
 
-        // Duration (seconds) the Save/Apply confirmation toast stays up before this window closes
-        // itself - long enough to read a short sentence, short enough not to feel like a delay.
-        private const int ConfirmationToastDurationSeconds = 2;
-
-        private async void BtnApply_Click(object sender, RoutedEventArgs e)
+        private void BtnApply_Click(object sender, RoutedEventArgs e)
         {
             ApplyPreferencesToAppStateOnly();
             PreferencesApplied?.Invoke(this, EventArgs.Empty);
 
-            if (AppOverlayControl != null)
-            {
-                await AppOverlayControl.ShowInfoAsync(
-                    "Applied to this session only - your changes are not saved and will be lost when you close Excel.",
-                    ConfirmationToastDurationSeconds);
-            }
-
-            Close();
+            // Per explicit request: Save/Apply no longer close the window - the toast is shown and
+            // the window stays open until the user closes it themselves (BtnClose_Click). Uses the
+            // same default (60s, or dismissed early via the toast's own X) as every other toast in
+            // the app, since there's no auto-close racing against it anymore.
+            AppOverlayControl?.ShowInfo(
+                "Applied to this session only - your changes are not saved and will be lost when you close Excel.");
         }
 
-        private async void BtnSave_Click(object sender, RoutedEventArgs e)
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             var preferences = BuildPreferencesFromWindow();
             XLEdgePreferencesManager.Instance.Save(preferences);
             PreferencesApplied?.Invoke(this, EventArgs.Empty);
 
-            if (AppOverlayControl != null)
-            {
-                await AppOverlayControl.ShowInfoAsync(
-                    "Applied to this session and saved locally, so these will be your defaults next time too.",
-                    ConfirmationToastDurationSeconds);
-            }
-
-            Close();
+            AppOverlayControl?.ShowInfo(
+                "Applied to this session and saved locally, so these will be your defaults next time too.");
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
