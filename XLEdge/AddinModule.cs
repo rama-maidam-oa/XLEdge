@@ -556,7 +556,6 @@ namespace XLEdge
 
                 WpfUiBootstrapper.Init(XLEdgeAppConstants.GLAccentHex, XLEdgeAppConstants.GLTheme);
                 WpfUiBootstrapper.PreloadResources();
-                WpfUiBootstrapper.WarmUpFirstWindow();
             }
             catch (Exception ex)
             {
