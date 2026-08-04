@@ -132,18 +132,38 @@ namespace XLEdge.Views
             OverrideFormats = appState.OverrideFormats;
         }
 
-        private void BtnApply_Click(object sender, RoutedEventArgs e)
+        // Duration (seconds) the Save/Apply confirmation toast stays up before this window closes
+        // itself - long enough to read a short sentence, short enough not to feel like a delay.
+        private const int ConfirmationToastDurationSeconds = 2;
+
+        private async void BtnApply_Click(object sender, RoutedEventArgs e)
         {
             ApplyPreferencesToAppStateOnly();
             PreferencesApplied?.Invoke(this, EventArgs.Empty);
+
+            if (AppOverlayControl != null)
+            {
+                await AppOverlayControl.ShowInfoAsync(
+                    "Applied to this session only - your changes are not saved and will be lost when you close Excel.",
+                    ConfirmationToastDurationSeconds);
+            }
+
             Close();
         }
 
-        private void BtnSave_Click(object sender, RoutedEventArgs e)
+        private async void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             var preferences = BuildPreferencesFromWindow();
             XLEdgePreferencesManager.Instance.Save(preferences);
             PreferencesApplied?.Invoke(this, EventArgs.Empty);
+
+            if (AppOverlayControl != null)
+            {
+                await AppOverlayControl.ShowInfoAsync(
+                    "Applied to this session and saved locally, so these will be your defaults next time too.",
+                    ConfirmationToastDurationSeconds);
+            }
+
             Close();
         }
 

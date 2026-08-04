@@ -245,6 +245,15 @@ namespace XLEdge.Views
             await ShowToastAsync(message, PackIconFontAwesomeKind.CircleInfoSolid, Brushes.DodgerBlue, 60);
         }
 
+        /// <summary>
+        /// Overload for short-lived confirmations (e.g. "Applied"/"Saved" prompts on a dialog that's
+        /// about to close) where waiting for the default 60-second auto-dismiss isn't appropriate.
+        /// </summary>
+        public async Task ShowInfoAsync(string message, int durationSeconds)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleInfoSolid, Brushes.DodgerBlue, durationSeconds);
+        }
+
         public void DismissToast()
         {
             if (Toast == null || Toast.Visibility != Visibility.Visible)
