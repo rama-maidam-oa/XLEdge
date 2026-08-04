@@ -362,6 +362,8 @@
             // 
             // adxExcelTaskPanesCollectionItem1
             // 
+            this.adxExcelTaskPanesCollectionItem1.AlwaysShowHeader = true;
+            this.adxExcelTaskPanesCollectionItem1.CloseButton = true;
             this.adxExcelTaskPanesCollectionItem1.IsHiddenStateAllowed = false;
             this.adxExcelTaskPanesCollectionItem1.IsMinimizedStateAllowed = false;
             this.adxExcelTaskPanesCollectionItem1.TaskPaneClassName = "XLEdge.ADXExcelTaskPane1";

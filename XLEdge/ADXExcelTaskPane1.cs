@@ -88,6 +88,14 @@ namespace XLEdge
         {
             InitializeComponent();
 
+            // Native title bar caption. XLEdgeCTP updates this at runtime (SetPaneCaption) to append
+            // "- <instance url>" once logged in; this is just the baseline shown before that. The WPF
+            // content used to render its own "Orbit XLEdge Reports" header/close button instead of
+            // using this native one - removed in favor of the native chrome (CloseButton = true,
+            // AddinModule.Designer.cs, and ADXExcelTaskPane1_ADXCloseButtonClick below already handle
+            // the close button), freeing that space for the actual report content.
+            this.Text = "Orbit XLEdge Reports";
+
             // Enable DPI-aware sizing for the WinForms host
             this.AutoScaleMode = AutoScaleMode.Dpi;
 
@@ -99,8 +107,6 @@ namespace XLEdge
             {
                 _wpfControl = new XLEdgeCTP(this);
             }
-
-            _wpfControl.OnCloseRequested += () => this.Visible = false;
 
             // Host WPF control inside WinForms
             _host = new ElementHost
@@ -178,7 +184,7 @@ namespace XLEdge
             try
             {
                 // Scale the target pane width by the current DPI so it matches XLEdgeCTP's
-                // DIP-based MinWidth, keeping the header's Close button on-screen.
+                // DIP-based MinWidth, keeping the report content usable rather than clipped.
                 var dpi = GetEffectiveDpi();
                 int targetWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
                 if (this.Width != targetWidthPx)

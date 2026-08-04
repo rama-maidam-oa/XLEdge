@@ -2,6 +2,28 @@
 
 Last updated: 2026-08-03
 
+## Remove custom WPF task-pane header - use native Add-in Express/Excel chrome instead — 2026-08-03
+
+Per request, to free up vertical space for the report content: removed `XLEdgeCTP.xaml`'s custom WPF
+header (the blue bar with icon, "Orbit XLEdge Reports" title, its own close button, and an "Instance:
+&lt;url&gt;" text) entirely. The native task pane already has its own close button
+(`CloseButton = true`, `AddinModule.Designer.cs`) and its own close handler
+(`ADXExcelTaskPane1_ADXCloseButtonClick`, already hides rather than destroys the pane) - the WPF one was
+fully redundant.
+
+The "Instance: &lt;url&gt;" text moved to the native pane's own title bar: added
+`XLEdgeCTP.SetPaneCaption(string)`, which sets `_parentPane.Text` (the `ADXExcelTaskPane1`
+WinForms `Form.Text`, which Excel reads as the task pane's native title), and redirected all 4 former
+`instanceText.Text = ...` call sites to it (login navigate, logout, GLSense refresh-visible, and
+`RefreshLoginNavigationAsync`). `ADXExcelTaskPane1`'s constructor now sets a baseline
+`this.Text = "Orbit XLEdge Reports"` before any login, so the pane never shows a blank native title.
+
+Removed as dead code once the WPF close button was gone: the `OnCloseRequested` event, `BtnClose_Click`,
+and `ADXExcelTaskPane1`'s subscription to it (`_wpfControl.OnCloseRequested += () => this.Visible =
+false;`) - confirmed zero other callers/subscribers. Also removed the now-unused `xmlns:iconPacks` XAML
+namespace and `using MahApps.Metro.IconPacks;` from the .cs file (the header's icon was iconPacks' only
+use in this file).
+
 ## Excel unresponsive right after login until an extra click - WebView2 focus never released — 2026-08-03
 
 User-reported: right after a successful login in the task pane, the ribbon and worksheet stop

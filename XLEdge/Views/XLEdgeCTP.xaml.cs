@@ -1,6 +1,5 @@
 ﻿using AddinExpress.XL;
 using Microsoft.Web.WebView2.Core;
-using MahApps.Metro.IconPacks;
 using System.Linq;
 using System.Text.Json;
 using System;
@@ -34,8 +33,6 @@ namespace XLEdge.Views
         private bool _isInitialized;
         private bool _webViewEventsHooked;
         private bool _isDisposed;
-
-        public event Action OnCloseRequested;
 
         private static XLEdgeAppState appState => XLEdgeAppState.Instance;
 
@@ -430,8 +427,7 @@ namespace XLEdge.Views
                     WebCtrl.Visibility = Visibility.Visible;
                     WebCtrl.Source = new Uri(urlNavigate);
 
-                    if (instanceText != null)
-                        instanceText.Text = "Instance: " + appState.LoginUrl;
+                    SetPaneCaption("Orbit XLEdge Reports - " + appState.LoginUrl);
                 });
 
                 LogUtility.LogDebug($"Navigating to: {urlNavigate}");
@@ -675,8 +671,7 @@ namespace XLEdge.Views
 
                         if (sourceUrl.Contains("loggedout=true") || sourceUrl.Contains("applogout"))
                         {
-                            if (instanceText != null)
-                                instanceText.Text = "Instance:";
+                            SetPaneCaption("Orbit XLEdge Reports");
 
                             appState.IsLoginCompleted = false;
 
@@ -1079,8 +1074,8 @@ namespace XLEdge.Views
 
                         appState.EdgePaneShown = false;
 
-                        if (!string.IsNullOrWhiteSpace(appState.LoginUrl) && instanceText != null)
-                            instanceText.Text = "Instance: " + appState.LoginUrl;
+                        if (!string.IsNullOrWhiteSpace(appState.LoginUrl))
+                            SetPaneCaption("Orbit XLEdge Reports - " + appState.LoginUrl);
                     });
 
                     var timeout = TimeSpan.FromMinutes(1);
@@ -1179,25 +1174,33 @@ namespace XLEdge.Views
         {
             await RunOnUIAsync(() =>
             {
-
-                if (!string.IsNullOrWhiteSpace(appState.LoginUrl) && instanceText != null)
-                    instanceText.Text = "Instance: " + appState.LoginUrl;
+                if (!string.IsNullOrWhiteSpace(appState.LoginUrl))
+                    SetPaneCaption("Orbit XLEdge Reports - " + appState.LoginUrl);
             });
 
             await NavigateToLoginUrlSafeAsync();
         }
 
-        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Sets the native Add-in Express/Excel task pane's own title bar text. Replaces the removed
+        /// WPF header's "Instance: &lt;url&gt;" TextBlock now that the pane relies on Excel's native
+        /// chrome (title bar + close button) instead of a custom in-content header.
+        /// </summary>
+        private void SetPaneCaption(string caption)
         {
             try
             {
-                OnCloseRequested?.Invoke();
+                if (_parentPane != null)
+                {
+                    _parentPane.Text = caption;
+                }
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, "Error in BtnClose_Click");
+                LogUtility.LogWarn($"SetPaneCaption: failed to set task pane caption - {ex.Message}");
             }
         }
+
         /// <summary>
         /// Forces focus away from the WebView2/task pane back to Excel
         /// </summary>
