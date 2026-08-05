@@ -17,8 +17,8 @@
              MinWidth (600) can now legitimately exceed the real docked pane's width (see the
              MinWidth removal on the root UserControl above) without silently clipping content that
              the user has no way to reach - it scrolls into view instead. -->
-        <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,0,10,0">
-            <Grid MinWidth="600" Margin="0,0,10,0" VerticalAlignment="Stretch" MinHeight="{Binding ActualHeight,
+        <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,0,5,0">
+            <Grid MinWidth="600" Margin="0,0,5,0" VerticalAlignment="Stretch" MinHeight="{Binding ActualHeight,
                       RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="267*"/>
