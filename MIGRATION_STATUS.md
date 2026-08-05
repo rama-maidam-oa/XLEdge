@@ -1,6 +1,43 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-03
+Last updated: 2026-08-05
+
+## Rebuilt 11.1.0 on top of the known-good focus-fix baseline, cherry-picking unrelated fixes — 2026-08-05
+
+`cd467a9` ("Fix Excel unresponsive after login - WebView2 keyboard focus never released") was confirmed
+by real-world testing to be the last commit with correct, race-free keyboard focus behavior after login
+and after closing a toast. Every commit after it on the old `11.1.0` line - a long sequence chasing
+warm-up windows, deferred toast display, semaphore-guarded focus release, and `ApplicationIdle`
+dispatcher tricks - reintroduced the very race it was trying to fix, each fix requiring more compensating
+complexity than the last. Rather than keep patching that chain, `11.1.0` was reset to `cd467a9` and the
+*other*, genuinely unrelated fixes from the discarded chain were re-applied on top of it one at a time,
+skipping anything that touched focus/toast/warm-up timing:
+
+- Removed the custom WPF task-pane header in favor of native Add-in Express/Excel chrome (native close
+  button, native title bar via `SetPaneCaption`).
+- `ShowSegmentSelectionWindow` preference now defaults to `true`, with the existing JSON-preferences
+  backfill logic covering it automatically.
+- Options window: Save/Apply now show an info toast ("will apply to this session and save locally" /
+  "will apply to this session only") and no longer auto-close the window - the user closes it manually.
+- Removed the dummy WPF-UI warm-up window used during ribbon load.
+- Live reports: `CreateReportFromTitleAsync` now has a top-level try/catch that always surfaces an error
+  toast and tears down the busy overlay on failure, instead of leaving it spinning forever.
+- MSI rebuild metadata: commit date bumped to 05-Aug-2026, installer `SourcePath` corrected to the
+  Release build output, .NET Framework 4.8.1 added as an installer prerequisite.
+- Reduced the XLEdge CTP's right-edge gap (`MainScrollViewer` margin) from 10px to 5px.
+
+Explicitly excluded (still reachable by SHA, not on this branch): the entire focus/toast/warm-up
+debugging chain (`3a0714e`, `fd44862`, `85d98cd`, `fd37b13`, `69c309f`, `67fa78f`, `6426c00`, `5a7a066`,
+`c9fb4cd`, `50894f7`, `454cdbd`, `3137568`, `e08db20`, `708208c`, `9a2d804`, `149d238`, `310d0ca`,
+`5121131`, `bec1388`), and a separate scrollbar-rendering saga on `XLEdgeCTP.xaml`
+(`8ed7fa4`/`f5b22b7`/`42b9165`/`b2e1d90`/`c2312e1`/`551c05b`) that chased a different bug through several
+reversals and landed on a materially different ScrollViewer structure than `cd467a9`'s already-working
+one - reapplying it risked regressing the confirmed-good layout. Four SonarQube/build-warning commits
+(`42fc0bc`, `98af39c`, `45d1ac6`, `da995ed`) were checked and found to be fully superseded - `cd467a9`
+already contains the same (or a more advanced) fix independently, verified line-by-line.
+
+This branch has not been merged into `master` yet - pending the user validating the rebuilt `11.1.0` in
+real use.
 
 ## Remove custom WPF task-pane header - use native Add-in Express/Excel chrome instead — 2026-08-03
 
