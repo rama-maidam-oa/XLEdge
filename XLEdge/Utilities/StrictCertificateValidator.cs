@@ -98,10 +98,35 @@ namespace XLEdge.Utilities
         }
         private static bool IsStrongCertificate(X509Certificate2 cert)
         {
-            // RSA < 2048 bits → reject
-            if (cert.PublicKey.Key is System.Security.Cryptography.RSA rsa &&
-                rsa.KeySize < 2048)
+            // cert.PublicKey.Key is the old, RSA/DSA-only accessor - it throws NotSupportedException
+            // for ECDSA keys, which is exactly what most present-day TLS certificates use (Google,
+            // Wikipedia/Cloudflare, and most modern CDNs default to ECDSA). That exception was
+            // escaping all the way out to Validate()'s outer catch, logging "Fatal TLS validation
+            // exception" and failing otherwise-legitimate, trusted connections. GetRSAPublicKey()/
+            // GetECDsaPublicKey() are the modern, algorithm-specific replacements - they return null
+            // instead of throwing when the certificate's key isn't that algorithm.
+            if (cert.GetRSAPublicKey() is System.Security.Cryptography.RSA rsa)
             {
+                // RSA < 2048 bits → reject
+                if (rsa.KeySize < 2048)
+                {
+                    return false;
+                }
+            }
+            else if (cert.GetECDsaPublicKey() is System.Security.Cryptography.ECDsa ecdsa)
+            {
+                // ECDSA < 256 bits (i.e. weaker than P-256) → reject. P-256 is the accepted modern
+                // minimum and is roughly equivalent in strength to RSA-2048.
+                if (ecdsa.KeySize < 256)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // Neither RSA nor ECDSA (e.g. legacy DSA) - not a key type this method can size up,
+                // so treat it the same as a weak key rather than letting it through unchecked.
+                LogUtility.LogError($"Certificate rejected: unrecognized public key algorithm ({cert.PublicKey.Oid.FriendlyName})");
                 return false;
             }
 
