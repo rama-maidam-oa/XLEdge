@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-05
 
+## Known-good checkpoint: commit 953a5b1 (tag `known-good-2026-08-05`) — 2026-08-05
+
+Confirmed fully working by the user in real Excel use: keyboard focus after login/toast, the ECDSA TLS
+fix, and report image embedding all verified good together. Both `master` and `11.1.0` are at this commit.
+If a later change regresses any of this, roll back to this tag/commit rather than re-debugging from
+scratch - `git checkout known-good-2026-08-05` (or `git reset --hard 953a5b1` on the affected branch).
+
 ## Report images failed to embed with InvalidCastException — 2026-08-05
 
 Once the ECDSA TLS fix (below) let report images actually download for the first time, every single one
