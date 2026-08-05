@@ -2,6 +2,22 @@
 
 Last updated: 2026-08-05
 
+## Server Configuration: Set as Default and Delete now persist immediately — 2026-08-05
+
+Both buttons (`XLEdgeServerConfiguration.xaml.cs`) previously only updated an in-memory cache
+(`UpdateCachedConfiguration`/`AutoSaveConfiguration`) and deferred the actual XML file write to a
+separate manual Save click - the status messages said as much ("Click Save to persist the change").
+Per request: Set as Default, Save, and Delete should all persist to disk; only Go (launch the task pane
+with the selected/default instance) and Close (close the window) shouldn't - both of those were already
+correct.
+
+`SaveConfiguration()` now returns `bool` (true only when it actually wrote to disk) so
+`BtnSetDefault_Click`/`BtnDelete_Click` can call it directly and tell a real persisted save apart from a
+validation failure (duplicate name, bad URL, missing field on another row) - on failure, the real error
+`SaveConfiguration` already surfaced via `UpdateStatus` is left in place instead of being overwritten by
+a falsely reassuring "saved" message. Inline cell edits (typing directly into Name/Address) still use the
+lighter in-memory `AutoSaveConfiguration()` - out of scope for this request.
+
 ## Known-good checkpoint: commit 953a5b1 (tag `known-good-2026-08-05`) — 2026-08-05
 
 Confirmed fully working by the user in real Excel use: keyboard focus after login/toast, the ECDSA TLS
