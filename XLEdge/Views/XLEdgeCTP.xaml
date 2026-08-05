@@ -32,8 +32,8 @@
                          property (SetPaneCaption) instead of a separate WPF bar - frees up this
                          vertical space for the actual report content below. -->
                     <!-- ================= Webview Browser Section ================= -->
-                    <Border Background="White" BorderThickness="1" BorderBrush="#E9ECEF" CornerRadius="6" Margin="0,0,0,15" VerticalAlignment="Stretch">
-                        <wpf:WebView2 x:Name="WebCtrl" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                    <Border Background="White" BorderThickness="1" BorderBrush="#E9ECEF" CornerRadius="6" Margin="0,0,0,20" VerticalAlignment="Stretch">
+                        <wpf:WebView2 x:Name="WebCtrl" Margin="0,0,0,20" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
                     </Border>
                 </Grid>
             </Grid>
