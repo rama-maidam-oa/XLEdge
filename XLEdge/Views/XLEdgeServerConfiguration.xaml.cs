@@ -190,7 +190,13 @@ namespace XLEdge.Views
             }
         }
 
-        private void SaveConfiguration()
+        /// <summary>
+        /// Returns true only when the configuration was actually written to disk, so callers other
+        /// than the Save button itself (Set as Default, Delete) can tell a real persisted save apart
+        /// from a validation failure - and avoid showing a falsely reassuring "saved" message when
+        /// SaveConfiguration already surfaced the real error via UpdateStatus.
+        /// </summary>
+        private bool SaveConfiguration()
         {
             try
             {
@@ -207,7 +213,7 @@ namespace XLEdge.Views
                 if (duplicateNames.Any())
                 {
                     UpdateStatus($"Duplicate Instance Names found: {string.Join(", ", duplicateNames)}", StatusMessageType.Error);
-                    return;
+                    return false;
                 }
 
                 // Validate URLs
@@ -220,7 +226,7 @@ namespace XLEdge.Views
                 if (invalidUrls.Any())
                 {
                     UpdateStatus($"Invalid URL format found. URLs must start with http:// or https://", StatusMessageType.Error);
-                    return;
+                    return false;
                 }
 
                 // Validate mandatory fields
@@ -231,7 +237,7 @@ namespace XLEdge.Views
                 if (missingMandatory.Any())
                 {
                     UpdateStatus($"Instance Name and URL Address are mandatory for all entries.", StatusMessageType.Error);
-                    return;
+                    return false;
                 }
 
                 // Ensure only one default exists before saving
@@ -267,11 +273,13 @@ namespace XLEdge.Views
                 persistedDefaultName = urlInstances.FirstOrDefault(u => u.IsDefault)?.Name;
 
                 UpdateStatus("Configuration saved successfully.", StatusMessageType.Success);
+                return true;
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, nameof(SaveConfiguration));
                 UpdateStatus($"Error saving configuration: {ex.Message}", StatusMessageType.Error);
+                return false;
             }
         }
 
@@ -353,7 +361,15 @@ namespace XLEdge.Views
                 }
 
                 SetDefaultInstance(selectedInstance);
-                UpdateStatus($"Default set to '{selectedInstance.Name}'. Click Save to persist the change.", StatusMessageType.Success);
+
+                // Set as Default now persists immediately instead of requiring a separate Save click -
+                // if SaveConfiguration fails validation (duplicate name, bad URL, missing field on some
+                // other row), it already shows the real error via UpdateStatus, so don't overwrite that
+                // with a falsely reassuring "saved" message.
+                if (SaveConfiguration())
+                {
+                    UpdateStatus($"Default set to '{selectedInstance.Name}' and saved.", StatusMessageType.Success);
+                }
             }
             else
             {
@@ -393,8 +409,15 @@ namespace XLEdge.Views
                             SetDefaultInstance(urlInstances.First());
                         }
 
-                        AutoSaveConfiguration();
-                        UpdateStatus($"Instance {instanceName} deleted successfully. Click Save to persist the change.", StatusMessageType.Info);
+                        // Delete now persists immediately instead of requiring a separate Save click -
+                        // if SaveConfiguration fails validation (e.g. another row still has bad/missing
+                        // data), it already shows the real error via UpdateStatus, so don't overwrite
+                        // that with a falsely reassuring message. The instance is still removed from
+                        // this session's grid either way; only the on-disk persistence is affected.
+                        if (SaveConfiguration())
+                        {
+                            UpdateStatus($"Instance {instanceName} deleted and saved.", StatusMessageType.Info);
+                        }
                         ResetRibbonIfLoggedOut();
                     },
                     noAction: () =>
