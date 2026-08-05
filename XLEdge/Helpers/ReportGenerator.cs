@@ -2579,9 +2579,17 @@ namespace XLEdge.Helpers
                         continue;
                     }
 
+                    // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
+                    // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
+                    // that only succeeds if the boxed type is exactly float, so it always threw
+                    // InvalidCastException here. Ported from FormProcessBar.vb, which passed
+                    // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
+                    // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
+                    // Convert.ToDouble first (matches the same pattern already used for this exact
+                    // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
                     Excel.Shape imgShape = sheet.Shapes.AddPicture(
                         destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
-                        (float)cell.Left, (float)cell.Top, (float)imgHeight, (float)imgWidth);
+                        (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
 
                     int rowIndex = cell.Row;
                     int colIndex = cell.Column;
