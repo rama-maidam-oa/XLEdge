@@ -2,6 +2,27 @@
 
 Last updated: 2026-08-05
 
+## TLS validation was failing for legitimate ECDSA certificates (report images) — 2026-08-05
+
+`StrictCertificateValidator.IsStrongCertificate` (`Utilities/StrictCertificateValidator.cs`) checked RSA
+key size via the obsolete `cert.PublicKey.Key` accessor, which only supports RSA/DSA and throws
+`NotSupportedException` for ECDSA keys - exactly what most present-day TLS endpoints default to (Google,
+Wikipedia/Cloudflare, most CDNs). That exception escaped to `Validate()`'s outer catch and failed the
+connection entirely ("Fatal TLS validation exception" / "Could not establish trust relationship"), even
+though the certificate chain had already built and validated successfully a few lines earlier.
+
+Found via the production logs (`XLEdge_Logs`): 78 occurrences on 04-Aug-2026 and 16 on 05-Aug-2026, always
+for report-image downloads from `encrypted-tbn1.gstatic.com` and `upload.wikimedia.org` (both ECDSA by
+default) via `ImageDownloadHelper`. The same validator is also wired into `APIHelper` and
+`XLEdgeAbout`, so any host presenting an EC certificate there would fail the same way.
+
+Fixed by replacing `cert.PublicKey.Key` with `cert.GetRSAPublicKey()`/`cert.GetECDsaPublicKey()` - the
+algorithm-specific, non-throwing replacements introduced in .NET Framework 4.6 specifically for this
+gap. RSA keys still need >=2048 bits; ECDSA keys now need >=256 bits (P-256, roughly equivalent strength
+to RSA-2048); any other/unrecognized key algorithm is rejected outright instead of throwing. This is a
+bug fix, not a loosening of certificate validation - the certificates involved (Google, Wikipedia) are
+legitimate and trusted; the code just couldn't evaluate their key type before.
+
 ## Task pane title now shows the bare instance URL only — 2026-08-05
 
 `SetPaneCaption` call sites (login navigate, logout, GLSense refresh-visible, `RefreshLoginNavigationAsync`)
