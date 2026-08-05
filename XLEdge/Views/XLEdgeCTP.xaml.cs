@@ -427,7 +427,7 @@ namespace XLEdge.Views
                     WebCtrl.Visibility = Visibility.Visible;
                     WebCtrl.Source = new Uri(urlNavigate);
 
-                    SetPaneCaption("Orbit XLEdge Reports - " + appState.LoginUrl);
+                    SetPaneCaption(appState.LoginUrl);
                 });
 
                 LogUtility.LogDebug($"Navigating to: {urlNavigate}");
@@ -671,7 +671,7 @@ namespace XLEdge.Views
 
                         if (sourceUrl.Contains("loggedout=true") || sourceUrl.Contains("applogout"))
                         {
-                            SetPaneCaption("Orbit XLEdge Reports");
+                            SetPaneCaption(string.Empty);
 
                             appState.IsLoginCompleted = false;
 
@@ -1075,7 +1075,7 @@ namespace XLEdge.Views
                         appState.EdgePaneShown = false;
 
                         if (!string.IsNullOrWhiteSpace(appState.LoginUrl))
-                            SetPaneCaption("Orbit XLEdge Reports - " + appState.LoginUrl);
+                            SetPaneCaption(appState.LoginUrl);
                     });
 
                     var timeout = TimeSpan.FromMinutes(1);
@@ -1175,7 +1175,7 @@ namespace XLEdge.Views
             await RunOnUIAsync(() =>
             {
                 if (!string.IsNullOrWhiteSpace(appState.LoginUrl))
-                    SetPaneCaption("Orbit XLEdge Reports - " + appState.LoginUrl);
+                    SetPaneCaption(appState.LoginUrl);
             });
 
             await NavigateToLoginUrlSafeAsync();
@@ -1184,7 +1184,9 @@ namespace XLEdge.Views
         /// <summary>
         /// Sets the native Add-in Express/Excel task pane's own title bar text. Replaces the removed
         /// WPF header's "Instance: &lt;url&gt;" TextBlock now that the pane relies on Excel's native
-        /// chrome (title bar + close button) instead of a custom in-content header.
+        /// chrome (title bar + close button) instead of a custom in-content header. Caption is the
+        /// bare instance URL only (no "Orbit XLEdge Reports" prefix/suffix) - callers pass
+        /// string.Empty for the logged-out/no-instance state.
         /// </summary>
         private void SetPaneCaption(string caption)
         {
