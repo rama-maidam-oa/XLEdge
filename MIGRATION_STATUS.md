@@ -2,6 +2,25 @@
 
 Last updated: 2026-08-05
 
+## Report images failed to embed with InvalidCastException — 2026-08-05
+
+Once the ECDSA TLS fix (below) let report images actually download for the first time, every single one
+failed to embed with `InvalidCastException: Specified cast is not valid` in `ReportGenerator.
+AddImageColumn`'s `sheet.Shapes.AddPicture(...)` call. Cause: `Excel.Range.Left`/`.Top` are declared as
+`object` in the Interop PIA (boxed `double` at runtime); casting that directly to `float` is a strict CLR
+unboxing conversion, which only succeeds if the boxed type is exactly `float` - so `(float)cell.Left`
+always threw.
+
+Verified against the original VB.NET source (`FormProcessBar.vb`): it passed `CR.Left`/`CR.Top` with no
+cast at all - VB's (`Option Strict Off`) runtime conversion helpers handle a boxed-double-to-`Single`
+conversion transparently, which C#'s unboxing cast can't do. This is a literal-translation artifact from
+the VB→C# port, not related to this week's other fixes - it just never surfaced before because the TLS
+bug meant no image had ever reached this line successfully.
+
+Fixed with `Convert.ToDouble(cell.Left)`/`Convert.ToDouble(cell.Top)` before narrowing to `float`,
+matching the pattern already used for this same property elsewhere (`ExcelWindowHelper.cs`,
+`XLEdgeDrilldownReports.xaml.cs`).
+
 ## TLS validation was failing for legitimate ECDSA certificates (report images) — 2026-08-05
 
 `StrictCertificateValidator.IsStrongCertificate` (`Utilities/StrictCertificateValidator.cs`) checked RSA
