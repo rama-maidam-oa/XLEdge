@@ -955,7 +955,7 @@ namespace XLEdge.Helpers
 
             ActivateAndUnfreezeSheet(excelApp, sheet);
 
-            Excel.ListObject listObject = WriteReportDataAndCreateTable(sheet, tableId, headerRow, dataStartRow, mappings, reportMeta, rows, dataRowCount);
+            Excel.ListObject listObject = WriteReportDataAndCreateTable(sheet, tableId, headerRow, dataStartRow, mappings, reportMeta, rows);
 
             HideFlaggedColumns(listObject, reportMeta, mappings);
 
@@ -1047,7 +1047,7 @@ namespace XLEdge.Helpers
 
             if (sameSheet && string.IsNullOrEmpty(companionSheetToDelete))
             {
-                companionSheetToDelete = FindOrphanedCompanionSheetName(workbook, sheet.Name, tableId);
+                companionSheetToDelete = FindOrphanedCompanionSheetName(sheet.Name, tableId);
             }
 
             return sheet;
@@ -1137,7 +1137,7 @@ namespace XLEdge.Helpers
         // Extracted from BuildReportTable - when writing into same-sheet mode, checks for a
         // leftover companion parameter sheet (from a prior non-same-sheet run of this report) that
         // is now orphaned and should be cleaned up.
-        private static string FindOrphanedCompanionSheetName(Excel.Workbook workbook, string sheetName, string tableId)
+        private static string FindOrphanedCompanionSheetName(string sheetName, string tableId)
         {
             try
             {
@@ -1183,8 +1183,10 @@ namespace XLEdge.Helpers
 
         // Extracted from BuildReportTable - writes the header row and (if any) the data rows as bulk
         // Value2 array writes, then wraps the written range in a new ListObject named tableId.
-        private static Excel.ListObject WriteReportDataAndCreateTable(Excel.Worksheet sheet, string tableId, int headerRow, int dataStartRow, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows, int dataRowCount)
+        private static Excel.ListObject WriteReportDataAndCreateTable(Excel.Worksheet sheet, string tableId, int headerRow, int dataStartRow, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows)
         {
+            int dataRowCount = Math.Max(0, rows.Count - 1);
+
             object[,] headerArr = new object[1, mappings.Count];
             for (int c = 0; c < mappings.Count; c++)
             {
@@ -2651,7 +2653,7 @@ namespace XLEdge.Helpers
 
         // Extracted from AddDrilldownHyperlinks - groups drilldown definitions by their target
         // column name, joining every drilldown's tooltip text for columns shared by more than one.
-        private static Dictionary<string, List<string>> BuildDrilldownColumnMap(RptDrilldown[] drilldowns, string reportId)
+        private static Dictionary<string, List<string>> BuildDrilldownColumnMap(RptDrilldown[] drilldowns, int reportId)
         {
             var byColumn = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (RptDrilldown dd in drilldowns)
@@ -2927,14 +2929,13 @@ namespace XLEdge.Helpers
         // Cognitive-complexity refactor (SonarQube S3776, was 34): the per-row body is pulled into
         // EmbedImageForRow, with the destination-path-building and post-AddPicture sizing logic
         // further split out. This is deliberately conservative about the existing COM-leak fix: every
-        // `Marshal.ReleaseComObject` call still happens at exactly the same point, in the same
-        // `finally` block, as before - `entireRow`/`entireColumn` are threaded out of
-        // ApplyImagePlacementSizing via `out` parameters rather than being released inside it, so if
-        // an exception is thrown before one of them would have been assigned, the caller's variable
-        // simply keeps its pre-call `null` value (exactly like today) and the existing
-        // `if (x != null) Marshal.ReleaseComObject(x);` guards in the caller's finally still behave
-        // identically. Every original `continue` becomes a `return` from the per-row method (the
-        // per-row `finally` still runs either way, exactly as it did for `continue` in a
+        // COM release still happens at exactly the same point, in the same finally block, as before -
+        // entireRow/entireColumn are threaded out of ApplyImagePlacementSizing via out parameters
+        // rather than being released inside it, so if an exception is thrown before one of them would
+        // have been assigned, the caller's variable simply keeps its pre-call null value (exactly
+        // like today) and the existing null-check-before-release guards in the caller's finally still
+        // behave identically. Every original "continue" becomes a "return" from the per-row method
+        // (the per-row finally still runs either way, exactly as it did for "continue" in a
         // try/finally). Every condition, comment, and log message is unchanged.
         private static void AddImageColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col)
         {
@@ -2957,7 +2958,7 @@ namespace XLEdge.Helpers
             {
                 for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    EmbedImageForRow(sheet, dataRange, r, matchCol, imgHeight, imgWidth, rowMaxHeights, colMaxWidths);
+                    EmbedImageForRow(sheet, dataRange, r, matchCol, (imgHeight, imgWidth), rowMaxHeights, colMaxWidths);
                 }
             }
             finally
@@ -2968,16 +2969,16 @@ namespace XLEdge.Helpers
 
         // Extracted from AddImageColumn - downloads and embeds the image for one data row's cell (if
         // any), tracking per-row/per-column max size for row-height/column-width autosizing.
-        private static void EmbedImageForRow(Excel.Worksheet sheet, Excel.Range dataRange, int r, int matchCol, double imgHeight, double imgWidth, Dictionary<int, double> rowMaxHeights, Dictionary<int, double> colMaxWidths)
+        private static void EmbedImageForRow(Excel.Worksheet sheet, Excel.Range dataRange, int r, int matchCol, (double Height, double Width) imageSize, Dictionary<int, double> rowMaxHeights, Dictionary<int, double> colMaxWidths)
         {
             Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-            // Only ever assigned when actually needed below - released in `finally` alongside
-            // `cell`/`imgShape` as part of the COM-leak fix (see comment at the end of this
-            // method): every Range/Shape obtained from Excel here is a live COM reference
-            // (RCW) that has to be explicitly released, or it lingers until the next GC pass
-            // finalizes it - across a report with many image rows, that's a lot of
-            // outstanding references piling up, which is what was keeping excel.exe running
-            // in the background after closing the workbook following a report with images.
+            // entireRow/entireColumn/imgShape below are only ever assigned when actually needed -
+            // released in the finally block alongside cell as part of the COM-leak fix: every
+            // Range/Shape obtained from Excel here is a live COM reference (RCW) that has to be
+            // explicitly released, or it lingers until the next GC pass finalizes it - across a
+            // report with many image rows, that's a lot of outstanding references piling up, which
+            // is what was keeping excel.exe running in the background after closing the workbook
+            // following a report with images.
             Excel.Range entireRow = null;
             Excel.Range entireColumn = null;
             Excel.Shape imgShape = null;
@@ -3016,7 +3017,7 @@ namespace XLEdge.Helpers
                 // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
                 imgShape = sheet.Shapes.AddPicture(
                     destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
-                    (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
+                    (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imageSize.Height, (float)imageSize.Width);
 
                 ApplyImagePlacementSizing(cell, imgShape, rowMaxHeights, colMaxWidths, out entireRow, out entireColumn);
 
