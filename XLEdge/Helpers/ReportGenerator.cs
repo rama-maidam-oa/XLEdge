@@ -3401,594 +3401,116 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Backing state for RefreshListObjectAsync's cognitive-complexity refactor (SonarQube S3776,
+        // was 192) - carries every value produced by one pipeline step and consumed by a later one,
+        // so step methods take one parameter instead of 8-10+. Field names mirror the original local
+        // variable names exactly.
+        private sealed class RefreshContext
+        {
+            public string ListObjectName;
+            public AppOverlay AppOverlay;
+            public bool UseWaitWindow;
+            public string ParamsJsonPayload;
+            public bool CollectErrors;
+
+            public XLEdgeWaitWindow WaitWindow;
+            public CancellationHelper CancelHelper;
+
+            public Excel.Application ExcelApp;
+            public Excel.Workbook Workbook;
+            public Excel.Worksheet Sheet;
+            public Excel.ListObject ListObject;
+
+            public string Title;
+            public string RunId;
+            public string StoredMetaJson;
+            public string StoredParamsJson;
+            public List<(string Original, string Modified, int RawIndex)> Mappings;
+            public string EeLoginUrl;
+
+            public bool HasParamsPayload;
+            public string ParamsWithLabels;
+
+            public string CsvResponse;
+            public List<List<string>> Rows;
+            public List<string> RawHeader;
+            public int RawCols;
+            public int NewDataCount;
+
+            public Dictionary<int, string> FirstRowFormulas;
+            public int HeaderRowIdx;
+            public int DataStartRow;
+            public int TargetTotalRows;
+            public int TableCols;
+        }
+
+        // Cognitive-complexity refactor (SonarQube S3776, was 192): this method is a long, mostly
+        // linear pipeline (already delimited by "STEP N" comments in the original code), so each
+        // step becomes its own method taking the shared RefreshContext above. Every step keeps its
+        // own original try/catch and log message; where the original called HandleFailureAsync/etc.
+        // and then returned out of the whole method, the step now returns a "ShouldContinue" bool
+        // that this method checks and turns back into a "return" - same overall stopping behavior,
+        // same order of operations, as before. Every condition, comment, and log message is
+        // unchanged; only the packaging into methods changed.
         public static async Task RefreshListObjectAsync(string listObjectName, AppOverlay appOverlay = null, bool useWaitWindow = true, string paramsJsonPayload = null, bool collectErrors = false)
         {
             using var excelBulkScope = new ExcelBulkOperationScope();
 
             if (string.IsNullOrWhiteSpace(listObjectName)) return;
 
-            XLEdgeWaitWindow waitWindow = null;
-            CancellationHelper cancelHelper = null;
+            var ctx = new RefreshContext
+            {
+                ListObjectName = listObjectName,
+                AppOverlay = appOverlay,
+                UseWaitWindow = useWaitWindow,
+                ParamsJsonPayload = paramsJsonPayload,
+                CollectErrors = collectErrors,
+            };
 
             try
             {
-                var excelApp = XLApp.App;
-                if (excelApp == null) throw new InvalidOperationException("Excel instance not available.");
+                ctx.ExcelApp = XLApp.App;
+                if (ctx.ExcelApp == null) throw new InvalidOperationException("Excel instance not available.");
 
-                // Check edit mode
-                try
+                if (!await CheckExcelEditModeAsync(ctx)) return;
+
+                await ShowRefreshProgressUiAsync(ctx);
+
+                if (!TryResolveWorkbookSheetAndListObject(ctx))
                 {
-                    var ac = excelApp.ActiveCell;
-                    var _ = ac?.Address;
-                }
-                catch (Exception editModeEx)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: Excel appears to be in edit mode - {editModeEx.Message}");
-                    await HandleFailureAsync("Excel is in edit mode. Please exit edit mode (press Enter or Esc) and try again.", null, appOverlay, useWaitWindow, collectErrors);
+                    await HandleFailureAsync($"Table '{listObjectName}' not found.", ctx.WaitWindow, appOverlay, useWaitWindow, collectErrors);
                     return;
                 }
 
-                if (useWaitWindow)
-                {
-                    var waitCancelHelper = new CancellationHelper();
-                    cancelHelper = waitCancelHelper;
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        try
-                        {
-                            waitWindow = new XLEdgeWaitWindow(waitCancelHelper);
-                            waitWindow.SetProcessTitle("Refreshing report", MahApps.Metro.IconPacks.PackIconFontAwesomeKind.SpinnerSolid);
-                            waitWindow.SetProcessMessage("Preparing to refresh report...");
-                            waitWindow.StartMonitoring();
-                            waitWindow.Show();
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Failed to show wait window for refresh");
-                        }
-                    });
-                }
-                else
-                {
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => appOverlay?.ShowBusyasyn("Refreshing report..."));
-                }
+                DeleteReportShapes(ctx.Sheet);
 
-                var wb = excelApp.ActiveWorkbook;
-                var sheet = excelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
-                if (sheet == null) throw new InvalidOperationException("No active worksheet.");
+                if (!await TryResolveXmlMetadataAsync(ctx)) return;
 
-                Microsoft.Office.Interop.Excel.ListObject lo = null;
-                try { lo = sheet.ListObjects[listObjectName]; }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: ListObject '{listObjectName}' not found - {ex.Message}");
-                }
-                if (lo == null)
-                {
-                    await HandleFailureAsync($"Table '{listObjectName}' not found.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
+                ResolveParamsPayload(ctx);
 
-                DeleteReportShapes(sheet);
+                if (!await TryFetchCsvDataAsync(ctx)) return;
 
-                // --- STEP 1: Get stored report data from CustomXMLParts (Meta Data) ---
-                // This is always from cache - meta data NEVER changes during refresh
-                if (!TryResolveReportXmlForRefresh(wb, listObjectName, lo, out ReportXmlRefreshResult xmlResult))
-                {
-                    await HandleFailureAsync("No metadata found for this table.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
+                if (!await TryParseCsvDataAsync(ctx)) return;
 
-                string title = xmlResult.Title;
-                string runId = xmlResult.RunId;
-                string storedMetaJson = xmlResult.MetaJson;
-                string storedParamsJson = xmlResult.ParamsJson;
-                List<(string Original, string Modified, int RawIndex)> mappings = xmlResult.Mappings;
+                AddMissingColumnsToTable(ctx);
+                ReorderTableColumns(ctx);
+                EnsureTableHasDataRow(ctx.ListObject);
+                ctx.FirstRowFormulas = CaptureFirstRowFormulas(ctx.ListObject);
 
-                LogUtility.LogDebug($"RefreshListObjectAsync|Using meta data from CustomXMLParts for table: {listObjectName}");
+                ctx.HeaderRowIdx = ctx.ListObject.HeaderRowRange.Row;
+                ctx.DataStartRow = ctx.HeaderRowIdx + 1;
+                ctx.TargetTotalRows = Math.Max(1, ctx.NewDataCount);
 
-                string eeLoginUrl = XLEdgeAppState.Instance.LoginUrl;
-                if (string.IsNullOrWhiteSpace(eeLoginUrl))
-                {
-                    await HandleFailureAsync("Login URL is not set.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
+                AdjustTableRowCount(ctx.ListObject, ctx.TargetTotalRows);
 
-                // --- STEP 2: Check if we have a payload from control sheet ---
-                // paramsJsonPayload is already the raw payload (no display values)
-                bool hasParamsPayload = !string.IsNullOrEmpty(paramsJsonPayload);
-                string paramsWithLabels = hasParamsPayload ? paramsJsonPayload : null;
+                ctx.TableCols = ctx.ListObject.ListColumns.Count;
 
-                if (hasParamsPayload)
-                {
-                    LogUtility.LogDebug($"RefreshListObjectAsync|Using control sheet payload for table: {listObjectName}");
-                }
-                else
-                {
-                    LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - using original params from CustomXMLParts");
-                }
-
-
-                // --- STEP 3: Fetch CSV data (with payload or empty) ---
-
-                if (cancelHelper == null)
-                {
-                    cancelHelper = new CancellationHelper();
-                }
-
-                await SetRefreshMessage("Downloading report data...", waitWindow, appOverlay, useWaitWindow);
-
-                string csvUrl = $"{eeLoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={runId}&type=csv";
-                string csvResponse = null;
-                try
-                {
-                    csvResponse = await ApiHelper.ServerAPI(csvUrl, "JSON", paramsWithLabels ?? string.Empty, "POST", cancelHelper.GetToken());
-                }
-                catch (OperationCanceledException)
-                {
-                    LogUtility.LogWarn("CSV fetch cancelled by user.");
-                    await ApiHelper.NotifyCancelRunAsync(eeLoginUrl, runId);
-                    await CancelCleanupAsync(waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    if (collectErrors) throw;
-                    if (useWaitWindow) { try { waitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window on cancel"); } }
-                    else { await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => { if (appOverlay != null) await appOverlay.HideBusyAsync(); }); }
-                    return;
-                }
-                catch (ApiTimeoutException ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync: CSV request timed out");
-                    await HandleFailureAsync(RequestTimedOutMessage, waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(csvResponse))
-                {
-                    await HandleFailureAsync("Failed to download report for refresh.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
-
-                // --- STEP 4: Parse CSV data ---
-                await SetRefreshMessage("Parsing report data...", waitWindow, appOverlay, useWaitWindow);
-                var rows = ParseCsv(csvResponse).ToList();
-                if (rows.Count == 0)
-                {
-                    await HandleFailureAsync("No data in report.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
-
-                var rawHeader = rows[0];
-                int rawCols = rawHeader.Count;
-                int newDataCount = Math.Max(0, rows.Count - 1);
-
-                // --- STEP 5: Add missing columns from raw data into the table ---
-                try
-                {
-                    var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 1; i <= lo.ListColumns.Count; i++)
-                    {
-                        try { existingNames.Add(lo.ListColumns[i].Name); }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumn[{i}].Name - {ex.Message}");
-                        }
-                    }
-
-                    for (int i = 1; i <= rawCols; i++)
-                    {
-                        bool mapped = mappings.Any(m => m.RawIndex == i);
-                        if (mapped) continue;
-
-                        string orig = rawHeader[i - 1] ?? string.Empty;
-                        string baseName = orig.Trim();
-                        if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + i;
-
-                        string mod = baseName;
-                        int suffix = 1;
-                        while (existingNames.Contains(mod) || mappings.Any(m => string.Equals(m.Modified, mod, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            mod = baseName + suffix.ToString();
-                            suffix++;
-                        }
-
-                        try
-                        {
-                            var added = lo.ListColumns.Add();
-                            try { added.Name = mod; }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename new column to '{mod}' - {ex.Message}");
-                            }
-                            existingNames.Add(mod);
-                            mappings.Add((Original: orig, Modified: mod, RawIndex: i));
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Failed to add missing column to table");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while adding missing columns to table - {ex.Message}");
-                }
-
-                // --- STEP 6: Re-order columns in the table to match original CSV order ---
-                try
-                {
-                    var desiredOrder = mappings.OrderBy(m => m.RawIndex).Select(m => m.Modified).ToList();
-                    int desiredCount = desiredOrder.Count;
-
-                    for (int pos = 1; pos <= desiredCount && pos <= lo.ListColumns.Count; pos++)
-                    {
-                        string desiredName = desiredOrder[pos - 1];
-                        string currentName = string.Empty;
-                        try { currentName = lo.ListColumns[pos].Name; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{pos}].Name during reorder - {ex.Message}");
-                        }
-
-                        if (string.Equals(currentName, desiredName, StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        int curIndex = -1;
-                        for (int i = 1; i <= lo.ListColumns.Count; i++)
-                        {
-                            try
-                            {
-                                if (string.Equals(lo.ListColumns[i].Name, desiredName, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    curIndex = i;
-                                    break;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{i}].Name while searching for '{desiredName}' - {ex.Message}");
-                            }
-                        }
-
-                        if (curIndex == -1)
-                            continue;
-
-                        try
-                        {
-                            var rangeA = lo.ListColumns[pos].Range;
-                            var rangeB = lo.ListColumns[curIndex].Range;
-                            if (rangeA != null && rangeB != null)
-                            {
-                                var temp = rangeA.Value2;
-                                rangeA.Value2 = rangeB.Value2;
-                                rangeB.Value2 = temp;
-                            }
-
-                            try
-                            {
-                                var headerRange = lo.HeaderRowRange;
-                                if (headerRange != null)
-                                {
-                                    var headerCellObj = headerRange.Cells[1, pos];
-                                    if (headerCellObj is Excel.Range headerCell)
-                                        headerCell.Value2 = desiredName;
-                                }
-                                try { lo.ListColumns[pos].Name = desiredName; }
-                                catch (Exception ex)
-                                {
-                                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename ListColumns[{pos}] to '{desiredName}' - {ex.Message}");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to sync header name for '{desiredName}' - {ex.Message}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Failed to reorder table columns");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while reordering table columns - {ex.Message}");
-                }
-
-                // --- STEP 7: Ensure table has at least one data row ---
-                int currentRows = 0;
-                try { currentRows = lo.DataBodyRange?.Rows.Count ?? 0; }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read DataBodyRange.Rows.Count - {ex.Message}");
-                    currentRows = 0;
-                }
-                if (currentRows == 0)
-                {
-                    try { lo.ListRows.Add(); }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to add an initial data row to the table - {ex.Message}");
-                    }
-                }
-
-                // --- STEP 8: Capture first data row formulas ---
-                var firstRowFormulas = new Dictionary<int, string>();
-                try
-                {
-                    var firstRowRange = lo.DataBodyRange.Resize[1, lo.ListColumns.Count];
-                    for (int c = 1; c <= lo.ListColumns.Count; c++)
-                    {
-                        try
-                        {
-                            var cell = firstRowRange.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
-                            var formula = cell?.Formula as string;
-                            if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
-                                firstRowFormulas[c] = formula;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} - {ex.Message}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while capturing first-row formulas - {ex.Message}");
-                }
-
-                int headerRowIdx = lo.HeaderRowRange.Row;
-                int dataStartRow = headerRowIdx + 1;
-                int targetTotalRows = Math.Max(1, newDataCount);
-
-                // --- STEP 9: Adjust table rows ---
-                try
-                {
-                    while ((lo.DataBodyRange?.Rows.Count ?? 0) < targetTotalRows)
-                    {
-                        lo.ListRows.Add();
-                    }
-
-                    while ((lo.DataBodyRange?.Rows.Count ?? 0) > targetTotalRows)
-                    {
-                        var last = lo.ListRows[lo.ListRows.Count];
-                        last.Delete();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to adjust table row count to {targetTotalRows} - {ex.Message}");
-                }
-
-                int tableCols = lo.ListColumns.Count;
-
-                // --- STEP 10: Write data to table ---
-                await SetRefreshMessage("Writing data to Excel...", waitWindow, appOverlay, useWaitWindow);
-
-                if (newDataCount > 0)
-                {
-                    for (int tc = 1; tc <= tableCols; tc++)
-                    {
-                        string modifiedName = string.Empty;
-                        try { modifiedName = lo.ListColumns[tc].Name; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{tc}].Name while writing refreshed data - {ex.Message}");
-                            continue;
-                        }
-
-                        var map = mappings.FirstOrDefault(m => string.Equals(m.Modified, modifiedName, StringComparison.OrdinalIgnoreCase));
-                        if (map.Modified == null)
-                        {
-                            continue;
-                        }
-
-                        int rawIndex = map.RawIndex;
-                        if (rawIndex < 1 || rawIndex > rawCols)
-                        {
-                            continue;
-                        }
-
-                        bool hasRow1Formula = firstRowFormulas.ContainsKey(tc);
-                        int colWriteStartRow = hasRow1Formula ? dataStartRow + 1 : dataStartRow;
-                        int colRowCount = targetTotalRows - (hasRow1Formula ? 1 : 0);
-
-                        if (colRowCount <= 0)
-                        {
-                            continue;
-                        }
-
-                        try
-                        {
-                            object[,] colArr = new object[colRowCount, 1];
-                            for (int i = 0; i < colRowCount; i++)
-                            {
-                                int physicalRow = colWriteStartRow + i;
-                                int csvRecordIndex = physicalRow - dataStartRow + 1;
-                                var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= newDataCount) ? rows[csvRecordIndex] : null;
-                                colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                            }
-
-                            var colStartCell = (Excel.Range)sheet.Cells[colWriteStartRow, tc];
-                            var colEndCell = (Excel.Range)sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
-                            sheet.Range[colStartCell, colEndCell].Value2 = colArr;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, $"Failed writing refreshed data for column {tc} ('{modifiedName}')");
-                        }
-                    }
-                }
-
-                // --- STEP 11: Fill down formulas from first data row where applicable ---
-                try
-                {
-                    int lastRow = dataStartRow + targetTotalRows - 1;
-                    for (int c = 1; c <= tableCols; c++)
-                    {
-                        if (firstRowFormulas.TryGetValue(c, out _))
-                        {
-                            var topCell = (Excel.Range)sheet.Cells[dataStartRow, c];
-                            var fillRange = sheet.Range[topCell, sheet.Cells[lastRow, c]];
-                            try { fillRange.FillDown(); }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to fill down formula for column {c} - {ex.Message}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while filling down preserved formulas - {ex.Message}");
-                }
-
-                // --- STEP 12: Handle RefreshSync ---
-                if (XLEdgeAppState.Instance.RefreshSync)
-                {
-                    try
-                    {
-                        for (int c = lo.ListColumns.Count; c >= 1; c--)
-                        {
-                            string colName = string.Empty;
-                            try { colName = lo.ListColumns[c].Name; }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{c}].Name during RefreshSync cleanup - {ex.Message}");
-                            }
-                            var map = mappings.FirstOrDefault(m => string.Equals(m.Modified, colName, StringComparison.OrdinalIgnoreCase));
-                            bool hasMapping = map.Modified != null;
-
-                            bool hasFormula = false;
-                            try
-                            {
-                                var firstRowObj = lo.DataBodyRange.Resize[1, lo.ListColumns.Count];
-                                var firstCell = firstRowObj?.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
-                                var formula = firstCell?.Formula as string;
-                                if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
-                                    hasFormula = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} during RefreshSync cleanup - {ex.Message}");
-                            }
-
-                            if (!hasMapping && !hasFormula)
-                            {
-                                try { lo.ListColumns[c].Delete(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete column"); }
-                            }
-                        }
-                    }
-                    catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete columns not present in mapping and not formula columns"); }
-                }
-
-                // --- STEP 13: Re-embed drilldown/attachment/image columns ---
-                // Use meta data from CustomXMLParts (storedMetaJson)
-                await SetRefreshMessage("Embedding attachment or drilldown links...", waitWindow, appOverlay, useWaitWindow);
-                ReportMeta reportMetaForLinks = null;
-                try
-                {
-                    if (!string.IsNullOrWhiteSpace(storedMetaJson))
-                    {
-                        reportMetaForLinks = JsonSerializer.Deserialize<ReportMeta>(storedMetaJson, JsonGlobals.Options);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for hyperlink/image re-embed");
-                }
-
-                // Re-embed drilldown/attachment/image columns
-                if (reportMetaForLinks != null)
-                {
-                    try
-                    {
-                        AddDrilldownHyperlinks(sheet, lo, reportMetaForLinks);
-                        AddAttachmentAndImageColumns(sheet, lo, reportMetaForLinks);
-                        LogUtility.LogDebug($"RefreshListObjectAsync|Re-embedded drilldown/attachment/image columns");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "RefreshListObjectAsync: failed to re-embed drilldown/attachment/image columns");
-                    }
-                }
-
-                // --- STEP 14: Update params data in worksheet (ONLY if control sheet exists) ---
-                await SetRefreshMessage("Updating param data...", waitWindow, appOverlay, useWaitWindow);
-                try
-                {
-                    if (hasParamsPayload && !string.IsNullOrEmpty(paramsWithLabels))
-                    {
-                        await SetRefreshMessage("Updating report parameters...", waitWindow, appOverlay, useWaitWindow);
-
-                        // Prefer the richly-merged array-shape params (preserves label/type/componentType
-                        // and carries forward untouched parameters) built by
-                        // AddinModule.BuildRefreshParamsPayload; falls back to the bare request-shape
-                        // payload if that merge is unavailable.
-                        string mergedParamsForDisplayAndStorage = !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.UpdatedParamData)
-                            ? XLEdgeAppState.Instance.UpdatedParamData
-                            : paramsWithLabels;
-
-                        // --- Update parameter sheet cells (IT4, IU4, IV4, IW4 + Parameters Section rows) ---
-                        UpdateParameterSheetCells(sheet, mergedParamsForDisplayAndStorage, lo);
-
-                        // --- Save the merged (label/type-preserving, untouched-params-preserving) params to CustomXMLParts ---
-                        SaveUpdatedReportData(wb, listObjectName, title, storedMetaJson, mergedParamsForDisplayAndStorage);
-
-                        // Clear cached data since we've saved it
-                        XLEdgeAppState.Instance.ClearCachedRefreshData();
-
-                        LogUtility.LogDebug($"RefreshListObjectAsync|Updated parameter sheet cells, saved merged params to CustomXMLParts, and cleared cached refresh data for table: {listObjectName}");
-                    }
-                    else
-                    {
-                        // No control sheet payload: rewrite the Parameters Section / IT4-IW4 cells from
-                        // the report's own stored parameter metadata, so a manually cleared or damaged
-                        // section is restored on every refresh. Nothing needs re-saving to the
-                        // CustomXMLPart here - storedParamsJson is already what's persisted.
-                        if (!string.IsNullOrWhiteSpace(storedParamsJson))
-                        {
-                            UpdateParameterSheetCells(sheet, storedParamsJson, lo);
-                            LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - restored Parameters Section from stored params JSON");
-                        }
-                        else
-                        {
-                            LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload and no stored params JSON - skipping parameter update");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync|Failed to update params/save to CustomXMLParts");
-                }
-
-                // --- STEP 15: Cleanup ---
-                await SetRefreshMessage("Cleaning up residual...", waitWindow, appOverlay, useWaitWindow);
-                try
-                {
-                    if (useWaitWindow)
-                    {
-                        try { waitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window"); }
-                    }
-                    else
-                    {
-                        if (appOverlay != null)
-                        {
-                            try
-                            {
-                                await System.Windows.Application.Current.Dispatcher
-                                    .InvokeAsync(() => appOverlay.HideBusyAsync())
-                                    .Task.Unwrap();
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogException(ex, "Failed to hide busy overlay");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to clean up wait window/busy overlay after successful refresh");
-                }
+                await WriteRefreshedDataToTableAsync(ctx);
+                FillDownPreservedFormulas(ctx);
+                HandleRefreshSyncColumnCleanup(ctx);
+                await ReembedLinksAfterRefreshAsync(ctx);
+                await UpdateRefreshedParamsAsync(ctx);
+                await CleanupRefreshProgressUiAsync(ctx);
 
                 // Reclaim keyboard focus from the WebView2 task pane back to Excel.
                 await ReleaseKeyboardFocusFromTaskPaneAsync();
@@ -4004,7 +3526,7 @@ namespace XLEdge.Helpers
 
                 if (useWaitWindow)
                 {
-                    await ShowErrorAsync(ex.Message, waitWindow);
+                    await ShowErrorAsync(ex.Message, ctx.WaitWindow);
                 }
                 else
                 {
@@ -4012,6 +3534,646 @@ namespace XLEdge.Helpers
                 }
 
                 await ReleaseKeyboardFocusFromTaskPaneAsync();
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync.
+        private static async Task<bool> CheckExcelEditModeAsync(RefreshContext ctx)
+        {
+            // Check edit mode
+            try
+            {
+                var ac = ctx.ExcelApp.ActiveCell;
+                var _ = ac?.Address;
+                return true;
+            }
+            catch (Exception editModeEx)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: Excel appears to be in edit mode - {editModeEx.Message}");
+                await HandleFailureAsync("Excel is in edit mode. Please exit edit mode (press Enter or Esc) and try again.", null, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync - shows the wait window (or busy overlay) used while
+        // the refresh runs.
+        private static async Task ShowRefreshProgressUiAsync(RefreshContext ctx)
+        {
+            if (ctx.UseWaitWindow)
+            {
+                var waitCancelHelper = new CancellationHelper();
+                ctx.CancelHelper = waitCancelHelper;
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        ctx.WaitWindow = new XLEdgeWaitWindow(waitCancelHelper);
+                        ctx.WaitWindow.SetProcessTitle("Refreshing report", MahApps.Metro.IconPacks.PackIconFontAwesomeKind.SpinnerSolid);
+                        ctx.WaitWindow.SetProcessMessage("Preparing to refresh report...");
+                        ctx.WaitWindow.StartMonitoring();
+                        ctx.WaitWindow.Show();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Failed to show wait window for refresh");
+                    }
+                });
+            }
+            else
+            {
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => ctx.AppOverlay?.ShowBusyasyn("Refreshing report..."));
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync - resolves the active workbook/sheet/ListObject.
+        // Note: an absent active worksheet still throws (uncaught here), exactly as before -
+        // propagating up to RefreshListObjectAsync's own catch, not treated as a "ShouldContinue"
+        // failure like an absent ListObject is.
+        private static bool TryResolveWorkbookSheetAndListObject(RefreshContext ctx)
+        {
+            ctx.Workbook = ctx.ExcelApp.ActiveWorkbook;
+            ctx.Sheet = ctx.ExcelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
+            if (ctx.Sheet == null) throw new InvalidOperationException("No active worksheet.");
+
+            Microsoft.Office.Interop.Excel.ListObject lo = null;
+            try { lo = ctx.Sheet.ListObjects[ctx.ListObjectName]; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: ListObject '{ctx.ListObjectName}' not found - {ex.Message}");
+            }
+
+            ctx.ListObject = lo;
+            return lo != null;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 1) - gets stored report data from
+        // CustomXMLParts (Meta Data). This is always from cache - meta data NEVER changes during
+        // refresh.
+        private static async Task<bool> TryResolveXmlMetadataAsync(RefreshContext ctx)
+        {
+            if (!TryResolveReportXmlForRefresh(ctx.Workbook, ctx.ListObjectName, ctx.ListObject, out ReportXmlRefreshResult xmlResult))
+            {
+                await HandleFailureAsync("No metadata found for this table.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            ctx.Title = xmlResult.Title;
+            ctx.RunId = xmlResult.RunId;
+            ctx.StoredMetaJson = xmlResult.MetaJson;
+            ctx.StoredParamsJson = xmlResult.ParamsJson;
+            ctx.Mappings = xmlResult.Mappings;
+
+            LogUtility.LogDebug($"RefreshListObjectAsync|Using meta data from CustomXMLParts for table: {ctx.ListObjectName}");
+
+            ctx.EeLoginUrl = XLEdgeAppState.Instance.LoginUrl;
+            if (string.IsNullOrWhiteSpace(ctx.EeLoginUrl))
+            {
+                await HandleFailureAsync("Login URL is not set.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 2) - checks if we have a payload from the
+        // control sheet. paramsJsonPayload is already the raw payload (no display values).
+        private static void ResolveParamsPayload(RefreshContext ctx)
+        {
+            ctx.HasParamsPayload = !string.IsNullOrEmpty(ctx.ParamsJsonPayload);
+            ctx.ParamsWithLabels = ctx.HasParamsPayload ? ctx.ParamsJsonPayload : null;
+
+            if (ctx.HasParamsPayload)
+            {
+                LogUtility.LogDebug($"RefreshListObjectAsync|Using control sheet payload for table: {ctx.ListObjectName}");
+            }
+            else
+            {
+                LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - using original params from CustomXMLParts");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 3) - fetches CSV data (with payload or empty).
+        private static async Task<bool> TryFetchCsvDataAsync(RefreshContext ctx)
+        {
+            if (ctx.CancelHelper == null)
+            {
+                ctx.CancelHelper = new CancellationHelper();
+            }
+
+            await SetRefreshMessage("Downloading report data...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+
+            string csvUrl = $"{ctx.EeLoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={ctx.RunId}&type=csv";
+            try
+            {
+                ctx.CsvResponse = await ApiHelper.ServerAPI(csvUrl, "JSON", ctx.ParamsWithLabels ?? string.Empty, "POST", ctx.CancelHelper.GetToken());
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("CSV fetch cancelled by user.");
+                await ApiHelper.NotifyCancelRunAsync(ctx.EeLoginUrl, ctx.RunId);
+                await CancelCleanupAsync(ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                if (ctx.CollectErrors) throw;
+                if (ctx.UseWaitWindow) { try { ctx.WaitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window on cancel"); } }
+                else { await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => { if (ctx.AppOverlay != null) await ctx.AppOverlay.HideBusyAsync(); }); }
+                return false;
+            }
+            catch (ApiTimeoutException ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: CSV request timed out");
+                await HandleFailureAsync(RequestTimedOutMessage, ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(ctx.CsvResponse))
+            {
+                await HandleFailureAsync("Failed to download report for refresh.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 4) - parses the downloaded CSV data.
+        private static async Task<bool> TryParseCsvDataAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Parsing report data...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            ctx.Rows = ParseCsv(ctx.CsvResponse).ToList();
+            if (ctx.Rows.Count == 0)
+            {
+                await HandleFailureAsync("No data in report.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            ctx.RawHeader = ctx.Rows[0];
+            ctx.RawCols = ctx.RawHeader.Count;
+            ctx.NewDataCount = Math.Max(0, ctx.Rows.Count - 1);
+
+            return true;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 5) - adds missing columns from raw data into
+        // the table.
+        private static void AddMissingColumnsToTable(RefreshContext ctx)
+        {
+            try
+            {
+                var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 1; i <= ctx.ListObject.ListColumns.Count; i++)
+                {
+                    try { existingNames.Add(ctx.ListObject.ListColumns[i].Name); }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumn[{i}].Name - {ex.Message}");
+                    }
+                }
+
+                for (int i = 1; i <= ctx.RawCols; i++)
+                {
+                    bool mapped = ctx.Mappings.Any(m => m.RawIndex == i);
+                    if (mapped) continue;
+
+                    string orig = ctx.RawHeader[i - 1] ?? string.Empty;
+                    string baseName = orig.Trim();
+                    if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + i;
+
+                    string mod = baseName;
+                    int suffix = 1;
+                    while (existingNames.Contains(mod) || ctx.Mappings.Any(m => string.Equals(m.Modified, mod, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        mod = baseName + suffix.ToString();
+                        suffix++;
+                    }
+
+                    try
+                    {
+                        var added = ctx.ListObject.ListColumns.Add();
+                        try { added.Name = mod; }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename new column to '{mod}' - {ex.Message}");
+                        }
+                        existingNames.Add(mod);
+                        ctx.Mappings.Add((Original: orig, Modified: mod, RawIndex: i));
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Failed to add missing column to table");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while adding missing columns to table - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 6) - re-orders columns in the table to match
+        // original CSV order.
+        private static void ReorderTableColumns(RefreshContext ctx)
+        {
+            try
+            {
+                var desiredOrder = ctx.Mappings.OrderBy(m => m.RawIndex).Select(m => m.Modified).ToList();
+                int desiredCount = desiredOrder.Count;
+
+                for (int pos = 1; pos <= desiredCount && pos <= ctx.ListObject.ListColumns.Count; pos++)
+                {
+                    string desiredName = desiredOrder[pos - 1];
+                    string currentName = string.Empty;
+                    try { currentName = ctx.ListObject.ListColumns[pos].Name; }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{pos}].Name during reorder - {ex.Message}");
+                    }
+
+                    if (string.Equals(currentName, desiredName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    int curIndex = -1;
+                    for (int i = 1; i <= ctx.ListObject.ListColumns.Count; i++)
+                    {
+                        try
+                        {
+                            if (string.Equals(ctx.ListObject.ListColumns[i].Name, desiredName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                curIndex = i;
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{i}].Name while searching for '{desiredName}' - {ex.Message}");
+                        }
+                    }
+
+                    if (curIndex == -1)
+                        continue;
+
+                    try
+                    {
+                        var rangeA = ctx.ListObject.ListColumns[pos].Range;
+                        var rangeB = ctx.ListObject.ListColumns[curIndex].Range;
+                        if (rangeA != null && rangeB != null)
+                        {
+                            var temp = rangeA.Value2;
+                            rangeA.Value2 = rangeB.Value2;
+                            rangeB.Value2 = temp;
+                        }
+
+                        try
+                        {
+                            var headerRange = ctx.ListObject.HeaderRowRange;
+                            if (headerRange != null)
+                            {
+                                var headerCellObj = headerRange.Cells[1, pos];
+                                if (headerCellObj is Excel.Range headerCell)
+                                    headerCell.Value2 = desiredName;
+                            }
+                            try { ctx.ListObject.ListColumns[pos].Name = desiredName; }
+                            catch (Exception ex)
+                            {
+                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename ListColumns[{pos}] to '{desiredName}' - {ex.Message}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to sync header name for '{desiredName}' - {ex.Message}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Failed to reorder table columns");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while reordering table columns - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 7) - ensures the table has at least one data
+        // row.
+        private static void EnsureTableHasDataRow(Excel.ListObject lo)
+        {
+            int currentRows = 0;
+            try { currentRows = lo.DataBodyRange?.Rows.Count ?? 0; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read DataBodyRange.Rows.Count - {ex.Message}");
+                currentRows = 0;
+            }
+            if (currentRows == 0)
+            {
+                try { lo.ListRows.Add(); }
+                catch (Exception ex)
+                {
+                    LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to add an initial data row to the table - {ex.Message}");
+                }
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 8) - captures first data row formulas.
+        private static Dictionary<int, string> CaptureFirstRowFormulas(Excel.ListObject lo)
+        {
+            var firstRowFormulas = new Dictionary<int, string>();
+            try
+            {
+                var firstRowRange = lo.DataBodyRange.Resize[1, lo.ListColumns.Count];
+                for (int c = 1; c <= lo.ListColumns.Count; c++)
+                {
+                    try
+                    {
+                        var cell = firstRowRange.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
+                        var formula = cell?.Formula as string;
+                        if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
+                            firstRowFormulas[c] = formula;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} - {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while capturing first-row formulas - {ex.Message}");
+            }
+
+            return firstRowFormulas;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 9) - adjusts table row count to match the new
+        // data.
+        private static void AdjustTableRowCount(Excel.ListObject lo, int targetTotalRows)
+        {
+            try
+            {
+                while ((lo.DataBodyRange?.Rows.Count ?? 0) < targetTotalRows)
+                {
+                    lo.ListRows.Add();
+                }
+
+                while ((lo.DataBodyRange?.Rows.Count ?? 0) > targetTotalRows)
+                {
+                    var last = lo.ListRows[lo.ListRows.Count];
+                    last.Delete();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to adjust table row count to {targetTotalRows} - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 10) - writes refreshed data to the table.
+        private static async Task WriteRefreshedDataToTableAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Writing data to Excel...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+
+            if (ctx.NewDataCount > 0)
+            {
+                for (int tc = 1; tc <= ctx.TableCols; tc++)
+                {
+                    string modifiedName = string.Empty;
+                    try { modifiedName = ctx.ListObject.ListColumns[tc].Name; }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{tc}].Name while writing refreshed data - {ex.Message}");
+                        continue;
+                    }
+
+                    var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, modifiedName, StringComparison.OrdinalIgnoreCase));
+                    if (map.Modified == null)
+                    {
+                        continue;
+                    }
+
+                    int rawIndex = map.RawIndex;
+                    if (rawIndex < 1 || rawIndex > ctx.RawCols)
+                    {
+                        continue;
+                    }
+
+                    bool hasRow1Formula = ctx.FirstRowFormulas.ContainsKey(tc);
+                    int colWriteStartRow = hasRow1Formula ? ctx.DataStartRow + 1 : ctx.DataStartRow;
+                    int colRowCount = ctx.TargetTotalRows - (hasRow1Formula ? 1 : 0);
+
+                    if (colRowCount <= 0)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        object[,] colArr = new object[colRowCount, 1];
+                        for (int i = 0; i < colRowCount; i++)
+                        {
+                            int physicalRow = colWriteStartRow + i;
+                            int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
+                            var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
+                            colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+                        }
+
+                        var colStartCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow, tc];
+                        var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
+                        ctx.Sheet.Range[colStartCell, colEndCell].Value2 = colArr;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"Failed writing refreshed data for column {tc} ('{modifiedName}')");
+                    }
+                }
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 11) - fills down formulas from the first data
+        // row where applicable.
+        private static void FillDownPreservedFormulas(RefreshContext ctx)
+        {
+            try
+            {
+                int lastRow = ctx.DataStartRow + ctx.TargetTotalRows - 1;
+                for (int c = 1; c <= ctx.TableCols; c++)
+                {
+                    if (ctx.FirstRowFormulas.TryGetValue(c, out _))
+                    {
+                        var topCell = (Excel.Range)ctx.Sheet.Cells[ctx.DataStartRow, c];
+                        var fillRange = ctx.Sheet.Range[topCell, ctx.Sheet.Cells[lastRow, c]];
+                        try { fillRange.FillDown(); }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to fill down formula for column {c} - {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while filling down preserved formulas - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 12) - handles RefreshSync column cleanup.
+        private static void HandleRefreshSyncColumnCleanup(RefreshContext ctx)
+        {
+            if (XLEdgeAppState.Instance.RefreshSync)
+            {
+                try
+                {
+                    for (int c = ctx.ListObject.ListColumns.Count; c >= 1; c--)
+                    {
+                        string colName = string.Empty;
+                        try { colName = ctx.ListObject.ListColumns[c].Name; }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{c}].Name during RefreshSync cleanup - {ex.Message}");
+                        }
+                        var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, colName, StringComparison.OrdinalIgnoreCase));
+                        bool hasMapping = map.Modified != null;
+
+                        bool hasFormula = false;
+                        try
+                        {
+                            var firstRowObj = ctx.ListObject.DataBodyRange.Resize[1, ctx.ListObject.ListColumns.Count];
+                            var firstCell = firstRowObj?.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
+                            var formula = firstCell?.Formula as string;
+                            if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
+                                hasFormula = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} during RefreshSync cleanup - {ex.Message}");
+                        }
+
+                        if (!hasMapping && !hasFormula)
+                        {
+                            try { ctx.ListObject.ListColumns[c].Delete(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete column"); }
+                        }
+                    }
+                }
+                catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete columns not present in mapping and not formula columns"); }
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 13) - re-embeds drilldown/attachment/image
+        // columns, using meta data from CustomXMLParts (storedMetaJson).
+        private static async Task ReembedLinksAfterRefreshAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Embedding attachment or drilldown links...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            ReportMeta reportMetaForLinks = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(ctx.StoredMetaJson))
+                {
+                    reportMetaForLinks = JsonSerializer.Deserialize<ReportMeta>(ctx.StoredMetaJson, JsonGlobals.Options);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for hyperlink/image re-embed");
+            }
+
+            // Re-embed drilldown/attachment/image columns
+            if (reportMetaForLinks != null)
+            {
+                try
+                {
+                    AddDrilldownHyperlinks(ctx.Sheet, ctx.ListObject, reportMetaForLinks);
+                    AddAttachmentAndImageColumns(ctx.Sheet, ctx.ListObject, reportMetaForLinks);
+                    LogUtility.LogDebug($"RefreshListObjectAsync|Re-embedded drilldown/attachment/image columns");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to re-embed drilldown/attachment/image columns");
+                }
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 14) - updates params data in the worksheet
+        // (only if a control sheet payload exists).
+        private static async Task UpdateRefreshedParamsAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Updating param data...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            try
+            {
+                if (ctx.HasParamsPayload && !string.IsNullOrEmpty(ctx.ParamsWithLabels))
+                {
+                    await SetRefreshMessage("Updating report parameters...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+
+                    // Prefer the richly-merged array-shape params (preserves label/type/componentType
+                    // and carries forward untouched parameters) built by
+                    // AddinModule.BuildRefreshParamsPayload; falls back to the bare request-shape
+                    // payload if that merge is unavailable.
+                    string mergedParamsForDisplayAndStorage = !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.UpdatedParamData)
+                        ? XLEdgeAppState.Instance.UpdatedParamData
+                        : ctx.ParamsWithLabels;
+
+                    // --- Update parameter sheet cells (IT4, IU4, IV4, IW4 + Parameters Section rows) ---
+                    UpdateParameterSheetCells(ctx.Sheet, mergedParamsForDisplayAndStorage, ctx.ListObject);
+
+                    // --- Save the merged (label/type-preserving, untouched-params-preserving) params to CustomXMLParts ---
+                    SaveUpdatedReportData(ctx.Workbook, ctx.ListObjectName, ctx.Title, ctx.StoredMetaJson, mergedParamsForDisplayAndStorage);
+
+                    // Clear cached data since we've saved it
+                    XLEdgeAppState.Instance.ClearCachedRefreshData();
+
+                    LogUtility.LogDebug($"RefreshListObjectAsync|Updated parameter sheet cells, saved merged params to CustomXMLParts, and cleared cached refresh data for table: {ctx.ListObjectName}");
+                }
+                else
+                {
+                    // No control sheet payload: rewrite the Parameters Section / IT4-IW4 cells from
+                    // the report's own stored parameter metadata, so a manually cleared or damaged
+                    // section is restored on every refresh. Nothing needs re-saving to the
+                    // CustomXMLPart here - storedParamsJson is already what's persisted.
+                    if (!string.IsNullOrWhiteSpace(ctx.StoredParamsJson))
+                    {
+                        UpdateParameterSheetCells(ctx.Sheet, ctx.StoredParamsJson, ctx.ListObject);
+                        LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - restored Parameters Section from stored params JSON");
+                    }
+                    else
+                    {
+                        LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload and no stored params JSON - skipping parameter update");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync|Failed to update params/save to CustomXMLParts");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 15) - closes the wait window / hides the busy
+        // overlay after a successful refresh.
+        private static async Task CleanupRefreshProgressUiAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Cleaning up residual...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            try
+            {
+                if (ctx.UseWaitWindow)
+                {
+                    try { ctx.WaitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window"); }
+                }
+                else
+                {
+                    if (ctx.AppOverlay != null)
+                    {
+                        try
+                        {
+                            await System.Windows.Application.Current.Dispatcher
+                                .InvokeAsync(() => ctx.AppOverlay.HideBusyAsync())
+                                .Task.Unwrap();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, "Failed to hide busy overlay");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: failed to clean up wait window/busy overlay after successful refresh");
             }
         }
         /// <summary>
