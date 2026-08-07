@@ -1,6 +1,44 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-05
+Last updated: 2026-08-07
+
+## Fixed: excel.exe stuck as a background process after running/downloading reports — 2026-08-07
+
+Confirmed by the user: after running or downloading a report and closing the workbook, `EXCEL.EXE` kept
+running as a background process, so the add-in wouldn't show up the next time Excel was opened - unless
+the user logged in and closed Excel without running any report, in which case it exited cleanly. Since
+XLEdge runs in-process inside `excel.exe` (not as an external Automation client), Excel's own shutdown
+sequence waits for every in-process COM reference (RCW) it handed out to actually be released before the
+process can fully exit; anything left un-released lingers until an unpredictable future GC pass finalizes
+it, which can easily outlive the visible Excel window. The fix landed in two layers, both needed together:
+
+`ReportGenerator.cs` - `AddImageColumn`, `AddDrilldownHyperlinks`, `AddAttachmentColumn`, and
+`AddHyperlinkColumn` all obtain a fresh `Excel.Range` (and, for images, `Shape`) per row via Interop
+property indexers inside per-row loops, without ever releasing them - each row leaked one or more RCWs.
+Wrapped every loop (and the outer `DataBodyRange`) in try/finally blocks calling
+`Marshal.ReleaseComObject` on each `cell`/`entireRow`/`entireColumn`/`imgShape`/`dataRange`. Added a new
+`ForceReleaseOutstandingComReferencesAsync()` (a `GC.Collect()` / `WaitForPendingFinalizers()` /
+`GC.Collect()` pass - Microsoft's own documented mitigation for this exact class of bug), called from
+`CleanupAsync()` after the existing keyboard-focus-release step so it can't interfere with that timing.
+
+`AddinModule.cs` / `AddinModule.Designer.cs` / `XLEdgeAppState.cs` - the add-in's existing
+`AddinBeginShutdown` handler only released the cached active-sheet/workbook COM overrides; it never
+detached the `adxExcelAppEvents1` event subscriptions (`SheetSelectionChange`, `SheetActivate`,
+`WorkbookActivate`, `SheetFollowHyperlink`, `SheetBeforeDelete`) or released the cached
+`Excel.Application` reference itself, and there was no `AddinFinalize` handler at all. Added
+`UnsubscribeFromAllExcelEvents()` (called from `AddinBeginShutdown`), a `Marshal.FinalReleaseComObject`
+release of the cached `Excel.Application` via a new `XLEdgeAppState.ClearExcelApplicationUnsafe()` (a
+plain no-recovery field clear - every existing setter on that class tries to re-discover a live Excel
+instance via the ROT when the current one looks invalid, which would have silently re-cached a fresh COM
+reference right after releasing the old one), and a new `AddinFinalize` handler (guarded by
+`_isFinalized`) that disposes `adxExcelAppEvents1` itself.
+
+This was modeled on (but is a deliberately narrower and safer subset of) the sibling GLSense add-in's own
+shutdown COM/event-release pattern. It intentionally does NOT close any open workbook
+(`wb.Close()`) and does NOT force-kill `excel.exe` - disabling/unloading the add-in while Excel keeps
+running also raises `AddinBeginShutdown`, and either of those would risk data loss or killing an unrelated
+Excel session. Confirmed by the user in real use: excel.exe now exits cleanly after running/downloading
+reports and closing the workbook.
 
 ## Server Configuration: Set as Default and Delete now persist immediately — 2026-08-05
 
