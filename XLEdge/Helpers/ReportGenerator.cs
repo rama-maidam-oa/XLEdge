@@ -3217,80 +3217,100 @@ namespace XLEdge.Helpers
         /// </summary>
         // internal (not private): RibEdgeRefreshAll_OnClick (AddinModule.cs) also calls this directly,
         // once after its own aggregated summary message for a book-wide RefreshAll.
+        // Cognitive-complexity refactor (SonarQube S3776, was 16): the two independently-guarded
+        // steps are pulled into their own methods, called sequentially in the same order as before -
+        // this does NOT change the delicate proven timing of this fix (each step is still fully
+        // awaited before the next starts, exactly as when they were two sequential try blocks in one
+        // method; the closures capture the same variables the same way regardless of which method
+        // physically contains them). Every condition, comment, log message, Sleep duration, and
+        // thread-marshalling call is unchanged.
         internal static async Task ReleaseKeyboardFocusFromTaskPaneAsync()
         {
             try
             {
-                try
-                {
-                    await UiDispatcher.RunAsync(() =>
-                    {
-                        var addinModule = XLEdge.AddinModule.CurrentInstance;
-                        if (addinModule != null)
-                        {
-                            var pane = addinModule.GetPaneInstance();
-                            if (pane != null)
-                            {
-                                pane.ReleaseFocusToExcel();
-                            }
-                        }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Failed to release focus from task pane - {ex.Message}");
-                }
-
-                try
-                {
-                    var excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
-                    if (excelApp != null)
-                    {
-                        ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
-
-                        // Nudge keyboard focus off the WebView2 control by actually selecting a
-                        // different cell then reselecting the original one - a real COM selection
-                        // change, not a synthetic keystroke. This used to be preceded by SendKeys
-                        // {F2}/{ESC} "dummy key" presses, which were found to be flipping the user's
-                        // NumLock state on every report run (SendKeys/Application.SendKeys shares the
-                        // same low-level toggle-key-detection path implicated in that). Removed -
-                        // the Sleep below still runs on a background thread so Excel's own
-                        // STA/message-pump thread stays free to process the COM selection calls,
-                        // which are marshalled onto it via UiDispatcher.Run.
-                        await Task.Run(() =>
-                        {
-                            try
-                            {
-                                Thread.Sleep(50);
-
-                                Excel.Range originalCell = null;
-                                UiDispatcher.Run(() =>
-                                {
-                                    if (excelApp.ActiveCell != null)
-                                    {
-                                        originalCell = excelApp.ActiveCell;
-                                        var target = originalCell.Offset[1, 0];
-                                        target?.Select();
-                                    }
-                                });
-                                Thread.Sleep(20);
-                                UiDispatcher.Run(() => originalCell?.Select());
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogWarn($"ReleaseKeyboardFocusFromTaskPaneAsync: Background focus reset failed - {ex.Message}");
-                            }
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Focus activation failed - {ex.Message}");
-                }
+                await ReleaseTaskPaneFocusToExcelAsync();
+                await ReactivateExcelWindowAndReselectCellAsync();
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "ReleaseKeyboardFocusFromTaskPaneAsync: Failed to reset keyboard focus");
+            }
+        }
+
+        // Extracted from ReleaseKeyboardFocusFromTaskPaneAsync - releases the task pane's own
+        // keyboard focus back to Excel.
+        private static async Task ReleaseTaskPaneFocusToExcelAsync()
+        {
+            try
+            {
+                await UiDispatcher.RunAsync(() =>
+                {
+                    var addinModule = XLEdge.AddinModule.CurrentInstance;
+                    if (addinModule != null)
+                    {
+                        var pane = addinModule.GetPaneInstance();
+                        if (pane != null)
+                        {
+                            pane.ReleaseFocusToExcel();
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Failed to release focus from task pane - {ex.Message}");
+            }
+        }
+
+        // Extracted from ReleaseKeyboardFocusFromTaskPaneAsync - activates Excel's main window, then
+        // nudges keyboard focus off the WebView2 control with a real COM cell-selection round trip.
+        private static async Task ReactivateExcelWindowAndReselectCellAsync()
+        {
+            try
+            {
+                var excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
+                if (excelApp != null)
+                {
+                    ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
+
+                    // Nudge keyboard focus off the WebView2 control by actually selecting a
+                    // different cell then reselecting the original one - a real COM selection
+                    // change, not a synthetic keystroke. This used to be preceded by SendKeys
+                    // {F2}/{ESC} "dummy key" presses, which were found to be flipping the user's
+                    // NumLock state on every report run (SendKeys/Application.SendKeys shares the
+                    // same low-level toggle-key-detection path implicated in that). Removed -
+                    // the Sleep below still runs on a background thread so Excel's own
+                    // STA/message-pump thread stays free to process the COM selection calls,
+                    // which are marshalled onto it via UiDispatcher.Run.
+                    await Task.Run(() =>
+                    {
+                        try
+                        {
+                            Thread.Sleep(50);
+
+                            Excel.Range originalCell = null;
+                            UiDispatcher.Run(() =>
+                            {
+                                if (excelApp.ActiveCell != null)
+                                {
+                                    originalCell = excelApp.ActiveCell;
+                                    var target = originalCell.Offset[1, 0];
+                                    target?.Select();
+                                }
+                            });
+                            Thread.Sleep(20);
+                            UiDispatcher.Run(() => originalCell?.Select());
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogWarn($"ReleaseKeyboardFocusFromTaskPaneAsync: Background focus reset failed - {ex.Message}");
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Focus activation failed - {ex.Message}");
             }
         }
 
