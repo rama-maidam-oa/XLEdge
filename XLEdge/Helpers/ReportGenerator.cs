@@ -2175,78 +2175,82 @@ namespace XLEdge.Helpers
         /// <summary>
         /// Computes the raw (pre-operator-formatting) display value for a single report parameter item.
         /// </summary>
+        // Cognitive-complexity refactor (SonarQube S3776, was 28): the three "just return empty"
+        // conditions are merged into a single guard (identical short-circuit order and null-safety -
+        // paramOperator is confirmed non-null before .Contains("NULL") runs, exactly as before), and
+        // the two deeply-nested displayValue/displayValues branches are pulled into their own
+        // helpers. Every condition, comment, and log message is unchanged.
         private static string ComputeRawParamDisplayValue(JsonElement item, string componentType, string paramOperator, string paramType)
         {
-            string paramValue;
-
             bool hasAnyProperty = item.ValueKind == JsonValueKind.Object && item.EnumerateObject().Any();
 
-            if (!hasAnyProperty)
+            if (!hasAnyProperty || paramOperator == null || paramType == null || paramOperator.Contains("NULL"))
             {
-                paramValue = string.Empty;
-            }
-            else if (paramOperator == null || paramType == null)
-            {
-                paramValue = string.Empty;
-            }
-            else if (paramOperator.Contains("NULL"))
-            {
-                paramValue = string.Empty;
-            }
-            else if (JsonHelper.TryGetProperty(item, "displayValue", out JsonElement dvEl) && dvEl.ValueKind != JsonValueKind.Null && dvEl.ValueKind != JsonValueKind.Undefined)
-            {
-                if (dvEl.ValueKind == JsonValueKind.Array)
-                {
-                    List<string> items = dvEl.EnumerateArray().Select(v => v.ToString()).ToList();
-                    paramValue = items.Count > 0
-                        ? string.Join(",", items.Select(v => JoinFormatted(v, paramType)))
-                        : string.Empty;
-                }
-                else if (dvEl.ValueKind == JsonValueKind.Object)
-                {
-                    LogUtility.LogWarn($"Type of jToken as object is not handled yet. {dvEl}");
-                    paramValue = string.Empty;
-                }
-                else
-                {
-                    paramValue = Convert.ToString(XLEdgeValueFormatter.FormatValue(dvEl.ToString(), paramType));
-                }
-            }
-            else if (JsonHelper.TryGetProperty(item, "displayValues", out JsonElement dvsEl) && dvsEl.ValueKind == JsonValueKind.Array)
-            {
-                List<JsonElement> values = dvsEl.EnumerateArray().ToList();
-
-                if (values.Count == 0)
-                {
-                    paramValue = string.Empty;
-                }
-                else if ((componentType != null && componentType.Contains("range")) ||
-                         paramOperator == "BETWEEN" || paramOperator == "NOT BETWEEN")
-                {
-                    if (values.Count == 2)
-                    {
-                        paramValue = $"{XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType)} and {XLEdgeValueFormatter.FormatValue(values[1].ToString(), paramType)}";
-                    }
-                    else if (values.Count == 1)
-                    {
-                        paramValue = Convert.ToString(XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType));
-                    }
-                    else
-                    {
-                        paramValue = string.Empty;
-                    }
-                }
-                else
-                {
-                    paramValue = string.Join(",", values.Select(v => JoinFormatted(v.ToString(), paramType)));
-                }
-            }
-            else
-            {
-                paramValue = string.Empty;
+                return string.Empty;
             }
 
-            return paramValue;
+            if (JsonHelper.TryGetProperty(item, "displayValue", out JsonElement dvEl) && dvEl.ValueKind != JsonValueKind.Null && dvEl.ValueKind != JsonValueKind.Undefined)
+            {
+                return ComputeFromDisplayValue(dvEl, paramType);
+            }
+
+            if (JsonHelper.TryGetProperty(item, "displayValues", out JsonElement dvsEl) && dvsEl.ValueKind == JsonValueKind.Array)
+            {
+                return ComputeFromDisplayValues(dvsEl.EnumerateArray().ToList(), componentType, paramOperator, paramType);
+            }
+
+            return string.Empty;
+        }
+
+        // Extracted from ComputeRawParamDisplayValue - handles the single-item "displayValue"
+        // property (array / object / scalar).
+        private static string ComputeFromDisplayValue(JsonElement dvEl, string paramType)
+        {
+            if (dvEl.ValueKind == JsonValueKind.Array)
+            {
+                List<string> items = dvEl.EnumerateArray().Select(v => v.ToString()).ToList();
+                return items.Count > 0
+                    ? string.Join(",", items.Select(v => JoinFormatted(v, paramType)))
+                    : string.Empty;
+            }
+
+            if (dvEl.ValueKind == JsonValueKind.Object)
+            {
+                LogUtility.LogWarn($"Type of jToken as object is not handled yet. {dvEl}");
+                return string.Empty;
+            }
+
+            return Convert.ToString(XLEdgeValueFormatter.FormatValue(dvEl.ToString(), paramType));
+        }
+
+        // Extracted from ComputeRawParamDisplayValue - handles the multi-item "displayValues" array,
+        // including the range/BETWEEN "X and Y" formatting.
+        private static string ComputeFromDisplayValues(List<JsonElement> values, string componentType, string paramOperator, string paramType)
+        {
+            if (values.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            bool isRangeStyle = (componentType != null && componentType.Contains("range")) ||
+                paramOperator == "BETWEEN" || paramOperator == "NOT BETWEEN";
+
+            if (!isRangeStyle)
+            {
+                return string.Join(",", values.Select(v => JoinFormatted(v.ToString(), paramType)));
+            }
+
+            if (values.Count == 2)
+            {
+                return $"{XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType)} and {XLEdgeValueFormatter.FormatValue(values[1].ToString(), paramType)}";
+            }
+
+            if (values.Count == 1)
+            {
+                return Convert.ToString(XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType));
+            }
+
+            return string.Empty;
         }
 
         /// <summary>
