@@ -2924,6 +2924,18 @@ namespace XLEdge.Helpers
             return hyperlinkCount;
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 34): the per-row body is pulled into
+        // EmbedImageForRow, with the destination-path-building and post-AddPicture sizing logic
+        // further split out. This is deliberately conservative about the existing COM-leak fix: every
+        // `Marshal.ReleaseComObject` call still happens at exactly the same point, in the same
+        // `finally` block, as before - `entireRow`/`entireColumn` are threaded out of
+        // ApplyImagePlacementSizing via `out` parameters rather than being released inside it, so if
+        // an exception is thrown before one of them would have been assigned, the caller's variable
+        // simply keeps its pre-call `null` value (exactly like today) and the existing
+        // `if (x != null) Marshal.ReleaseComObject(x);` guards in the caller's finally still behave
+        // identically. Every original `continue` becomes a `return` from the per-row method (the
+        // per-row `finally` still runs either way, exactly as it did for `continue` in a
+        // try/finally). Every condition, comment, and log message is unchanged.
         private static void AddImageColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col)
         {
             int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, col.Name?.Trim() ?? string.Empty);
@@ -2945,110 +2957,137 @@ namespace XLEdge.Helpers
             {
                 for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                    // Only ever assigned when actually needed below - released in `finally` alongside
-                    // `cell`/`imgShape` as part of the COM-leak fix (see comment at the end of this
-                    // method): every Range/Shape obtained from Excel here is a live COM reference
-                    // (RCW) that has to be explicitly released, or it lingers until the next GC pass
-                    // finalizes it - across a report with many image rows, that's a lot of
-                    // outstanding references piling up, which is what was keeping excel.exe running
-                    // in the background after closing the workbook following a report with images.
-                    Excel.Range entireRow = null;
-                    Excel.Range entireColumn = null;
-                    Excel.Shape imgShape = null;
-                    string destinationPath = null;
-                    try
-                    {
-                        object rawValue = cell.Value;
-                        if (rawValue == null)
-                        {
-                            continue;
-                        }
-
-                        string url = Convert.ToString(rawValue);
-                        cell.Clear();
-
-                        if (string.IsNullOrWhiteSpace(url))
-                        {
-                            continue;
-                        }
-
-                        string fileName = url.Contains("/") ? url.Substring(url.LastIndexOf('/') + 1) : url;
-                        foreach (char invalidChar in Path.GetInvalidFileNameChars())
-                        {
-                            fileName = fileName.Replace(invalidChar, '_');
-                        }
-
-                        string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-                        destinationPath = Path.Combine(downloadsFolder, fileName);
-
-                        bool downloaded = ImageDownloadHelper.TryDownloadImage(url, destinationPath);
-                        if (!downloaded || !File.Exists(destinationPath))
-                        {
-                            continue;
-                        }
-
-                        // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
-                        // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
-                        // that only succeeds if the boxed type is exactly float, so it always threw
-                        // InvalidCastException here. Ported from FormProcessBar.vb, which passed
-                        // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
-                        // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
-                        // Convert.ToDouble first (matches the same pattern already used for this exact
-                        // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
-                        imgShape = sheet.Shapes.AddPicture(
-                            destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
-                            (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
-
-                        int rowIndex = cell.Row;
-                        int colIndex = cell.Column;
-
-                        double actualRowHeight = Math.Min(imgShape.Height, 409);
-                        if (!rowMaxHeights.TryGetValue(rowIndex, out double existingRowHeight) || actualRowHeight > existingRowHeight)
-                        {
-                            rowMaxHeights[rowIndex] = actualRowHeight;
-                            entireRow = cell.EntireRow;
-                            entireRow.RowHeight = actualRowHeight;
-                        }
-
-                        double colWidthEstimate = imgShape.Width / 10.0;
-                        double adjustedColWidth = colWidthEstimate + (colWidthEstimate - 1);
-                        if (!colMaxWidths.TryGetValue(colIndex, out double existingColWidth) || adjustedColWidth > existingColWidth)
-                        {
-                            colMaxWidths[colIndex] = adjustedColWidth;
-                            entireColumn = cell.EntireColumn;
-                            entireColumn.ColumnWidth = adjustedColWidth;
-                        }
-
-                        string address = cell.Address[false, false, Excel.XlReferenceStyle.xlA1];
-
-                        imgShape.Name = $"ORB_{sheet.Name}_{address}";
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to embed image at {cell.Address}");
-                    }
-                    finally
-                    {
-                        if (destinationPath != null)
-                        {
-                            try { File.Delete(destinationPath); }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(AddAttachmentAndImageColumns)}: failed to delete temp image '{destinationPath}' - {ex.Message}");
-                            }
-                        }
-
-                        if (entireRow != null) Marshal.ReleaseComObject(entireRow);
-                        if (entireColumn != null) Marshal.ReleaseComObject(entireColumn);
-                        if (imgShape != null) Marshal.ReleaseComObject(imgShape);
-                        Marshal.ReleaseComObject(cell);
-                    }
+                    EmbedImageForRow(sheet, dataRange, r, matchCol, imgHeight, imgWidth, rowMaxHeights, colMaxWidths);
                 }
             }
             finally
             {
                 Marshal.ReleaseComObject(dataRange);
+            }
+        }
+
+        // Extracted from AddImageColumn - downloads and embeds the image for one data row's cell (if
+        // any), tracking per-row/per-column max size for row-height/column-width autosizing.
+        private static void EmbedImageForRow(Excel.Worksheet sheet, Excel.Range dataRange, int r, int matchCol, double imgHeight, double imgWidth, Dictionary<int, double> rowMaxHeights, Dictionary<int, double> colMaxWidths)
+        {
+            Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+            // Only ever assigned when actually needed below - released in `finally` alongside
+            // `cell`/`imgShape` as part of the COM-leak fix (see comment at the end of this
+            // method): every Range/Shape obtained from Excel here is a live COM reference
+            // (RCW) that has to be explicitly released, or it lingers until the next GC pass
+            // finalizes it - across a report with many image rows, that's a lot of
+            // outstanding references piling up, which is what was keeping excel.exe running
+            // in the background after closing the workbook following a report with images.
+            Excel.Range entireRow = null;
+            Excel.Range entireColumn = null;
+            Excel.Shape imgShape = null;
+            string destinationPath = null;
+            try
+            {
+                object rawValue = cell.Value;
+                if (rawValue == null)
+                {
+                    return;
+                }
+
+                string url = Convert.ToString(rawValue);
+                cell.Clear();
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    return;
+                }
+
+                destinationPath = BuildImageDestinationPath(url);
+
+                bool downloaded = ImageDownloadHelper.TryDownloadImage(url, destinationPath);
+                if (!downloaded || !File.Exists(destinationPath))
+                {
+                    return;
+                }
+
+                // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
+                // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
+                // that only succeeds if the boxed type is exactly float, so it always threw
+                // InvalidCastException here. Ported from FormProcessBar.vb, which passed
+                // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
+                // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
+                // Convert.ToDouble first (matches the same pattern already used for this exact
+                // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
+                imgShape = sheet.Shapes.AddPicture(
+                    destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
+                    (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
+
+                ApplyImagePlacementSizing(cell, imgShape, rowMaxHeights, colMaxWidths, out entireRow, out entireColumn);
+
+                string address = cell.Address[false, false, Excel.XlReferenceStyle.xlA1];
+
+                imgShape.Name = $"ORB_{sheet.Name}_{address}";
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Failed to embed image at {cell.Address}");
+            }
+            finally
+            {
+                if (destinationPath != null)
+                {
+                    try { File.Delete(destinationPath); }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(AddAttachmentAndImageColumns)}: failed to delete temp image '{destinationPath}' - {ex.Message}");
+                    }
+                }
+
+                if (entireRow != null) Marshal.ReleaseComObject(entireRow);
+                if (entireColumn != null) Marshal.ReleaseComObject(entireColumn);
+                if (imgShape != null) Marshal.ReleaseComObject(imgShape);
+                Marshal.ReleaseComObject(cell);
+            }
+        }
+
+        // Extracted from AddImageColumn (EmbedImageForRow) - sanitizes the image URL's file name and
+        // builds the temporary download destination path under the user's Downloads folder.
+        private static string BuildImageDestinationPath(string url)
+        {
+            string fileName = url.Contains("/") ? url.Substring(url.LastIndexOf('/') + 1) : url;
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                fileName = fileName.Replace(invalidChar, '_');
+            }
+
+            string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            return Path.Combine(downloadsFolder, fileName);
+        }
+
+        // Extracted from AddImageColumn (EmbedImageForRow) - after a picture is embedded, grows the
+        // row height / column width to fit it if it's the tallest/widest seen so far for that
+        // row/column. entireRow/entireColumn are only assigned (via out) when actually touched, so
+        // the caller's existing null-check-before-release in its finally block behaves exactly as it
+        // did when this logic was inline.
+        private static void ApplyImagePlacementSizing(Excel.Range cell, Excel.Shape imgShape, Dictionary<int, double> rowMaxHeights, Dictionary<int, double> colMaxWidths, out Excel.Range entireRow, out Excel.Range entireColumn)
+        {
+            entireRow = null;
+            entireColumn = null;
+
+            int rowIndex = cell.Row;
+            int colIndex = cell.Column;
+
+            double actualRowHeight = Math.Min(imgShape.Height, 409);
+            if (!rowMaxHeights.TryGetValue(rowIndex, out double existingRowHeight) || actualRowHeight > existingRowHeight)
+            {
+                rowMaxHeights[rowIndex] = actualRowHeight;
+                entireRow = cell.EntireRow;
+                entireRow.RowHeight = actualRowHeight;
+            }
+
+            double colWidthEstimate = imgShape.Width / 10.0;
+            double adjustedColWidth = colWidthEstimate + (colWidthEstimate - 1);
+            if (!colMaxWidths.TryGetValue(colIndex, out double existingColWidth) || adjustedColWidth > existingColWidth)
+            {
+                colMaxWidths[colIndex] = adjustedColWidth;
+                entireColumn = cell.EntireColumn;
+                entireColumn.ColumnWidth = adjustedColWidth;
             }
         }
 
