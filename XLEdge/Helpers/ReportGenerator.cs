@@ -2354,6 +2354,13 @@ namespace XLEdge.Helpers
             public List<(string Original, string Modified, int RawIndex)> Mappings = new();
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 35): the per-part "try current format,
+        // else try legacy format" logic is pulled out of the loop into TryResolveXmlPartForRefresh
+        // and its two format-specific helpers. Every "continue" in the original per-part logic maps
+        // to a "return false" here (the outer loop's finally-release still runs either way, exactly
+        // as it did for "continue" in a try/finally), and the current-format XDocument.Parse call is
+        // still uncaught here so a malformed part still surfaces through the same outer per-part
+        // catch as before. Every condition, comment, and log message is unchanged.
         private static bool TryResolveReportXmlForRefresh(
             Excel.Workbook workbook,
             string listObjectName,
@@ -2375,97 +2382,10 @@ namespace XLEdge.Helpers
                     Microsoft.Office.Core.CustomXMLPart part = parts[i];
                     try
                     {
-                        string xml = part.XML;
-                        if (string.IsNullOrWhiteSpace(xml))
+                        if (TryResolveXmlPartForRefresh(part.XML, listObjectName, listObject, result))
                         {
-                            continue;
-                        }
-
-                        if (xml.Contains($"<ListObjectName>{listObjectName}</ListObjectName>"))
-                        {
-                            XDocument xdoc = XDocument.Parse(xml);
-                            result.Title = xdoc.Root?.Element("Title")?.Value ?? string.Empty;
-                            result.MetaJson = xdoc.Root?.Element("Meta")?.Value ?? string.Empty;
-                            result.ParamsJson = xdoc.Root?.Element("Params")?.Value ?? string.Empty;
-
-                            string[] titleParts = result.Title.Split('|');
-                            if (titleParts.Length < 3)
-                            {
-                                continue;
-                            }
-
-                            result.ReportId = titleParts[1];
-                            result.RunId = titleParts[2];
-
-                            XElement colsElem = xdoc.Root?.Element("Columns");
-                            if (colsElem != null)
-                            {
-                                foreach (XElement ce in colsElem.Elements(ColumnElementName))
-                                {
-                                    string orig = ce.Attribute("original")?.Value ?? string.Empty;
-                                    string mod = ce.Attribute("modified")?.Value ?? string.Empty;
-                                    int.TryParse(ce.Attribute("rawIndex")?.Value ?? "0", out int idx);
-                                    result.Mappings.Add((orig, mod, idx));
-                                }
-                            }
-
                             return true;
                         }
-
-                        if (xml.IndexOf("<DataMeta>", StringComparison.OrdinalIgnoreCase) < 0 ||
-                            xml.IndexOf(listObjectName, StringComparison.OrdinalIgnoreCase) < 0)
-                        {
-                            continue;
-                        }
-
-                        XDocument legacyDoc;
-                        try
-                        {
-                            legacyDoc = XDocument.Parse(xml);
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "TryResolveReportXmlForRefresh: failed to parse a legacy CustomXMLPart");
-                            continue;
-                        }
-
-                        XElement dataElem = legacyDoc.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Data");
-                        if (dataElem == null)
-                        {
-                            continue;
-                        }
-
-                        string infoId = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "InfoID")?.Value ?? string.Empty;
-                        if (!string.Equals(infoId, listObjectName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        Match tableNameMatch = Regex.Match(listObjectName, @"^ORB_(?<reportId>[^_]+)_(?<runId>[^_]+)_[EP]$", RegexOptions.IgnoreCase);
-                        if (!tableNameMatch.Success)
-                        {
-                            LogUtility.LogWarn($"TryResolveReportXmlForRefresh|Legacy metadata found for '{listObjectName}' but its name doesn't match the expected ORB_<reportId>_<runId>_E/P pattern - cannot derive report/run id.");
-                            continue;
-                        }
-
-                        result.MetaJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataMeta")?.Value ?? string.Empty;
-                        result.ParamsJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataParam")?.Value ?? string.Empty;
-                        result.ReportId = tableNameMatch.Groups["reportId"].Value;
-                        result.RunId = tableNameMatch.Groups["runId"].Value;
-                        result.Title = $"Edge|{result.ReportId}|{result.RunId}|{listObjectName}";
-
-                        if (listObject?.HeaderRowRange != null)
-                        {
-                            int col = 1;
-                            foreach (Excel.Range headerCell in listObject.HeaderRowRange.Cells)
-                            {
-                                string headerText = Convert.ToString(headerCell.Value) ?? string.Empty;
-                                result.Mappings.Add((headerText, headerText, col));
-                                col++;
-                            }
-                        }
-
-                        return true;
                     }
                     catch (Exception ex)
                     {
@@ -2483,6 +2403,117 @@ namespace XLEdge.Helpers
             {
                 Marshal.ReleaseComObject(parts);
             }
+        }
+
+        // Extracted from TryResolveReportXmlForRefresh - tries the current XML format first (by
+        // <ListObjectName> tag match); a part matching that tag never falls through to the legacy
+        // format check, exactly as in the original inline logic.
+        private static bool TryResolveXmlPartForRefresh(string xml, string listObjectName, Excel.ListObject listObject, ReportXmlRefreshResult result)
+        {
+            if (string.IsNullOrWhiteSpace(xml))
+            {
+                return false;
+            }
+
+            if (xml.Contains($"<ListObjectName>{listObjectName}</ListObjectName>"))
+            {
+                return TryResolveCurrentFormatXmlPart(xml, result);
+            }
+
+            return TryResolveLegacyFormatXmlPart(xml, listObjectName, listObject, result);
+        }
+
+        // Extracted from TryResolveReportXmlForRefresh - current XML format (ListObjectName-tagged
+        // CustomXMLPart with Title/Meta/Params/Columns elements).
+        private static bool TryResolveCurrentFormatXmlPart(string xml, ReportXmlRefreshResult result)
+        {
+            XDocument xdoc = XDocument.Parse(xml);
+            result.Title = xdoc.Root?.Element("Title")?.Value ?? string.Empty;
+            result.MetaJson = xdoc.Root?.Element("Meta")?.Value ?? string.Empty;
+            result.ParamsJson = xdoc.Root?.Element("Params")?.Value ?? string.Empty;
+
+            string[] titleParts = result.Title.Split('|');
+            if (titleParts.Length < 3)
+            {
+                return false;
+            }
+
+            result.ReportId = titleParts[1];
+            result.RunId = titleParts[2];
+
+            XElement colsElem = xdoc.Root?.Element("Columns");
+            if (colsElem != null)
+            {
+                foreach (XElement ce in colsElem.Elements(ColumnElementName))
+                {
+                    string orig = ce.Attribute("original")?.Value ?? string.Empty;
+                    string mod = ce.Attribute("modified")?.Value ?? string.Empty;
+                    int.TryParse(ce.Attribute("rawIndex")?.Value ?? "0", out int idx);
+                    result.Mappings.Add((orig, mod, idx));
+                }
+            }
+
+            return true;
+        }
+
+        // Extracted from TryResolveReportXmlForRefresh - legacy XML format (a "Data" element with an
+        // InfoID matching listObjectName, and the report/run id derived from the table-name pattern).
+        private static bool TryResolveLegacyFormatXmlPart(string xml, string listObjectName, Excel.ListObject listObject, ReportXmlRefreshResult result)
+        {
+            if (xml.IndexOf("<DataMeta>", StringComparison.OrdinalIgnoreCase) < 0 ||
+                xml.IndexOf(listObjectName, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            XDocument legacyDoc;
+            try
+            {
+                legacyDoc = XDocument.Parse(xml);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "TryResolveReportXmlForRefresh: failed to parse a legacy CustomXMLPart");
+                return false;
+            }
+
+            XElement dataElem = legacyDoc.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Data");
+            if (dataElem == null)
+            {
+                return false;
+            }
+
+            string infoId = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "InfoID")?.Value ?? string.Empty;
+            if (!string.Equals(infoId, listObjectName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            Match tableNameMatch = Regex.Match(listObjectName, @"^ORB_(?<reportId>[^_]+)_(?<runId>[^_]+)_[EP]$", RegexOptions.IgnoreCase);
+            if (!tableNameMatch.Success)
+            {
+                LogUtility.LogWarn($"TryResolveReportXmlForRefresh|Legacy metadata found for '{listObjectName}' but its name doesn't match the expected ORB_<reportId>_<runId>_E/P pattern - cannot derive report/run id.");
+                return false;
+            }
+
+            result.MetaJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataMeta")?.Value ?? string.Empty;
+            result.ParamsJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataParam")?.Value ?? string.Empty;
+            result.ReportId = tableNameMatch.Groups["reportId"].Value;
+            result.RunId = tableNameMatch.Groups["runId"].Value;
+            result.Title = $"Edge|{result.ReportId}|{result.RunId}|{listObjectName}";
+
+            if (listObject?.HeaderRowRange != null)
+            {
+                int col = 1;
+                foreach (Excel.Range headerCell in listObject.HeaderRowRange.Cells)
+                {
+                    string headerText = Convert.ToString(headerCell.Value) ?? string.Empty;
+                    result.Mappings.Add((headerText, headerText, col));
+                    col++;
+                }
+            }
+
+            return true;
         }
 
         private static Excel.Worksheet FindSheetWithTable(Excel.Workbook workbook, string tableId)
