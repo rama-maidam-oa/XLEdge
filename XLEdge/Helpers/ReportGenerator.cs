@@ -2334,27 +2334,40 @@ namespace XLEdge.Helpers
                 }
 
                 Excel.Range dataRange = listObject.DataBodyRange;
-                for (int r = 1; r <= dataRange.Rows.Count; r++)
+                try
                 {
-                    if (hyperlinkCount >= maxHyperlinks)
+                    for (int r = 1; r <= dataRange.Rows.Count; r++)
                     {
-                        LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further drilldown hyperlinks.");
-                        return;
-                    }
-
-                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                    try
-                    {
-                        if (cell.Value2 != null && cell.Value2.ToString().Length > 0)
+                        if (hyperlinkCount >= maxHyperlinks)
                         {
-                            sheet.Hyperlinks.Add(cell, "", cell.Address, tooltip, cell.Value2.ToString());
-                            hyperlinkCount++;
+                            LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further drilldown hyperlinks.");
+                            return;
+                        }
+
+                        Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+                        try
+                        {
+                            if (cell.Value2 != null && cell.Value2.ToString().Length > 0)
+                            {
+                                sheet.Hyperlinks.Add(cell, "", cell.Address, tooltip, cell.Value2.ToString());
+                                hyperlinkCount++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, $"Failed to add drilldown hyperlink at {cell.Address}");
+                        }
+                        finally
+                        {
+                            // Part of the COM-leak fix (see AddImageColumn) - every Range obtained
+                            // here is a live COM reference that must be explicitly released.
+                            Marshal.ReleaseComObject(cell);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to add drilldown hyperlink at {cell.Address}");
-                    }
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(dataRange);
                 }
             }
         }
@@ -2449,36 +2462,49 @@ namespace XLEdge.Helpers
             }
 
             Excel.Range dataRange = listObject.DataBodyRange;
-            for (int r = 1; r <= dataRange.Rows.Count; r++)
+            try
             {
-                if (hyperlinkCount >= maxHyperlinks)
+                for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further attachment hyperlinks.");
-                    return hyperlinkCount;
-                }
-
-                Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                try
-                {
-                    object rawValue = cell.Value;
-                    string rawText = rawValue != null ? Convert.ToString(rawValue) : string.Empty;
-                    if (string.IsNullOrWhiteSpace(rawText))
+                    if (hyperlinkCount >= maxHyperlinks)
                     {
-                        continue;
+                        LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further attachment hyperlinks.");
+                        return hyperlinkCount;
                     }
 
-                    if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, out string displayValue, out string linkValue))
+                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+                    try
                     {
-                        continue;
-                    }
+                        object rawValue = cell.Value;
+                        string rawText = rawValue != null ? Convert.ToString(rawValue) : string.Empty;
+                        if (string.IsNullOrWhiteSpace(rawText))
+                        {
+                            continue;
+                        }
 
-                    sheet.Hyperlinks.Add(cell, "", "", linkValue, displayValue);
-                    hyperlinkCount++;
+                        if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, out string displayValue, out string linkValue))
+                        {
+                            continue;
+                        }
+
+                        sheet.Hyperlinks.Add(cell, "", "", linkValue, displayValue);
+                        hyperlinkCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"Failed to add attachment hyperlink at {cell.Address}");
+                    }
+                    finally
+                    {
+                        // Part of the COM-leak fix (see AddImageColumn) - every Range obtained here
+                        // is a live COM reference that must be explicitly released.
+                        Marshal.ReleaseComObject(cell);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, $"Failed to add attachment hyperlink at {cell.Address}");
-                }
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(dataRange);
             }
 
             return hyperlinkCount;
@@ -2493,35 +2519,48 @@ namespace XLEdge.Helpers
             }
 
             Excel.Range dataRange = listObject.DataBodyRange;
-            for (int r = 1; r <= dataRange.Rows.Count; r++)
+            try
             {
-                if (hyperlinkCount >= maxHyperlinks)
+                for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further hyperlink columns.");
-                    return hyperlinkCount;
-                }
-
-                Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                try
-                {
-                    object rawValue = cell.Value2;
-                    if (rawValue == null)
+                    if (hyperlinkCount >= maxHyperlinks)
                     {
-                        continue;
+                        LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further hyperlink columns.");
+                        return hyperlinkCount;
                     }
 
-                    string linkRef = Convert.ToString(rawValue);
-                    string displayText = !string.IsNullOrWhiteSpace(col.Properties?.OutputProp?.HlinkDisplayValue)
-                        ? col.Properties.OutputProp.HlinkDisplayValue
-                        : linkRef;
+                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+                    try
+                    {
+                        object rawValue = cell.Value2;
+                        if (rawValue == null)
+                        {
+                            continue;
+                        }
 
-                    cell.Hyperlinks.Add(cell, linkRef, cell.Address, string.Empty, displayText);
-                    hyperlinkCount++;
+                        string linkRef = Convert.ToString(rawValue);
+                        string displayText = !string.IsNullOrWhiteSpace(col.Properties?.OutputProp?.HlinkDisplayValue)
+                            ? col.Properties.OutputProp.HlinkDisplayValue
+                            : linkRef;
+
+                        cell.Hyperlinks.Add(cell, linkRef, cell.Address, string.Empty, displayText);
+                        hyperlinkCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"Failed to add hyperlink-type column value at {cell.Address}");
+                    }
+                    finally
+                    {
+                        // Part of the COM-leak fix (see AddImageColumn) - every Range obtained here
+                        // is a live COM reference that must be explicitly released.
+                        Marshal.ReleaseComObject(cell);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, $"Failed to add hyperlink-type column value at {cell.Address}");
-                }
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(dataRange);
             }
 
             return hyperlinkCount;
@@ -2544,90 +2583,114 @@ namespace XLEdge.Helpers
             if (imgHeight <= 0) imgHeight = 20;
             if (imgWidth <= 0) imgWidth = 20;
 
-            for (int r = 1; r <= dataRange.Rows.Count; r++)
+            try
             {
-                Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                string destinationPath = null;
-                try
+                for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    object rawValue = cell.Value;
-                    if (rawValue == null)
+                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+                    // Only ever assigned when actually needed below - released in `finally` alongside
+                    // `cell`/`imgShape` as part of the COM-leak fix (see comment at the end of this
+                    // method): every Range/Shape obtained from Excel here is a live COM reference
+                    // (RCW) that has to be explicitly released, or it lingers until the next GC pass
+                    // finalizes it - across a report with many image rows, that's a lot of
+                    // outstanding references piling up, which is what was keeping excel.exe running
+                    // in the background after closing the workbook following a report with images.
+                    Excel.Range entireRow = null;
+                    Excel.Range entireColumn = null;
+                    Excel.Shape imgShape = null;
+                    string destinationPath = null;
+                    try
                     {
-                        continue;
-                    }
-
-                    string url = Convert.ToString(rawValue);
-                    cell.Clear();
-
-                    if (string.IsNullOrWhiteSpace(url))
-                    {
-                        continue;
-                    }
-
-                    string fileName = url.Contains("/") ? url.Substring(url.LastIndexOf('/') + 1) : url;
-                    foreach (char invalidChar in Path.GetInvalidFileNameChars())
-                    {
-                        fileName = fileName.Replace(invalidChar, '_');
-                    }
-
-                    string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-                    destinationPath = Path.Combine(downloadsFolder, fileName);
-
-                    bool downloaded = ImageDownloadHelper.TryDownloadImage(url, destinationPath);
-                    if (!downloaded || !File.Exists(destinationPath))
-                    {
-                        continue;
-                    }
-
-                    // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
-                    // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
-                    // that only succeeds if the boxed type is exactly float, so it always threw
-                    // InvalidCastException here. Ported from FormProcessBar.vb, which passed
-                    // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
-                    // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
-                    // Convert.ToDouble first (matches the same pattern already used for this exact
-                    // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
-                    Excel.Shape imgShape = sheet.Shapes.AddPicture(
-                        destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
-                        (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
-
-                    int rowIndex = cell.Row;
-                    int colIndex = cell.Column;
-
-                    double actualRowHeight = Math.Min(imgShape.Height, 409);
-                    if (!rowMaxHeights.TryGetValue(rowIndex, out double existingRowHeight) || actualRowHeight > existingRowHeight)
-                    {
-                        rowMaxHeights[rowIndex] = actualRowHeight;
-                        cell.EntireRow.RowHeight = actualRowHeight;
-                    }
-
-                    double colWidthEstimate = imgShape.Width / 10.0;
-                    double adjustedColWidth = colWidthEstimate + (colWidthEstimate - 1);
-                    if (!colMaxWidths.TryGetValue(colIndex, out double existingColWidth) || adjustedColWidth > existingColWidth)
-                    {
-                        colMaxWidths[colIndex] = adjustedColWidth;
-                        cell.EntireColumn.ColumnWidth = adjustedColWidth;
-                    }
-
-                    string address = cell.Address[false, false, Excel.XlReferenceStyle.xlA1];
-
-                    imgShape.Name = $"ORB_{sheet.Name}_{address}";
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, $"Failed to embed image at {cell.Address}");
-                }
-                finally
-                {
-                    if (destinationPath != null)
-                    {
-                        try { File.Delete(destinationPath); }
-                        catch (Exception ex)
+                        object rawValue = cell.Value;
+                        if (rawValue == null)
                         {
-                            LogUtility.LogDebug($"{nameof(AddAttachmentAndImageColumns)}: failed to delete temp image '{destinationPath}' - {ex.Message}");
+                            continue;
                         }
+
+                        string url = Convert.ToString(rawValue);
+                        cell.Clear();
+
+                        if (string.IsNullOrWhiteSpace(url))
+                        {
+                            continue;
+                        }
+
+                        string fileName = url.Contains("/") ? url.Substring(url.LastIndexOf('/') + 1) : url;
+                        foreach (char invalidChar in Path.GetInvalidFileNameChars())
+                        {
+                            fileName = fileName.Replace(invalidChar, '_');
+                        }
+
+                        string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                        destinationPath = Path.Combine(downloadsFolder, fileName);
+
+                        bool downloaded = ImageDownloadHelper.TryDownloadImage(url, destinationPath);
+                        if (!downloaded || !File.Exists(destinationPath))
+                        {
+                            continue;
+                        }
+
+                        // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
+                        // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
+                        // that only succeeds if the boxed type is exactly float, so it always threw
+                        // InvalidCastException here. Ported from FormProcessBar.vb, which passed
+                        // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
+                        // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
+                        // Convert.ToDouble first (matches the same pattern already used for this exact
+                        // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
+                        imgShape = sheet.Shapes.AddPicture(
+                            destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
+                            (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
+
+                        int rowIndex = cell.Row;
+                        int colIndex = cell.Column;
+
+                        double actualRowHeight = Math.Min(imgShape.Height, 409);
+                        if (!rowMaxHeights.TryGetValue(rowIndex, out double existingRowHeight) || actualRowHeight > existingRowHeight)
+                        {
+                            rowMaxHeights[rowIndex] = actualRowHeight;
+                            entireRow = cell.EntireRow;
+                            entireRow.RowHeight = actualRowHeight;
+                        }
+
+                        double colWidthEstimate = imgShape.Width / 10.0;
+                        double adjustedColWidth = colWidthEstimate + (colWidthEstimate - 1);
+                        if (!colMaxWidths.TryGetValue(colIndex, out double existingColWidth) || adjustedColWidth > existingColWidth)
+                        {
+                            colMaxWidths[colIndex] = adjustedColWidth;
+                            entireColumn = cell.EntireColumn;
+                            entireColumn.ColumnWidth = adjustedColWidth;
+                        }
+
+                        string address = cell.Address[false, false, Excel.XlReferenceStyle.xlA1];
+
+                        imgShape.Name = $"ORB_{sheet.Name}_{address}";
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"Failed to embed image at {cell.Address}");
+                    }
+                    finally
+                    {
+                        if (destinationPath != null)
+                        {
+                            try { File.Delete(destinationPath); }
+                            catch (Exception ex)
+                            {
+                                LogUtility.LogDebug($"{nameof(AddAttachmentAndImageColumns)}: failed to delete temp image '{destinationPath}' - {ex.Message}");
+                            }
+                        }
+
+                        if (entireRow != null) Marshal.ReleaseComObject(entireRow);
+                        if (entireColumn != null) Marshal.ReleaseComObject(entireColumn);
+                        if (imgShape != null) Marshal.ReleaseComObject(imgShape);
+                        Marshal.ReleaseComObject(cell);
                     }
                 }
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(dataRange);
             }
         }
 
@@ -2714,6 +2777,39 @@ namespace XLEdge.Helpers
         {
             await UiDispatcher.RunAsync(DoCleanupOnUiThreadAsync);
             await ReleaseKeyboardFocusFromTaskPaneAsync();
+            await ForceReleaseOutstandingComReferencesAsync();
+        }
+
+        /// <summary>
+        /// COM-leak safety net, run once at the end of every report-generation/refresh/cancel/error
+        /// path (CleanupAsync is the single choke point all of them funnel through). Explicit
+        /// Marshal.ReleaseComObject calls were added to the hottest per-row loops (AddImageColumn,
+        /// AddDrilldownHyperlinks, AddAttachmentColumn, AddHyperlinkColumn), but this forces the CLR
+        /// to actually finalize anything still outstanding elsewhere (e.g. RefreshListObjectAsync's
+        /// smaller per-column loops), rather than leaving it to an unpredictable future GC pass - this
+        /// is Microsoft's own documented mitigation for Office interop leaks. It matters here
+        /// specifically because XLEdge runs in-process inside excel.exe (not as an external Automation
+        /// client): Excel's own shutdown sequence waits for every in-process COM reference to actually
+        /// be released before the process can fully exit, so leftover un-finalized RCWs (Runtime
+        /// Callable Wrappers) from a report run are exactly what was keeping excel.exe running in the
+        /// background after the workbook was closed. Run via Task.Run so this blocking collection
+        /// doesn't tie up the awaiting UI-thread continuation any longer than necessary.
+        /// </summary>
+        private static async Task ForceReleaseOutstandingComReferencesAsync()
+        {
+            try
+            {
+                await Task.Run(() =>
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect();
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(ForceReleaseOutstandingComReferencesAsync)}: GC collection pass failed - {ex.Message}");
+            }
         }
 
         /// <summary>

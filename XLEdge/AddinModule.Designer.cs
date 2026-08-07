@@ -382,6 +382,7 @@
             this.SupportedApps = AddinExpress.MSO.ADXOfficeHostApp.ohaExcel;
             this.AddinStartupComplete += new AddinExpress.MSO.ADXEvents_EventHandler(this.AddinModule_AddinStartupComplete);
             this.AddinBeginShutdown += new AddinExpress.MSO.ADXEvents_EventHandler(this.AddinModule_AddinBeginShutdown);
+            this.AddinFinalize += new AddinExpress.MSO.ADXEvents_EventHandler(this.AddinModule_AddinFinalize);
             this.OnError += new AddinExpress.MSO.ADXError_EventHandler(this.AddinModule_OnError);
             this.OnRibbonLoaded += new AddinExpress.MSO.ADXRibbonLoaded_EventHandler(this.AddinModule_OnRibbonLoaded);
 

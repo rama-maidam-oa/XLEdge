@@ -33,6 +33,7 @@ namespace XLEdge
 
         private bool _isCalendarOpen;
         private bool _isSegmentWindowOpen;
+        private bool _isFinalized;
 
         // Cached reference to the sibling GLSense add-in's COM object, ported from VB's module-level
         // "addinInstance" field (resolved once via GetGLSenseAddinObject, then reused - e.g. by
@@ -1698,10 +1699,16 @@ namespace XLEdge
 
         private void AddinModule_AddinBeginShutdown(object sender, EventArgs e)
         {
-            // Releases cached active-sheet/workbook COM overrides on add-in shutdown. Does not
-            // call Excel.Quit() - disabling/unloading the add-in should not close Excel itself.
+            // Releases cached active-sheet/workbook/application COM references and detaches all
+            // adxExcelAppEvents1 handlers on add-in shutdown. Does not call Excel.Quit() and never
+            // closes any open workbook - disabling/unloading the add-in (which also raises this
+            // event) should not close Excel itself or lose unsaved user work. This mirrors the
+            // safe subset of GLSense's shutdown COM-release pattern, deliberately excluding its
+            // workbook-closing loop and any forced process termination.
             try
             {
+                UnsubscribeFromAllExcelEvents();
+
                 Excel.Worksheet worksheetOverride = XLEdgeAppState.Instance.ActiveWorksheetOverride;
                 if (worksheetOverride != null)
                 {
@@ -1715,6 +1722,13 @@ namespace XLEdge
                     Marshal.FinalReleaseComObject(workbookOverride);
                     XLEdgeAppState.Instance.ActiveWorkbookOverride = null;
                 }
+
+                Excel.Application cachedExcelApp = XLEdgeAppState.Instance.ExcelAppUnsafe;
+                if (cachedExcelApp != null)
+                {
+                    Marshal.FinalReleaseComObject(cachedExcelApp);
+                    XLEdgeAppState.Instance.ClearExcelApplicationUnsafe();
+                }
             }
             catch (Exception ex)
             {
@@ -1726,6 +1740,57 @@ namespace XLEdge
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
+            }
+        }
+
+        // Detaches every adxExcelAppEvents1 subscription wired up in AddinModule.Designer.cs so no
+        // event can fire into this module (or keep an RCW alive) after shutdown has begun. Safe to
+        // call more than once - unsubscribing an already-detached handler is a no-op in .NET.
+        private void UnsubscribeFromAllExcelEvents()
+        {
+            try
+            {
+                if (adxExcelAppEvents1 == null)
+                {
+                    return;
+                }
+
+                adxExcelAppEvents1.SheetSelectionChange -= adxExcelAppEvents1_SheetSelectionChange;
+                adxExcelAppEvents1.SheetActivate -= adxExcelAppEvents1_SheetActivate;
+                adxExcelAppEvents1.WorkbookActivate -= adxExcelAppEvents1_WorkbookActivate;
+                adxExcelAppEvents1.SheetFollowHyperlink -= adxExcelAppEvents1_SheetFollowHyperlink;
+                adxExcelAppEvents1.SheetBeforeDelete -= AdxExcelAppEvents1_SheetBeforeDelete;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(UnsubscribeFromAllExcelEvents));
+            }
+        }
+
+        private void AddinModule_AddinFinalize(object sender, EventArgs e)
+        {
+            // Last-chance cleanup, raised after AddinBeginShutdown once the add-in is actually being
+            // torn down. Disposes the event-source COM wrapper itself so its underlying RCW does not
+            // linger and keep excel.exe alive in the background. Guarded so it only runs once.
+            if (_isFinalized)
+            {
+                return;
+            }
+            _isFinalized = true;
+
+            try
+            {
+                UnsubscribeFromAllExcelEvents();
+
+                if (adxExcelAppEvents1 != null)
+                {
+                    adxExcelAppEvents1.Dispose();
+                    adxExcelAppEvents1 = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(AddinModule_AddinFinalize));
             }
         }
 

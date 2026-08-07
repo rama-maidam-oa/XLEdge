@@ -150,6 +150,19 @@ namespace XLEdge
                 }
             }
         }
+
+        // Unconditionally clears the cached Application reference without attempting to recover a
+        // live one. Unlike ResetExcelApplicationIfInvalid/EnsureExcelApplication (which fall back to
+        // re-discovering a running Excel instance via the ROT), this is only meant to be called at
+        // add-in shutdown, right after the caller has already released the underlying RCW itself -
+        // recovering a replacement reference at that point would defeat the purpose of shutting down.
+        internal void ClearExcelApplicationUnsafe()
+        {
+            lock (_excelSyncRoot)
+            {
+                _excelApp = null;
+            }
+        }
         public DateTime? GetDateFromCell(Excel.Range cell)
         {
             if (cell == null)
