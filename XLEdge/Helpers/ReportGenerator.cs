@@ -1521,6 +1521,9 @@ namespace XLEdge.Helpers
         /// and report refresh. Always clears the target rows/columns first, so a refresh with fewer
         /// parameters than the prior run doesn't leave stale label/value pairs behind.
         /// </summary>
+        // Cognitive-complexity refactor (SonarQube S3776, was 29): decomposed into single-purpose
+        // helpers, one per parameter-sheet cell group. Every clear/write, comment, and error message
+        // is unchanged.
         private static void RewriteParameterSectionRows(Excel.Worksheet paramSheet, string paramsJson, string tableId, bool sameSheetMode)
         {
             List<(string Label, string ValueText)> paramRows = ParseParamDisplayRows(
@@ -1528,72 +1531,95 @@ namespace XLEdge.Helpers
 
             if (sameSheetMode)
             {
-                try
-                {
-                    // Generously wide/tall clear (rows 4-6, columns A through BZ) so a refresh that now
-                    // has fewer parameters than the previous run doesn't leave old label/value pairs
-                    // behind in columns/rows the new, shorter list no longer reaches.
-                    paramSheet.Range[paramSheet.Cells[4, 1], paramSheet.Cells[6, 78]].Clear();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RewriteParameterSectionRows)}: failed to clear stale same-sheet parameter rows before rewrite - {ex.Message}");
-                }
-
-                int irow = 4;
-                int icol = 1;
-                foreach ((string Label, string ValueText) param in paramRows)
-                {
-                    if (irow > 6)
-                    {
-                        irow = 4;
-                        icol += 2;
-                    }
-
-                    try
-                    {
-                        WriteParamLabelCell((Excel.Range)paramSheet.Cells[irow, icol], param.Label);
-                        WriteParamValueCell((Excel.Range)paramSheet.Cells[irow, icol + 1], param.ValueText, tableId);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to write same-sheet parameter row for '{param.Label}'");
-                    }
-
-                    irow++;
-                }
+                WriteSameSheetParamRows(paramSheet, paramRows, tableId);
             }
             else
             {
+                WriteCompanionParamRows(paramSheet, paramRows, tableId);
+            }
+
+            WriteParameterBookkeepingCells(paramSheet, tableId, sameSheetMode);
+            WriteOracleResponsibilityCells(paramSheet, oracleRespId, oracleRespValue);
+            WriteSegmentValueCell(paramSheet, segmentValues);
+            WriteSegmentDisplayValueCell(paramSheet, segmentDisplayValues);
+        }
+
+        // Extracted from RewriteParameterSectionRows - writes the multi-column, row-wrapping
+        // (rows 4-6, then next column pair) same-sheet banner parameter grid.
+        private static void WriteSameSheetParamRows(Excel.Worksheet paramSheet, List<(string Label, string ValueText)> paramRows, string tableId)
+        {
+            try
+            {
+                // Generously wide/tall clear (rows 4-6, columns A through BZ) so a refresh that now
+                // has fewer parameters than the previous run doesn't leave old label/value pairs
+                // behind in columns/rows the new, shorter list no longer reaches.
+                paramSheet.Range[paramSheet.Cells[4, 1], paramSheet.Cells[6, 78]].Clear();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(WriteSameSheetParamRows)}: failed to clear stale same-sheet parameter rows before rewrite - {ex.Message}");
+            }
+
+            int irow = 4;
+            int icol = 1;
+            foreach ((string Label, string ValueText) param in paramRows)
+            {
+                if (irow > 6)
+                {
+                    irow = 4;
+                    icol += 2;
+                }
+
                 try
                 {
-                    // Companion parameter sheet rows grow downward with no fixed cap (row 3, 4, 5, ...) -
-                    // clear a generously tall range so a refresh with fewer parameters doesn't leave
-                    // stale rows below the new, shorter list.
-                    paramSheet.Range[paramSheet.Cells[3, 1], paramSheet.Cells[300, 2]].Clear();
+                    WriteParamLabelCell((Excel.Range)paramSheet.Cells[irow, icol], param.Label);
+                    WriteParamValueCell((Excel.Range)paramSheet.Cells[irow, icol + 1], param.ValueText, tableId);
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogDebug($"{nameof(RewriteParameterSectionRows)}: failed to clear stale companion-sheet parameter rows before rewrite - {ex.Message}");
+                    LogUtility.LogException(ex, $"Failed to write same-sheet parameter row for '{param.Label}'");
                 }
 
-                int row = 3;
-                foreach ((string Label, string ValueText) param in paramRows)
-                {
-                    try
-                    {
-                        WriteParamLabelCell((Excel.Range)paramSheet.Cells[row, 1], param.Label);
-                        WriteParamValueCell((Excel.Range)paramSheet.Cells[row, 2], param.ValueText, tableId);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to write companion parameter row for '{param.Label}'");
-                    }
+                irow++;
+            }
+        }
 
-                    row++;
-                }
+        // Extracted from RewriteParameterSectionRows - writes the single-column, downward-growing
+        // companion-sheet parameter list.
+        private static void WriteCompanionParamRows(Excel.Worksheet paramSheet, List<(string Label, string ValueText)> paramRows, string tableId)
+        {
+            try
+            {
+                // Companion parameter sheet rows grow downward with no fixed cap (row 3, 4, 5, ...) -
+                // clear a generously tall range so a refresh with fewer parameters doesn't leave
+                // stale rows below the new, shorter list.
+                paramSheet.Range[paramSheet.Cells[3, 1], paramSheet.Cells[300, 2]].Clear();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(WriteCompanionParamRows)}: failed to clear stale companion-sheet parameter rows before rewrite - {ex.Message}");
             }
 
+            int row = 3;
+            foreach ((string Label, string ValueText) param in paramRows)
+            {
+                try
+                {
+                    WriteParamLabelCell((Excel.Range)paramSheet.Cells[row, 1], param.Label);
+                    WriteParamValueCell((Excel.Range)paramSheet.Cells[row, 2], param.ValueText, tableId);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Failed to write companion parameter row for '{param.Label}'");
+                }
+
+                row++;
+            }
+        }
+
+        // Extracted from RewriteParameterSectionRows - writes the IT1/IT2/IT5 bookkeeping cells.
+        private static void WriteParameterBookkeepingCells(Excel.Worksheet paramSheet, string tableId, bool sameSheetMode)
+        {
             try
             {
                 paramSheet.Range["IT1"].Value2 = XLEdgeAppState.Instance.FollowDrilldown ? "Child Report" : string.Empty;
@@ -1612,9 +1638,13 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to write parameter sheet IT1/IT2/IT5 bookkeeping cells");
             }
+        }
 
-            // Each of IT4/IU4/IV4/IW4 is cleared first, then only re-populated if it has a value -
-            // ensures a blank value this round leaves an actually-blank cell rather than stale content.
+        // Extracted from RewriteParameterSectionRows - IT4/IU4 are cleared first, then only
+        // re-populated if there's an actual value - ensures a blank value this round leaves an
+        // actually-blank cell rather than stale content.
+        private static void WriteOracleResponsibilityCells(Excel.Worksheet paramSheet, string oracleRespId, string oracleRespValue)
+        {
             try
             {
                 paramSheet.Range["IT4"].Clear();
@@ -1633,7 +1663,11 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to write parameter sheet IT4/IU4 responsibility cells");
             }
+        }
 
+        // Extracted from RewriteParameterSectionRows.
+        private static void WriteSegmentValueCell(Excel.Worksheet paramSheet, string segmentValues)
+        {
             try
             {
                 paramSheet.Range["IV4"].Clear();
@@ -1648,8 +1682,12 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to write parameter sheet IV4 segment values cell");
             }
+        }
 
-            // IW4 holds the segment display value, alongside IV4's raw segment value.
+        // Extracted from RewriteParameterSectionRows - IW4 holds the segment display value,
+        // alongside IV4's raw segment value.
+        private static void WriteSegmentDisplayValueCell(Excel.Worksheet paramSheet, string segmentDisplayValues)
+        {
             try
             {
                 paramSheet.Range["IW4"].Clear();
