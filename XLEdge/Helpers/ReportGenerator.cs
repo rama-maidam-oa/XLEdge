@@ -4307,6 +4307,10 @@ namespace XLEdge.Helpers
             });
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 17): the per-line character-by-character
+        // state machine is pulled into ParseCsvLine, a plain (non-iterator) helper. The outer method
+        // stays an iterator (yield) but now just yields one already-built line at a time. Every
+        // condition and comment is unchanged.
         private static IEnumerable<List<string>> ParseCsv(string csv)
         {
             if (string.IsNullOrEmpty(csv)) yield break;
@@ -4315,47 +4319,54 @@ namespace XLEdge.Helpers
             string line;
             while ((line = reader.ReadLine()) != null)
             {
-                var fields = new List<string>();
-                var sb = new StringBuilder();
-                bool inQuotes = false;
-                // A while loop (rather than for) here so the escaped-quote branch's extra advance
-                // doesn't read as mutating a for loop's own stop-condition variable - behavior is
-                // unchanged: an escaped "" inside a quoted field advances by 2 (skipping both quote
-                // characters), every other branch advances by 1.
-                int i = 0;
-                while (i < line.Length)
+                yield return ParseCsvLine(line);
+            }
+        }
+
+        // Extracted from ParseCsv - splits one CSV line into fields, honoring quoted fields and
+        // escaped ("") double-quotes within them.
+        private static List<string> ParseCsvLine(string line)
+        {
+            var fields = new List<string>();
+            var sb = new StringBuilder();
+            bool inQuotes = false;
+            // A while loop (rather than for) here so the escaped-quote branch's extra advance
+            // doesn't read as mutating a for loop's own stop-condition variable - behavior is
+            // unchanged: an escaped "" inside a quoted field advances by 2 (skipping both quote
+            // characters), every other branch advances by 1.
+            int i = 0;
+            while (i < line.Length)
+            {
+                char ch = line[i];
+                if (ch == '"')
                 {
-                    char ch = line[i];
-                    if (ch == '"')
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
                     {
-                        if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                        {
-                            sb.Append('"');
-                            i += 2;
-                        }
-                        else
-                        {
-                            inQuotes = !inQuotes;
-                            i++;
-                        }
-                        continue;
+                        sb.Append('"');
+                        i += 2;
                     }
-
-                    if (ch == ',' && !inQuotes)
+                    else
                     {
-                        fields.Add(sb.ToString());
-                        sb.Clear();
+                        inQuotes = !inQuotes;
                         i++;
-                        continue;
                     }
-
-                    sb.Append(ch);
-                    i++;
+                    continue;
                 }
 
-                fields.Add(sb.ToString());
-                yield return fields;
+                if (ch == ',' && !inQuotes)
+                {
+                    fields.Add(sb.ToString());
+                    sb.Clear();
+                    i++;
+                    continue;
+                }
+
+                sb.Append(ch);
+                i++;
             }
+
+            fields.Add(sb.ToString());
+            return fields;
         }
     }
 
