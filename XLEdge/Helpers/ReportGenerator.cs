@@ -1915,6 +1915,11 @@ namespace XLEdge.Helpers
 
         // Parses the parameter rows for display, also returning the responsibility id/value and the
         // raw/display GL segment values via out parameters so callers can persist them separately.
+        // Cognitive-complexity refactor (SonarQube S3776, was 33): each foreach loop's per-item body
+        // is pulled into its own helper. The out-parameters are threaded through the first helper by
+        // ref (an out-parameter is a normal assignable variable once definitely assigned, which
+        // oracleRespId/oracleRespValue/segmentValues/segmentDisplayValues already are by that point).
+        // Every condition, comment, and error message is unchanged.
         private static List<(string Label, string ValueText)> ParseParamDisplayRows(string paramsJson, out string oracleRespId, out string oracleRespValue, out string segmentValues, out string segmentDisplayValues)
         {
             oracleRespId = null;
@@ -1939,80 +1944,12 @@ namespace XLEdge.Helpers
 
                 foreach (JsonElement item in doc.RootElement.EnumerateArray())
                 {
-                    try
-                    {
-                        if (!JsonHelper.TryGetProperty(item, ExtraParametersKey, out JsonElement extraEl) ||
-                            extraEl.ValueKind != JsonValueKind.Object)
-                        {
-                            continue;
-                        }
-
-                        (string RespId, string RespValue, string GlSegments, string GLSegmentValues) extra = ExtractExtraParams(extraEl);
-
-                        if (!string.IsNullOrWhiteSpace(extra.RespId) && !string.IsNullOrWhiteSpace(extra.RespValue))
-                        {
-                            oracleRespId = extra.RespId;
-                            oracleRespValue = extra.RespValue;
-                            result.Add(("Responsibility", "'" + extra.RespValue));
-                        }
-
-                        // The raw segment value (IV4) and display segment value (IW4) are surfaced
-                        // independently, each based on its own non-blank check.
-                        if (!string.IsNullOrWhiteSpace(extra.GLSegmentValues))
-                        {
-                            segmentValues = extra.GLSegmentValues;
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(extra.GlSegments))
-                        {
-                            segmentDisplayValues = extra.GlSegments;
-                            result.Add(("GL Accounts", extra.GlSegments));
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "ParseParamDisplayRows: failed to extract extraParameters for one entry");
-                    }
+                    ProcessExtraParamsForRow(item, result, ref oracleRespId, ref oracleRespValue, ref segmentValues, ref segmentDisplayValues);
                 }
 
                 foreach (JsonElement item in doc.RootElement.EnumerateArray())
                 {
-                    try
-                    {
-                        string label;
-
-                        if (JsonHelper.TryGetProperty(item, "label", out JsonElement labelEl) && labelEl.ValueKind != JsonValueKind.Null)
-                        {
-                            label = labelEl.ToString();
-                        }
-                        else if (JsonHelper.TryGetProperty(item, "name", out JsonElement nameEl))
-                        {
-                            label = nameEl.ToString();
-                        }
-                        else
-                        {
-                            label = null;
-                        }
-
-                        string paramOperator = JsonHelper.TryGetProperty(item, "operator", out JsonElement opEl) ? opEl.ToString() : null;
-                        string paramType = JsonHelper.TryGetProperty(item, "type", out JsonElement typeEl) ? typeEl.ToString() : null;
-
-                        if (string.IsNullOrWhiteSpace(label) || paramOperator == null || paramType == null)
-                        {
-                            continue;
-                        }
-
-                        string componentType = JsonHelper.TryGetProperty(item, "componentType", out JsonElement ctEl) ? ctEl.ToString() : null;
-                        string operatorKey = XLEdgeOperatorMappings.Map.FirstOrDefault(kvp => kvp.Value == paramOperator).Key ?? paramOperator;
-
-                        string valueText = BuildReportParamValue(item, componentType, paramOperator, paramType, operatorKey);
-
-                        result.Add((XLEdgeValueFormatter.RemoveEquaSymbol(label), XLEdgeValueFormatter.RemoveEquaSymbol(valueText)));
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "ParseParamDisplayRows: failed to parse one parameter entry");
-                    }
+                    ProcessLabelValueRow(item, result);
                 }
             }
             catch (Exception ex)
@@ -2021,6 +1958,88 @@ namespace XLEdge.Helpers
             }
 
             return result;
+        }
+
+        // Extracted from ParseParamDisplayRows - handles one array entry's "extraParameters" block:
+        // Oracle responsibility id/value and GL segment raw/display values.
+        private static void ProcessExtraParamsForRow(JsonElement item, List<(string Label, string ValueText)> result, ref string oracleRespId, ref string oracleRespValue, ref string segmentValues, ref string segmentDisplayValues)
+        {
+            try
+            {
+                if (!JsonHelper.TryGetProperty(item, ExtraParametersKey, out JsonElement extraEl) ||
+                    extraEl.ValueKind != JsonValueKind.Object)
+                {
+                    return;
+                }
+
+                (string RespId, string RespValue, string GlSegments, string GLSegmentValues) extra = ExtractExtraParams(extraEl);
+
+                if (!string.IsNullOrWhiteSpace(extra.RespId) && !string.IsNullOrWhiteSpace(extra.RespValue))
+                {
+                    oracleRespId = extra.RespId;
+                    oracleRespValue = extra.RespValue;
+                    result.Add(("Responsibility", "'" + extra.RespValue));
+                }
+
+                // The raw segment value (IV4) and display segment value (IW4) are surfaced
+                // independently, each based on its own non-blank check.
+                if (!string.IsNullOrWhiteSpace(extra.GLSegmentValues))
+                {
+                    segmentValues = extra.GLSegmentValues;
+                }
+
+                if (!string.IsNullOrWhiteSpace(extra.GlSegments))
+                {
+                    segmentDisplayValues = extra.GlSegments;
+                    result.Add(("GL Accounts", extra.GlSegments));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "ParseParamDisplayRows: failed to extract extraParameters for one entry");
+            }
+        }
+
+        // Extracted from ParseParamDisplayRows - handles one array entry's label/operator/type/value
+        // display row.
+        private static void ProcessLabelValueRow(JsonElement item, List<(string Label, string ValueText)> result)
+        {
+            try
+            {
+                string label;
+
+                if (JsonHelper.TryGetProperty(item, "label", out JsonElement labelEl) && labelEl.ValueKind != JsonValueKind.Null)
+                {
+                    label = labelEl.ToString();
+                }
+                else if (JsonHelper.TryGetProperty(item, "name", out JsonElement nameEl))
+                {
+                    label = nameEl.ToString();
+                }
+                else
+                {
+                    label = null;
+                }
+
+                string paramOperator = JsonHelper.TryGetProperty(item, "operator", out JsonElement opEl) ? opEl.ToString() : null;
+                string paramType = JsonHelper.TryGetProperty(item, "type", out JsonElement typeEl) ? typeEl.ToString() : null;
+
+                if (string.IsNullOrWhiteSpace(label) || paramOperator == null || paramType == null)
+                {
+                    return;
+                }
+
+                string componentType = JsonHelper.TryGetProperty(item, "componentType", out JsonElement ctEl) ? ctEl.ToString() : null;
+                string operatorKey = XLEdgeOperatorMappings.Map.FirstOrDefault(kvp => kvp.Value == paramOperator).Key ?? paramOperator;
+
+                string valueText = BuildReportParamValue(item, componentType, paramOperator, paramType, operatorKey);
+
+                result.Add((XLEdgeValueFormatter.RemoveEquaSymbol(label), XLEdgeValueFormatter.RemoveEquaSymbol(valueText)));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "ParseParamDisplayRows: failed to parse one parameter entry");
+            }
         }
 
         private static (string RespId, string RespValue, string GlSegments, string GLSegmentValues) ExtractExtraParams(JsonElement extraParamsEl)
