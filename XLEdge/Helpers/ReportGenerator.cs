@@ -2622,6 +2622,12 @@ namespace XLEdge.Helpers
             return candidate;
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 24): the column-grouping step and the
+        // per-column hyperlink-writing loop are pulled into their own helpers. The original
+        // "return" (used once the hyperlink cap is hit, to exit the whole method from inside the
+        // innermost loop) becomes a "reachedLimit" bool that the caller checks and turns back into a
+        // "return" of its own - same overall stopping behavior. Every condition, comment, and log
+        // message is unchanged.
         private static void AddDrilldownHyperlinks(Excel.Worksheet sheet, Excel.ListObject listObject, ReportMeta reportMeta)
         {
             if (reportMeta.Drilldowns == null || reportMeta.Drilldowns.Length == 0 || listObject.DataBodyRange == null)
@@ -2632,8 +2638,23 @@ namespace XLEdge.Helpers
             const int maxHyperlinks = 65530;
             int hyperlinkCount = 0;
 
+            Dictionary<string, List<string>> byColumn = BuildDrilldownColumnMap(reportMeta.Drilldowns, reportMeta.ReportId);
+
+            foreach (KeyValuePair<string, List<string>> kvp in byColumn)
+            {
+                if (AddHyperlinksForColumn(sheet, listObject, kvp.Key, kvp.Value, ref hyperlinkCount, maxHyperlinks))
+                {
+                    return;
+                }
+            }
+        }
+
+        // Extracted from AddDrilldownHyperlinks - groups drilldown definitions by their target
+        // column name, joining every drilldown's tooltip text for columns shared by more than one.
+        private static Dictionary<string, List<string>> BuildDrilldownColumnMap(RptDrilldown[] drilldowns, string reportId)
+        {
             var byColumn = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (RptDrilldown dd in reportMeta.Drilldowns)
+            foreach (RptDrilldown dd in drilldowns)
             {
                 string col = dd.DrillColumnName?.Trim();
                 if (string.IsNullOrEmpty(col))
@@ -2647,60 +2668,66 @@ namespace XLEdge.Helpers
                     byColumn[col] = list;
                 }
 
-                list.Add($"DRILLDOWN|{dd.DrillReportId}|{dd.DrillReportName}|{reportMeta.ReportId}");
+                list.Add($"DRILLDOWN|{dd.DrillReportId}|{dd.DrillReportName}|{reportId}");
             }
 
-            foreach (KeyValuePair<string, List<string>> kvp in byColumn)
+            return byColumn;
+        }
+
+        // Extracted from AddDrilldownHyperlinks - writes the hyperlink for every data-row cell in one
+        // matched column. Returns true if the hyperlink cap was reached (caller should stop entirely).
+        private static bool AddHyperlinksForColumn(Excel.Worksheet sheet, Excel.ListObject listObject, string columnName, List<string> tooltipParts, ref int hyperlinkCount, int maxHyperlinks)
+        {
+            int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, columnName);
+            if (matchCol <= 0)
             {
-                int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, kvp.Key);
-                if (matchCol <= 0)
-                {
-                    continue;
-                }
+                return false;
+            }
 
-                string tooltip = string.Join(",", kvp.Value);
-                if (tooltip.Length > 255)
-                {
-                    tooltip = tooltip.Substring(0, 250) + "...";
-                }
+            string tooltip = string.Join(",", tooltipParts);
+            if (tooltip.Length > 255)
+            {
+                tooltip = tooltip.Substring(0, 250) + "...";
+            }
 
-                Excel.Range dataRange = listObject.DataBodyRange;
-                try
+            Excel.Range dataRange = listObject.DataBodyRange;
+            try
+            {
+                for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    for (int r = 1; r <= dataRange.Rows.Count; r++)
+                    if (hyperlinkCount >= maxHyperlinks)
                     {
-                        if (hyperlinkCount >= maxHyperlinks)
-                        {
-                            LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further drilldown hyperlinks.");
-                            return;
-                        }
+                        LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further drilldown hyperlinks.");
+                        return true;
+                    }
 
-                        Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                        try
+                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+                    try
+                    {
+                        if (cell.Value2 != null && cell.Value2.ToString().Length > 0)
                         {
-                            if (cell.Value2 != null && cell.Value2.ToString().Length > 0)
-                            {
-                                sheet.Hyperlinks.Add(cell, "", cell.Address, tooltip, cell.Value2.ToString());
-                                hyperlinkCount++;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, $"Failed to add drilldown hyperlink at {cell.Address}");
-                        }
-                        finally
-                        {
-                            // Part of the COM-leak fix (see AddImageColumn) - every Range obtained
-                            // here is a live COM reference that must be explicitly released.
-                            Marshal.ReleaseComObject(cell);
+                            sheet.Hyperlinks.Add(cell, "", cell.Address, tooltip, cell.Value2.ToString());
+                            hyperlinkCount++;
                         }
                     }
-                }
-                finally
-                {
-                    Marshal.ReleaseComObject(dataRange);
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"Failed to add drilldown hyperlink at {cell.Address}");
+                    }
+                    finally
+                    {
+                        // Part of the COM-leak fix (see AddImageColumn) - every Range obtained
+                        // here is a live COM reference that must be explicitly released.
+                        Marshal.ReleaseComObject(cell);
+                    }
                 }
             }
+            finally
+            {
+                Marshal.ReleaseComObject(dataRange);
+            }
+
+            return false;
         }
 
         private static void DeleteReportShapes(Excel.Worksheet sheet)
