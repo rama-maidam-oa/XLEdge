@@ -1,5 +1,6 @@
 ﻿using MahApps.Metro.IconPacks;
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -64,6 +65,29 @@ namespace XLEdge.Views
         private TaskCompletionSource<bool> _activeToastTcs;
         private RoutedEventHandler YesHandler, NoHandler, CancelHandler, BusyCancelHandler;
         private EventHandler _hideBusyHandler;
+
+        /// <summary>
+        /// Raised whenever a toast actually goes away - manual close-button click, timer auto-dismiss,
+        /// or an explicit DismissToast() call - regardless of which Show*/ShowToastAsync method
+        /// displayed it. AppOverlay itself has no knowledge of Excel/WebView2 (it's also embedded in
+        /// plain popup windows like XLEdgeAbout/XLEdgeServerConfiguration/XLEdgeWaitWindow, not just
+        /// the task pane), so it just notifies; only XLEdgeCTP (the task pane host) subscribes to
+        /// release keyboard focus back to Excel, since that's the only host where the toast's own
+        /// button click can leave WPF/WebView2 holding focus Excel never gets told to reclaim.
+        /// </summary>
+        public event Action ToastDismissed;
+
+        private void RaiseToastDismissed()
+        {
+            try
+            {
+                ToastDismissed?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ToastDismissed handler failed: {ex.Message}");
+            }
+        }
 
         public AppOverlay()
         {
@@ -141,7 +165,18 @@ namespace XLEdge.Views
                     ToastOverlay.Visibility = Visibility.Visible;
                     try
                     {
+                        // Ensure overlay and its close button take keyboard focus immediately so
+                        // users can interact with the toast without waiting for WebView2 restoration.
                         ToastOverlay.Focus();
+                        try
+                        {
+                            // Use Send priority to force immediate focus transfer before returning
+                            Dispatcher.InvokeAsync(() =>
+                            {
+                                try { BtnCloseToast?.Focus(); System.Windows.Input.Keyboard.Focus(BtnCloseToast); } catch { }
+                            }, DispatcherPriority.Send);
+                        }
+                        catch { }
                     }
                     catch (Exception ex)
                     {
@@ -202,7 +237,17 @@ namespace XLEdge.Views
                     ToastOverlay.Visibility = Visibility.Visible;
                     try
                     {
+                        // Ensure toast overlay and close button get immediate focus so the user
+                        // can close/dismiss the toast without delay.
                         ToastOverlay.Focus();
+                        try
+                        {
+                            Dispatcher.InvokeAsync(() =>
+                            {
+                                try { BtnCloseToast?.Focus(); System.Windows.Input.Keyboard.Focus(BtnCloseToast); } catch { }
+                            }, DispatcherPriority.Send);
+                        }
+                        catch { }
                     }
                     catch (Exception ex)
                     {
@@ -239,6 +284,7 @@ namespace XLEdge.Views
                         tcs.TrySetResult(true);
                         if (_activeToastTcs == tcs)
                             _activeToastTcs = null;
+                        RaiseToastDismissed();
                     };
                     Toast.BeginAnimation(Border.OpacityProperty, fade);
                 };
@@ -293,6 +339,8 @@ namespace XLEdge.Views
 
             if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
                 this.Visibility = Visibility.Collapsed;
+
+            RaiseToastDismissed();
         }
         private void OnToastTimerTick(object sender, EventArgs e)
         {
@@ -752,6 +800,18 @@ namespace XLEdge.Views
                 return;
             }
 
+            // TEMP DIAGNOSTIC [FocusDiag]: VB.NET never had this problem because it hosts WebView2
+            // natively (WinForms, Dock=Fill) with no WPF overlay ever needing to sit visually "on top"
+            // of it - so it never had to hide/show the control at all. This WPF port hides WebView2
+            // (Visibility.Hidden) while the toast/blur overlay is shown, to work around WPF's
+            // "airspace" limitation (an HWND-backed control like WebView2 always paints on top of WPF
+            // content, so hiding it is how the overlay gets to appear above it) - and restores it here
+            // on dismiss. Setting Visibility back to Visible on a WebView2 that's been Hidden can
+            // require Chromium's renderer to resume from a throttled/backgrounded state and repaint,
+            // which is a known source of multi-second stalls distinct from a simple WPF property set.
+            // Timing this directly to confirm/rule out this specific step as the cause of the reported
+            // "focus takes 4-5s to return after closing the toast" delay.
+            var stopwatch = Stopwatch.StartNew();
             foreach (var element in _hiddenWebViewElements)
             {
                 try
@@ -763,6 +823,7 @@ namespace XLEdge.Views
                     LogUtility.LogWarn($"Failed to restore WebView2 visibility: {ex.Message}");
                 }
             }
+            LogUtility.LogDebug($"[FocusDiag] RestoreHiddenWebView2Descendants: Visibility=Visible set on {_hiddenWebViewElements.Count} element(s) at {stopwatch.ElapsedMilliseconds}ms");
 
             _hiddenWebViewElements.Clear();
         }

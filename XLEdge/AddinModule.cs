@@ -628,33 +628,59 @@ namespace XLEdge
             _isCalendarOpen = true;
             try
             {
-                if (selectedSheet.ListObjects.Count > 0)
+                // The calendar must only ever appear for a genuine Date parameter cell inside the
+                // orb_params_control table. Previously, when the active sheet had no ListObjects at
+                // all (e.g. any blank/empty worksheet, or any sheet before the Parameters Control
+                // Sheet has even been created), the "if (selectedSheet.ListObjects.Count > 0)" guard
+                // below was simply false, so every one of its internal validation checks was skipped
+                // entirely and execution fell straight through to showing the calendar for ANY
+                // single-cell selection. That's also why it was popping up immediately after login:
+                // the post-login focus-release fix (ReportGenerator.
+                // ReleaseKeyboardFocusFromTaskPaneAsync) deliberately reselects a cell to nudge
+                // keyboard focus back to Excel, which fires this same SheetSelectionChange handler on
+                // whatever sheet/cell happened to be active at login time - almost never the
+                // Parameters Control Sheet. Rewritten to look up the orb_params_control table by name
+                // (mirroring TryShowSegmentSelectionWindow below) and return immediately if it isn't
+                // present on the active sheet at all, instead of only checking it once one exists.
+                Excel.ListObject tableObj = null;
+                foreach (Excel.ListObject lo in selectedSheet.ListObjects)
                 {
-                    Excel.ListObject tableObj = selectedSheet.ListObjects[1];
-
-                    if (!tableObj.Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase) ||
-                        XLApp.App.Application.Intersect(selectedRange, tableObj.DataBodyRange) == null)
+                    if (lo.Name.Equals("orb_params_control", StringComparison.OrdinalIgnoreCase))
                     {
-                        return;
+                        tableObj = lo;
+                        break;
                     }
-
-                    int row = selectedRange.Row;
-                    int col = selectedRange.Column;
-                    if (row < 4 || (col != 10 && col != 11))
-                        return;
-
-                    Excel.Range range1 = (Excel.Range)selectedSheet.Cells[row, 8];
-                    Excel.Range range2 = (Excel.Range)selectedSheet.Cells[row, 9];
-
-                    string gVal = Convert.ToString(range1.Value).ToUpper();
-                    string hVal = Convert.ToString(range2.Value).ToUpper();
-
-                    if (!gVal.Contains("DATE"))
-                        return;
-
-                    if (!hVal.Contains("BETWEEN") && col != 11)
-                        return;
                 }
+
+                if (tableObj == null ||
+                    XLApp.App.Application.Intersect(selectedRange, tableObj.DataBodyRange) == null)
+                {
+                    return;
+                }
+
+                int row = selectedRange.Row;
+                int col = selectedRange.Column;
+                if (row < 4 || (col != 10 && col != 11))
+                    return;
+
+                Excel.Range dataTypeCell = (Excel.Range)selectedSheet.Cells[row, 8];
+                Excel.Range operatorCell = (Excel.Range)selectedSheet.Cells[row, 9];
+
+                string dataType = Convert.ToString(dataTypeCell.Value).ToUpper();
+                string operatorValue = Convert.ToString(operatorCell.Value).ToUpper();
+
+                if (!dataType.Contains("DATE"))
+                    return;
+
+                // Value1 (column J, col 10) always gets the calendar for a Date parameter,
+                // regardless of the operator. Value2 (column K, col 11) only participates in a
+                // range, so it should only get the calendar when the operator is actually
+                // "between". This was previously backwards: "!hVal.Contains("BETWEEN") && col !=
+                // 11" blocked J whenever the operator wasn't "between" (it should never be gated
+                // on the operator at all) and let K through regardless of the operator (it should
+                // require "between").
+                if (col == 11 && !operatorValue.Contains("BETWEEN"))
+                    return;
 
                 DateTime initialDate = XLApp.GetDateFromCell(selectedRange) ?? DateTime.Today;
                 DateTime? selectedDate = null;

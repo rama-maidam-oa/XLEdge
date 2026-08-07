@@ -3,7 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
              xmlns:local="clr-namespace:XLEdge.Views"
              xmlns:wpf="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-             MinHeight="400" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+             MinHeight="400" 
+             HorizontalAlignment="Stretch" 
+             VerticalAlignment="Stretch"
              Background="#F8F9FA">
     <UserControl.Resources>
         <ResourceDictionary>
@@ -13,32 +15,33 @@
         </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
-        <!-- HorizontalScrollBarVisibility changed from Disabled to Auto: this report area's own
-             MinWidth (600) can now legitimately exceed the real docked pane's width (see the
-             MinWidth removal on the root UserControl above) without silently clipping content that
-             the user has no way to reach - it scrolls into view instead. -->
-        <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,0,5,0">
-            <Grid MinWidth="600" Margin="0,0,5,0" VerticalAlignment="Stretch" MinHeight="{Binding ActualHeight,
-                      RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="267*"/>
-                    <ColumnDefinition Width="296*"/>
-                    <ColumnDefinition Width="37*"/>
-                </Grid.ColumnDefinitions>
-                <Grid Margin="4,4,4,4" Grid.ColumnSpan="3">
-                    <!-- Header removed: the native Add-in Express/Excel task pane chrome now shows
-                         its own close button (CloseButton = true, AddinModule.Designer.cs) and title
-                         bar, which XLEdgeCTP.xaml.cs now sets directly via the task pane's own Text
-                         property (SetPaneCaption) instead of a separate WPF bar - frees up this
-                         vertical space for the actual report content below. -->
-                    <!-- ================= Webview Browser Section ================= -->
-                    <Border Background="White" BorderThickness="1" BorderBrush="#E9ECEF" CornerRadius="6" Margin="0,0,0,20" VerticalAlignment="Stretch">
-                        <wpf:WebView2 x:Name="WebCtrl" Margin="0,0,0,20" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-                    </Border>
-                </Grid>
+        <ScrollViewer x:Name="MainScrollViewer" 
+                      VerticalScrollBarVisibility="Auto" 
+                      HorizontalScrollBarVisibility="Auto"
+                      CanContentScroll="True">
+            <Grid MinWidth="600">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border Background="White" 
+                        BorderThickness="1" 
+                        BorderBrush="#E9ECEF" 
+                        CornerRadius="6" 
+                        Margin="4">
+                    <wpf:WebView2 x:Name="WebCtrl" 
+                                  HorizontalAlignment="Stretch" 
+                                  VerticalAlignment="Stretch"
+                                  MinHeight="400"/>
+                </Border>
             </Grid>
         </ScrollViewer>
-        <!-- Toast / Busy overlay: sibling of ScrollViewer so it can cover entire pane -->
-        <local:AppOverlay x:Name="AppOverlayControl" MinHeight="200" Grid.RowSpan="2" Grid.ColumnSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="100"/>
+
+        <!-- Toast / Busy overlay -->
+        <local:AppOverlay x:Name="AppOverlayControl" 
+                          HorizontalAlignment="Stretch" 
+                          VerticalAlignment="Stretch" 
+                          Visibility="Collapsed" 
+                          Panel.ZIndex="100"/>
     </Grid>
 </UserControl>

@@ -65,7 +65,20 @@ namespace XLEdge.Helpers
                 }
             }
         }
-
+        public static void UpdateRibbonLoginStatus()
+        {
+            try
+            {
+                if (ExcelApplicationHelper.TryGetActiveExcelApplication(out Excel.Application excelAppForLabel))
+                {
+                    AddinModule.CurrentInstance?.UpdateTabLabel(excelAppForLabel.ActiveSheet as Excel.Worksheet);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(UpdateRibbonLoginStatus));
+            }
+        }
         private static void HideDummySheetIfVisible()
         {
             if (!ExcelSheetHelper.SheetExists("DummySheet"))

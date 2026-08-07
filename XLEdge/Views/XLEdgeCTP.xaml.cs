@@ -33,6 +33,7 @@ namespace XLEdge.Views
         private bool _isInitialized;
         private bool _webViewEventsHooked;
         private bool _isDisposed;
+        private bool _isHeightCheckScheduled = false;
 
         private static XLEdgeAppState appState => XLEdgeAppState.Instance;
 
@@ -43,9 +44,6 @@ namespace XLEdge.Views
             _parentPane = parentPane;
             _ribbonHelper = XLEdgeRibbonHelper.Current;
 
-            // Only MainScrollViewer (the scrollable report/data area) gets a minimum width, not the
-            // whole UserControl, so AppOverlayControl always renders within the pane's real visible
-            // bounds and its close button is never clipped.
             if (MainScrollViewer != null)
             {
                 MainScrollViewer.MinWidth = MinimumConfiguratorWidth;
@@ -89,16 +87,6 @@ namespace XLEdge.Views
                         WebCtrl.CoreWebView2.WebResourceRequested -= WebView_WebResourceRequested;
                     }
 
-                    // WebView2's Dispose() is what actually signals its underlying msedgewebview2.exe
-                    // browser process and CoreWebView2Environment to shut down cleanly - nothing else
-                    // in this control's teardown chain ever called it (ElementHost.Dispose() detaches
-                    // the WPF visual tree, which is what fires this Unloaded event, but WPF elements
-                    // aren't disposed automatically since XLEdgeCTP itself doesn't implement
-                    // IDisposable). Without this, a workbook's WebView2 browser process/profile lock on
-                    // the shared XLEdgeAppPaths.BrowserLogsFolder can outlive the closed workbook/Excel
-                    // window, which both leaves excel.exe lingering in the background after Excel is
-                    // closed and blocks a newly-opened Excel instance's own WebView2 (same shared
-                    // folder) from initializing, so its add-in appears not to load.
                     try
                     {
                         WebCtrl.Dispose();
@@ -219,6 +207,24 @@ namespace XLEdge.Views
                     EnsureMinimumWidth();
                     UpdateLayout();
                     MainScrollViewer?.UpdateLayout();
+
+                    if (WebCtrl != null)
+                    {
+                        WebCtrl.SizeChanged -= WebCtrl_SizeChanged;
+                        WebCtrl.SizeChanged += WebCtrl_SizeChanged;
+                    }
+
+                    if (MainScrollViewer != null)
+                    {
+                        MainScrollViewer.ScrollChanged -= MainScrollViewer_ScrollChanged;
+                        MainScrollViewer.ScrollChanged += MainScrollViewer_ScrollChanged;
+                    }
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        ScheduleHeightCheck();
+                    }), DispatcherPriority.Loaded);
+
                 }, DispatcherPriority.Loaded);
             }, "Error in OnLoaded");
         }
@@ -234,7 +240,7 @@ namespace XLEdge.Views
                 {
                     loginUrl = "about:blank";
                 }
-                    
+
 
                 await RunOnUIAsync(() =>
                 {
@@ -260,13 +266,24 @@ namespace XLEdge.Views
                     EnsureMinimumWidth();
                     UpdateLayout();
                     MainScrollViewer?.UpdateLayout();
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        ScheduleHeightCheck();
+                    }), DispatcherPriority.Background);
                 }, DispatcherPriority.Loaded);
             }, "Error in OnIsVisibleChanged");
         }
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            SafeFireAndForget(() => RunOnUIAsync(() => EnsureMinimumWidth()), "Error in OnSizeChanged");
+            SafeFireAndForget(() => RunOnUIAsync(() =>
+            {
+                EnsureMinimumWidth();
+                UpdateLayout();
+                MainScrollViewer?.UpdateLayout();
+                ScheduleHeightCheck();
+            }), "Error in OnSizeChanged");
         }
 
         private void OnParentPaneResize(object sender, EventArgs e)
@@ -278,6 +295,12 @@ namespace XLEdge.Views
                     EnsureMinimumWidth();
                     UpdateLayout();
                     MainScrollViewer?.UpdateLayout();
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        ScheduleHeightCheck();
+                    }), DispatcherPriority.Background);
+
                 }, DispatcherPriority.Loaded);
             }, "Error in OnParentPaneResize");
         }
@@ -290,7 +313,6 @@ namespace XLEdge.Views
                 return;
             }
 
-            // Only the scrollable report area gets the minimum width, not the whole UserControl.
             if (MainScrollViewer != null)
             {
                 MainScrollViewer.MinWidth = MinimumConfiguratorWidth;
@@ -301,6 +323,97 @@ namespace XLEdge.Views
                 _parentPane.Width = (int)MinimumConfiguratorWidth;
             }
         }
+
+        // ========== WebView Height Management ==========
+
+        private void WebCtrl_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (MainScrollViewer != null && WebCtrl != null && !_isHeightCheckScheduled)
+            {
+                _isHeightCheckScheduled = true;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        _isHeightCheckScheduled = false;
+                        MainScrollViewer.UpdateLayout();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"WebCtrl_SizeChanged error: {ex.Message}");
+                    }
+                }), DispatcherPriority.Background);
+            }
+        }
+
+        private void MainScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            // Check if viewport height changed significantly
+            if (e.ViewportHeight > 0)
+            {
+                ScheduleHeightCheck();
+            }
+        }
+
+        private void EnsureWebViewFillsAvailableSpace()
+        {
+            if (WebCtrl == null || MainScrollViewer == null)
+                return;
+
+            try
+            {
+                double viewportHeight = MainScrollViewer.ViewportHeight;
+
+                if (viewportHeight > 0)
+                {
+                    double desiredHeight = viewportHeight - 20;
+
+                    if (desiredHeight < 400)
+                        desiredHeight = 400;
+
+                    if (Math.Abs(WebCtrl.Height - desiredHeight) > 5)
+                    {
+                        WebCtrl.Height = desiredHeight;
+                        WebCtrl.UpdateLayout();
+
+                        if (WebCtrl.Parent is FrameworkElement parent)
+                        {
+                            parent.UpdateLayout();
+                        }
+
+                        LogUtility.LogDebug($"Adjusted WebCtrl height to {desiredHeight} (viewport: {viewportHeight})");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"EnsureWebViewFillsAvailableSpace error: {ex.Message}");
+            }
+        }
+
+        private void ScheduleHeightCheck()
+        {
+            if (_isDisposed || _isHeightCheckScheduled)
+                return;
+
+            _isHeightCheckScheduled = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    _isHeightCheckScheduled = false;
+                    UpdateLayout();
+                    MainScrollViewer?.UpdateLayout();
+                    EnsureWebViewFillsAvailableSpace();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"ScheduleHeightCheck error: {ex.Message}");
+                }
+            }), DispatcherPriority.Loaded);
+        }
+
+        // ========== END WebView Height Management ==========
 
         private async Task EnsureWebViewInitializedAsync()
         {
@@ -437,6 +550,7 @@ namespace XLEdge.Views
                 LogUtility.LogException(ex, "Error navigating to login URL");
             }
         }
+
         public async Task<bool> LogoutSessionAsync(string loginUrl, CancellationToken token)
         {
             if (string.IsNullOrWhiteSpace(loginUrl))
@@ -445,15 +559,6 @@ namespace XLEdge.Views
                 return false;
             }
 
-            // Deliberately does NOT call EnsureWebViewInitializedAsync() here - matches VB.NET's
-            // LogOffSessionAndWaitAsync, which only checks whether CoreWebView2 already exists and
-            // skips the pane otherwise; it never lazily creates a WebView2 during logoff. Each
-            // XLEdgeCTP instance (one per open workbook's task pane) creates its own
-            // CoreWebView2Environment pointed at the same shared XLEdgeAppPaths.BrowserLogsFolder -
-            // forcing that creation here for a pane that was never opened/used (so its WebView2 was
-            // never initialized) contends with another workbook's already-running environment on the
-            // same profile folder, which can hang indefinitely. A pane with no CoreWebView2 yet has no
-            // active session to log out of anyway, so it's safe to just skip it.
             return await RunOnUIAsync(async () =>
             {
                 if (WebCtrl == null || WebCtrl.CoreWebView2 == null)
@@ -474,7 +579,6 @@ namespace XLEdge.Views
                     }
                     catch (Exception ex)
                     {
-                        // Safe to ignore: best-effort event unsubscription; not a functional failure.
                         LogUtility.LogDebug($"{nameof(LogoutSessionAsync)}: failed to unsubscribe NavigationCompleted handler - {ex.Message}");
                     }
 
@@ -497,7 +601,6 @@ namespace XLEdge.Views
                         }
                         catch (Exception ex)
                         {
-                            // Safe to ignore: best-effort event unsubscription; not a functional failure.
                             LogUtility.LogDebug($"{nameof(LogoutSessionAsync)}: failed to unsubscribe NavigationCompleted handler after timeout - {ex.Message}");
                         }
 
@@ -516,11 +619,9 @@ namespace XLEdge.Views
                     }
                     catch (Exception ex)
                     {
-                        // Safe to ignore: best-effort event unsubscription; not a functional failure.
                         LogUtility.LogWarn($"Logout navigation cancelled; also failed to unsubscribe NavigationCompleted handler - {ex.Message}");
                     }
 
-                    
                     throw;
                 }
                 catch (Exception ex)
@@ -531,7 +632,6 @@ namespace XLEdge.Views
                     }
                     catch (Exception unsubEx)
                     {
-                        // Safe to ignore: best-effort event unsubscription; not a functional failure.
                         LogUtility.LogDebug($"{nameof(LogoutSessionAsync)}: failed to unsubscribe NavigationCompleted handler after exception - {unsubEx.Message}");
                     }
 
@@ -541,13 +641,6 @@ namespace XLEdge.Views
             });
         }
 
-        /// <summary>
-        /// Ported from the VB original's direct "TPane.WebCtrl.ExecuteScriptAsync(jScript)" calls
-        /// (RefreshBookParameters/RefreshParameters in AddinModule.vb), which relied on triggering DOM
-        /// hooks the hosted web app exposes (e.g. "[reruntype=xledgeworkbookrerun]",
-        /// "#XLEdgeParamRefresh") to kick off a parameter-based re-run. Generalized into a small helper
-        /// so any caller can run a script against this pane's WebView2 safely on the UI thread.
-        /// </summary>
         public async Task ExecuteScriptAsync(string script)
         {
             if (string.IsNullOrWhiteSpace(script))
@@ -626,6 +719,8 @@ namespace XLEdge.Views
                     {
                         string sourceUrl = WebCtrl?.Source?.ToString() ?? string.Empty;
 
+                        ScheduleHeightCheck();
+
                         if (sourceUrl.Contains("excel=Y#Home"))
                         {
                             appState.IsLoginCompleted = true;
@@ -646,17 +741,14 @@ namespace XLEdge.Views
                             }
 
                             SyncLoginToGLSense();
-
-                            appState.LoginFromSense = false;
-
                             UpdateExcelTabLabel();
 
-                            // The login redirect just handed real OS keyboard focus to WebView2's
-                            // Chromium child HWND. Without explicitly releasing it back to Excel here,
-                            // the ribbon and worksheet become unresponsive until the user clicks
-                            // repeatedly (or once inside the task pane) to force it loose - the same
-                            // "WebView2 retains focus" symptom this helper was built to fix for the
-                            // report-refresh flow (ReportGenerator.CleanupAsync).
+                            await Task.Delay(300);
+                            ScheduleHeightCheck();
+
+                            await Task.Delay(700);
+                            ScheduleHeightCheck();
+
                             try
                             {
                                 await ReportGenerator.ReleaseKeyboardFocusFromTaskPaneAsync();
@@ -679,6 +771,8 @@ namespace XLEdge.Views
 
                             if (WebCtrl != null)
                                 WebCtrl.Source = new Uri("about:blank");
+
+                            ScheduleHeightCheck();
                         }
                     }
                 });
@@ -855,13 +949,6 @@ namespace XLEdge.Views
             return sb.ToString();
         }
 
-        /// <summary>
-        /// Ported from ADXExcelTaskPane1.vb's WebCtrl_SourceChanged "GetGLCubeInformation" block -
-        /// notifies the sibling GLSense add-in of a login that just completed directly through
-        /// XLEdge's own WebView2, so GLSense's own session stays in sync. See
-        /// AddinModule.NotifyGLSenseOfLogin for the guarded reflection call itself (guards against a
-        /// login that originated FROM GLSense, an already-sent login, and a missing token).
-        /// </summary>
         private void SyncLoginToGLSense()
         {
             try
@@ -874,9 +961,22 @@ namespace XLEdge.Views
             }
         }
 
-        private void UpdateExcelTabLabel()
+        /// <summary>
+        /// Updates the Excel tab label when login state changes
+        /// </summary>
+        private static void UpdateExcelTabLabel()
         {
-            // Intentionally left as-is.
+            // Intentionally left as-is - placeholder for future implementation
+            // This method is called from WebCtrl_SourceChanged when login completes
+            // Currently no action needed, but kept for extensibility
+            try
+            {
+              ProgressCoordinator.UpdateRibbonLoginStatus();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(UpdateExcelTabLabel));
+            }
         }
 
         private async void WebView_CoreWebView2InitializationCompleted(object sender, CoreWebView2InitializationCompletedEventArgs e)
@@ -931,24 +1031,14 @@ namespace XLEdge.Views
             }
         }
 
-        /// <summary>
-        /// The hosted web app signals commands to Excel by setting the WebView2 document's title to a
-        /// "|"-delimited string; the first segment selects which command runs:
-        /// - "EdgeWorkbook": batch "rerun everything in this workbook" (MultiData) - the report/run ids
-        ///   are read from a DOM attribute the web app sets on a hidden element (see
-        ///   FetchWorkbookRerunIdsAsync).
-        /// - "Process"/"Edge": the common single ad-hoc report/process run, via CreateReportFromTitleAsync.
-        /// - "Logs": a non-tabular report-run variant (raw process-log text), routed to
-        ///   ReportGenerator.CreateLogsReportAsync.
-        /// - "Process"/"Edge" with a 5th ("XLSX") segment, and "Excel": authenticated file downloads,
-        ///   routed to ReportGenerator.DownloadFile1Async.
-        /// </summary>
         private async void WebView_DocumentTitleChanged(object sender, object e)
         {
             try
             {
                 string title = WebCtrl?.CoreWebView2?.DocumentTitle ?? string.Empty;
                 LogUtility.LogDebug($"Document title changed: {title}");
+
+                ScheduleHeightCheck();
 
                 if (string.IsNullOrWhiteSpace(title) || !title.Contains("|"))
                 {
@@ -969,16 +1059,11 @@ namespace XLEdge.Views
                                     () => XLEdge.Helpers.ReportGenerator.CreateMultiDataReportsAsync(runIds, AppOverlayControl),
                                     "Handle EdgeWorkbook (MultiData) document title change");
                             }
-
                             break;
                         }
 
                     case "Process":
                     case "Edge":
-                        // Ported from VB's "var(4) = XLSX" sub-case: a plain authenticated
-                        // finance-report-output file download, no report table involved at all -
-                        // routed to DownloadFile1Async instead of falling through to the normal
-                        // report-generation path.
                         if (parts.Length >= 5 && parts[4] == "XLSX")
                         {
                             string processId = parts.Length > 1 ? parts[1] : string.Empty;
@@ -997,7 +1082,6 @@ namespace XLEdge.Views
 
                     case "Excel":
                         {
-                            // Ported from VB's "Excel" branch: .../web/secure/financeTemplateFileDownload?reportId={var(1)}
                             string reportId = parts.Length > 1 ? parts[1] : string.Empty;
                             string downloadUrl = $"{XLEdgeAppState.Instance.LoginUrl?.TrimEnd('/')}/web/secure/financeTemplateFileDownload?reportId={reportId}";
                             SafeFireAndForget(() => XLEdge.Helpers.ReportGenerator.DownloadFile1Async(downloadUrl), "Handle Excel file download document title change");
@@ -1015,14 +1099,6 @@ namespace XLEdge.Views
             }
         }
 
-        /// <summary>
-        /// Ported from ADXExcelTaskPane1.vb's "EdgeWorkbook" branch: queries the hosted web app's
-        /// "[reruntype=xledgeworkbookrerun]" DOM element for its "newrunids" attribute - a "^"-delimited
-        /// list of "reportId|runId" pairs describing every report the web app wants rerun - and strips
-        /// the surrounding quotes ExecuteScriptAsync's JSON-encoded string result always has. Returns
-        /// null/empty if the element isn't present or the attribute is null (matches VB's
-        /// `result <> "null"` check).
-        /// </summary>
         private async Task<string> FetchWorkbookRerunIdsAsync()
         {
             const string script = @"(() => {
@@ -1059,7 +1135,6 @@ namespace XLEdge.Views
                 return null;
             }
         }
-
 
         private void ADXExcelTaskPane1_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
         {
@@ -1102,9 +1177,6 @@ namespace XLEdge.Views
             }, "Unhandled error in ADXAfterTaskPaneShow");
         }
 
-        // Ported from VB's InvokedFromGLSense: after a GLSense-driven login refresh, the pane may
-        // already be visible (so ADXAfterTaskPaneShow won't fire again to trigger navigation).
-        // Made internal so ADXExcelTaskPane1.RefreshLoginNavigationAsync can call it directly.
         internal async Task NavigateToLoginUrlSafeAsync()
         {
             try
@@ -1147,8 +1219,6 @@ namespace XLEdge.Views
             }
         }
 
-        // Ported from VB's InvokedFromGLSense no-permission branch (WebCtrl.Source = New Uri("about:blank")).
-        // Internal so ADXExcelTaskPane1.NavigateBlankAsync can call it directly.
         internal async Task NavigateBlankAsync()
         {
             try
@@ -1167,9 +1237,6 @@ namespace XLEdge.Views
             }
         }
 
-        // Ported from VB's InvokedFromGLSense: re-runs the same source-selection logic
-        // NavigateToLoginUrlSafeAsync already applies on ADXAfterTaskPaneShow, but that event
-        // won't re-fire when the pane is already visible during a GLSense login refresh.
         internal async Task RefreshLoginNavigationAsync()
         {
             await RunOnUIAsync(() =>
@@ -1181,13 +1248,6 @@ namespace XLEdge.Views
             await NavigateToLoginUrlSafeAsync();
         }
 
-        /// <summary>
-        /// Sets the native Add-in Express/Excel task pane's own title bar text. Replaces the removed
-        /// WPF header's "Instance: &lt;url&gt;" TextBlock now that the pane relies on Excel's native
-        /// chrome (title bar + close button) instead of a custom in-content header. Caption is the
-        /// bare instance URL only (no "Orbit XLEdge Reports" prefix/suffix) - callers pass
-        /// string.Empty for the logged-out/no-instance state.
-        /// </summary>
         private void SetPaneCaption(string caption)
         {
             try
@@ -1203,21 +1263,16 @@ namespace XLEdge.Views
             }
         }
 
-        /// <summary>
-        /// Forces focus away from the WebView2/task pane back to Excel
-        /// </summary>
         public void ReleaseFocusToExcel()
         {
             try
             {
                 Dispatcher.Invoke(() =>
                 {
-                    // Try to move focus away from WebView2
                     if (WebCtrl != null && WebCtrl.CoreWebView2 != null)
                     {
                         try
                         {
-                            // This tells the WebView2 to release focus
                             WebCtrl.CoreWebView2.ExecuteScriptAsync("document.activeElement?.blur();");
                         }
                         catch (Exception ex)
@@ -1225,25 +1280,17 @@ namespace XLEdge.Views
                             LogUtility.LogError($"ReleaseFocusToExcel: WebView2 blur failed - {ex.Message}");
                         }
 
-                        // Try to move focus to the task pane itself
                         if (_parentPane != null)
                         {
                             _parentPane.Focus();
                         }
 
-                        // Then immediately give focus back to Excel
                         try
                         {
                             var excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
                             if (excelApp != null)
                             {
-                                // Use Windows API to activate Excel
                                 ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
-
-                                // Deliberately not sending a dummy {F2}/{ESC} keystroke here -
-                                // SendKeys was found to be flipping the user's NumLock state on
-                                // every report run. ActivateExcelMainWindow above already sets real
-                                // OS keyboard focus on the worksheet grid via SetForegroundWindow/SetFocus.
                             }
                         }
                         catch (Exception ex)
@@ -1257,6 +1304,22 @@ namespace XLEdge.Views
             {
                 LogUtility.LogException(ex, "ReleaseFocusToExcel failed");
             }
+        }
+
+        /// <summary>
+        /// Public method to manually refresh WebView height
+        /// </summary>
+        public void RefreshWebViewHeight()
+        {
+            if (_isDisposed)
+                return;
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                UpdateLayout();
+                MainScrollViewer?.UpdateLayout();
+                ScheduleHeightCheck();
+            }), DispatcherPriority.Loaded);
         }
     }
 }
