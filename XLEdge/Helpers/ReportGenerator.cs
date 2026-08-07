@@ -2042,6 +2042,10 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 55): the "ORACLE_GL_SEGMENT_DISPLAY_VALUES"
+        // case (by far the deepest-nested branch here - object-vs-string-vs-parsed-string resolution,
+        // then a nested foreach building the formatted string) is pulled into its own helper chain.
+        // Every condition, comment, and log message is unchanged.
         private static (string RespId, string RespValue, string GlSegments, string GLSegmentValues) ExtractExtraParams(JsonElement extraParamsEl)
         {
             string respId = null;
@@ -2072,54 +2076,7 @@ namespace XLEdge.Helpers
                             break;
 
                         case "ORACLE_GL_SEGMENT_DISPLAY_VALUES":
-                            // Accepts either a real JSON object, or a string whose content itself
-                            // parses as a JSON object (e.g. {"Company":"1000-5000","Department":"-",...}).
-                            JsonElement? segmentObjectEl = null;
-                            if (prop.Value.ValueKind == JsonValueKind.Object)
-                            {
-                                segmentObjectEl = prop.Value;
-                            }
-                            else if (prop.Value.ValueKind == JsonValueKind.String)
-                            {
-                                string rawText = prop.Value.GetString();
-                                if (!string.IsNullOrWhiteSpace(rawText))
-                                {
-                                    try
-                                    {
-                                        using var innerDoc = JsonDocument.Parse(rawText);
-                                        if (innerDoc.RootElement.ValueKind == JsonValueKind.Object)
-                                        {
-                                            segmentObjectEl = innerDoc.RootElement.Clone();
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogUtility.LogDebug($"{nameof(ExtractExtraParams)}: ORACLE_GL_SEGMENT_DISPLAY_VALUES string value did not parse as a JSON object - {ex.Message}");
-                                    }
-                                }
-                            }
-
-                            if (segmentObjectEl.HasValue)
-                            {
-                                var segmentString = new StringBuilder();
-                                foreach (JsonProperty innerProp in segmentObjectEl.Value.EnumerateObject())
-                                {
-                                    string val = innerProp.Value.ValueKind == JsonValueKind.Null ? null : innerProp.Value.ToString()?.Trim();
-                                    if (string.IsNullOrEmpty(val) || val == "-")
-                                    {
-                                        val = "\"\"";
-                                    }
-
-                                    segmentString.AppendFormat("{0}={1}, ", innerProp.Name, val);
-                                }
-
-                                if (segmentString.Length > 2)
-                                {
-                                    segmentString.Length -= 2;
-                                }
-
-                                glSegments = segmentString.ToString();
-                            }
+                            glSegments = ExtractGlSegmentsDisplayString(prop.Value);
                             break;
                     }
                 }
@@ -2131,6 +2088,71 @@ namespace XLEdge.Helpers
                 LogUtility.LogException(ex, nameof(ExtractExtraParams));
                 return (string.Empty, string.Empty, string.Empty, string.Empty);
             }
+        }
+
+        // Extracted from ExtractExtraParams - resolves the ORACLE_GL_SEGMENT_DISPLAY_VALUES property
+        // (either a real JSON object, or a string that itself parses as one) into the formatted
+        // "Key=Value, Key=Value" display string.
+        private static string ExtractGlSegmentsDisplayString(JsonElement propValue)
+        {
+            JsonElement? segmentObjectEl = ResolveSegmentObjectElement(propValue);
+            return segmentObjectEl.HasValue ? FormatSegmentObjectAsString(segmentObjectEl.Value) : null;
+        }
+
+        // Extracted from ExtractExtraParams - accepts either a real JSON object, or a string whose
+        // content itself parses as a JSON object (e.g. {"Company":"1000-5000","Department":"-",...}).
+        private static JsonElement? ResolveSegmentObjectElement(JsonElement propValue)
+        {
+            if (propValue.ValueKind == JsonValueKind.Object)
+            {
+                return propValue;
+            }
+
+            if (propValue.ValueKind == JsonValueKind.String)
+            {
+                string rawText = propValue.GetString();
+                if (!string.IsNullOrWhiteSpace(rawText))
+                {
+                    try
+                    {
+                        using var innerDoc = JsonDocument.Parse(rawText);
+                        if (innerDoc.RootElement.ValueKind == JsonValueKind.Object)
+                        {
+                            return innerDoc.RootElement.Clone();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(ResolveSegmentObjectElement)}: ORACLE_GL_SEGMENT_DISPLAY_VALUES string value did not parse as a JSON object - {ex.Message}");
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        // Extracted from ExtractExtraParams - formats a resolved segment object as "Key=Value, ..."
+        // (blank/"-" values are rendered as an explicit empty-quoted string).
+        private static string FormatSegmentObjectAsString(JsonElement segmentObjectEl)
+        {
+            var segmentString = new StringBuilder();
+            foreach (JsonProperty innerProp in segmentObjectEl.EnumerateObject())
+            {
+                string val = innerProp.Value.ValueKind == JsonValueKind.Null ? null : innerProp.Value.ToString()?.Trim();
+                if (string.IsNullOrEmpty(val) || val == "-")
+                {
+                    val = "\"\"";
+                }
+
+                segmentString.AppendFormat("{0}={1}, ", innerProp.Name, val);
+            }
+
+            if (segmentString.Length > 2)
+            {
+                segmentString.Length -= 2;
+            }
+
+            return segmentString.ToString();
         }
 
         private static string BuildReportParamValue(JsonElement item, string componentType, string paramOperator, string paramType, string operatorKey)
