@@ -3673,8 +3673,7 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(ctx.EeLoginUrl, ctx.RunId);
                 await CancelCleanupAsync(ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
                 if (ctx.CollectErrors) throw;
-                if (ctx.UseWaitWindow) { try { ctx.WaitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window on cancel"); } }
-                else { await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => { if (ctx.AppOverlay != null) await ctx.AppOverlay.HideBusyAsync(); }); }
+                await CloseCsvFetchProgressUiOnCancelAsync(ctx);
                 return false;
             }
             catch (ApiTimeoutException ex)
@@ -3691,6 +3690,21 @@ namespace XLEdge.Helpers
             }
 
             return true;
+        }
+
+        // Extracted from TryFetchCsvDataAsync - closes the progress UI after a cancelled CSV fetch
+        // when the caller isn't collecting errors (i.e. isn't going to rethrow).
+        private static async Task CloseCsvFetchProgressUiOnCancelAsync(RefreshContext ctx)
+        {
+            if (ctx.UseWaitWindow)
+            {
+                try { ctx.WaitWindow?.RequestClose(); }
+                catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window on cancel"); }
+            }
+            else
+            {
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => { if (ctx.AppOverlay != null) await ctx.AppOverlay.HideBusyAsync(); });
+            }
         }
 
         // Extracted from RefreshListObjectAsync (STEP 4) - parses the downloaded CSV data.
@@ -3717,53 +3731,68 @@ namespace XLEdge.Helpers
         {
             try
             {
-                var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                for (int i = 1; i <= ctx.ListObject.ListColumns.Count; i++)
-                {
-                    try { existingNames.Add(ctx.ListObject.ListColumns[i].Name); }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumn[{i}].Name - {ex.Message}");
-                    }
-                }
+                var existingNames = CollectExistingColumnNames(ctx.ListObject);
 
                 for (int i = 1; i <= ctx.RawCols; i++)
                 {
-                    bool mapped = ctx.Mappings.Any(m => m.RawIndex == i);
-                    if (mapped) continue;
-
-                    string orig = ctx.RawHeader[i - 1] ?? string.Empty;
-                    string baseName = orig.Trim();
-                    if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + i;
-
-                    string mod = baseName;
-                    int suffix = 1;
-                    while (existingNames.Contains(mod) || ctx.Mappings.Any(m => string.Equals(m.Modified, mod, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        mod = baseName + suffix.ToString();
-                        suffix++;
-                    }
-
-                    try
-                    {
-                        var added = ctx.ListObject.ListColumns.Add();
-                        try { added.Name = mod; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename new column to '{mod}' - {ex.Message}");
-                        }
-                        existingNames.Add(mod);
-                        ctx.Mappings.Add((Original: orig, Modified: mod, RawIndex: i));
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "Failed to add missing column to table");
-                    }
+                    AddMissingColumnForRawIndex(ctx, existingNames, i);
                 }
             }
             catch (Exception ex)
             {
                 LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while adding missing columns to table - {ex.Message}");
+            }
+        }
+
+        // Extracted from AddMissingColumnsToTable - snapshots the table's current column names.
+        private static HashSet<string> CollectExistingColumnNames(Excel.ListObject lo)
+        {
+            var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 1; i <= lo.ListColumns.Count; i++)
+            {
+                try { existingNames.Add(lo.ListColumns[i].Name); }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumn[{i}].Name - {ex.Message}");
+                }
+            }
+
+            return existingNames;
+        }
+
+        // Extracted from AddMissingColumnsToTable - adds a single missing column for the given raw
+        // header index, if it isn't already mapped.
+        private static void AddMissingColumnForRawIndex(RefreshContext ctx, HashSet<string> existingNames, int rawIndex)
+        {
+            bool mapped = ctx.Mappings.Any(m => m.RawIndex == rawIndex);
+            if (mapped) return;
+
+            string orig = ctx.RawHeader[rawIndex - 1] ?? string.Empty;
+            string baseName = orig.Trim();
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + rawIndex;
+
+            string mod = baseName;
+            int suffix = 1;
+            while (existingNames.Contains(mod) || ctx.Mappings.Any(m => string.Equals(m.Modified, mod, StringComparison.OrdinalIgnoreCase)))
+            {
+                mod = baseName + suffix.ToString();
+                suffix++;
+            }
+
+            try
+            {
+                var added = ctx.ListObject.ListColumns.Add();
+                try { added.Name = mod; }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename new column to '{mod}' - {ex.Message}");
+                }
+                existingNames.Add(mod);
+                ctx.Mappings.Add((Original: orig, Modified: mod, RawIndex: rawIndex));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to add missing column to table");
             }
         }
 
@@ -3778,77 +3807,101 @@ namespace XLEdge.Helpers
 
                 for (int pos = 1; pos <= desiredCount && pos <= ctx.ListObject.ListColumns.Count; pos++)
                 {
-                    string desiredName = desiredOrder[pos - 1];
-                    string currentName = string.Empty;
-                    try { currentName = ctx.ListObject.ListColumns[pos].Name; }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{pos}].Name during reorder - {ex.Message}");
-                    }
-
-                    if (string.Equals(currentName, desiredName, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    int curIndex = -1;
-                    for (int i = 1; i <= ctx.ListObject.ListColumns.Count; i++)
-                    {
-                        try
-                        {
-                            if (string.Equals(ctx.ListObject.ListColumns[i].Name, desiredName, StringComparison.OrdinalIgnoreCase))
-                            {
-                                curIndex = i;
-                                break;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{i}].Name while searching for '{desiredName}' - {ex.Message}");
-                        }
-                    }
-
-                    if (curIndex == -1)
-                        continue;
-
-                    try
-                    {
-                        var rangeA = ctx.ListObject.ListColumns[pos].Range;
-                        var rangeB = ctx.ListObject.ListColumns[curIndex].Range;
-                        if (rangeA != null && rangeB != null)
-                        {
-                            var temp = rangeA.Value2;
-                            rangeA.Value2 = rangeB.Value2;
-                            rangeB.Value2 = temp;
-                        }
-
-                        try
-                        {
-                            var headerRange = ctx.ListObject.HeaderRowRange;
-                            if (headerRange != null)
-                            {
-                                var headerCellObj = headerRange.Cells[1, pos];
-                                if (headerCellObj is Excel.Range headerCell)
-                                    headerCell.Value2 = desiredName;
-                            }
-                            try { ctx.ListObject.ListColumns[pos].Name = desiredName; }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename ListColumns[{pos}] to '{desiredName}' - {ex.Message}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to sync header name for '{desiredName}' - {ex.Message}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "Failed to reorder table columns");
-                    }
+                    ReorderOneColumn(ctx.ListObject, pos, desiredOrder[pos - 1]);
                 }
             }
             catch (Exception ex)
             {
                 LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while reordering table columns - {ex.Message}");
+            }
+        }
+
+        // Extracted from ReorderTableColumns - moves the column currently holding desiredName into
+        // position pos, if it isn't already there.
+        private static void ReorderOneColumn(Excel.ListObject lo, int pos, string desiredName)
+        {
+            string currentName = string.Empty;
+            try { currentName = lo.ListColumns[pos].Name; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{pos}].Name during reorder - {ex.Message}");
+            }
+
+            if (string.Equals(currentName, desiredName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            int curIndex = FindColumnIndexByName(lo, desiredName);
+            if (curIndex == -1)
+                return;
+
+            try
+            {
+                SwapColumnPositions(lo, pos, curIndex);
+                SyncReorderedColumnHeaderName(lo, pos, desiredName);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to reorder table columns");
+            }
+        }
+
+        // Extracted from ReorderTableColumns - finds the 1-based ListColumns index whose name
+        // matches desiredName, or -1 if not found.
+        private static int FindColumnIndexByName(Excel.ListObject lo, string desiredName)
+        {
+            for (int i = 1; i <= lo.ListColumns.Count; i++)
+            {
+                try
+                {
+                    if (string.Equals(lo.ListColumns[i].Name, desiredName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{i}].Name while searching for '{desiredName}' - {ex.Message}");
+                }
+            }
+
+            return -1;
+        }
+
+        // Extracted from ReorderTableColumns - swaps the cell values of two columns' ranges.
+        private static void SwapColumnPositions(Excel.ListObject lo, int pos, int curIndex)
+        {
+            var rangeA = lo.ListColumns[pos].Range;
+            var rangeB = lo.ListColumns[curIndex].Range;
+            if (rangeA != null && rangeB != null)
+            {
+                var temp = rangeA.Value2;
+                rangeA.Value2 = rangeB.Value2;
+                rangeB.Value2 = temp;
+            }
+        }
+
+        // Extracted from ReorderTableColumns - syncs the header cell text and column Name after a
+        // swap.
+        private static void SyncReorderedColumnHeaderName(Excel.ListObject lo, int pos, string desiredName)
+        {
+            try
+            {
+                var headerRange = lo.HeaderRowRange;
+                if (headerRange != null)
+                {
+                    var headerCellObj = headerRange.Cells[1, pos];
+                    if (headerCellObj is Excel.Range headerCell)
+                        headerCell.Value2 = desiredName;
+                }
+                try { lo.ListColumns[pos].Name = desiredName; }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename ListColumns[{pos}] to '{desiredName}' - {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to sync header name for '{desiredName}' - {ex.Message}");
             }
         }
 
@@ -3935,56 +3988,71 @@ namespace XLEdge.Helpers
             {
                 for (int tc = 1; tc <= ctx.TableCols; tc++)
                 {
-                    string modifiedName = string.Empty;
-                    try { modifiedName = ctx.ListObject.ListColumns[tc].Name; }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{tc}].Name while writing refreshed data - {ex.Message}");
-                        continue;
-                    }
-
-                    var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, modifiedName, StringComparison.OrdinalIgnoreCase));
-                    if (map.Modified == null)
-                    {
-                        continue;
-                    }
-
-                    int rawIndex = map.RawIndex;
-                    if (rawIndex < 1 || rawIndex > ctx.RawCols)
-                    {
-                        continue;
-                    }
-
-                    bool hasRow1Formula = ctx.FirstRowFormulas.ContainsKey(tc);
-                    int colWriteStartRow = hasRow1Formula ? ctx.DataStartRow + 1 : ctx.DataStartRow;
-                    int colRowCount = ctx.TargetTotalRows - (hasRow1Formula ? 1 : 0);
-
-                    if (colRowCount <= 0)
-                    {
-                        continue;
-                    }
-
-                    try
-                    {
-                        object[,] colArr = new object[colRowCount, 1];
-                        for (int i = 0; i < colRowCount; i++)
-                        {
-                            int physicalRow = colWriteStartRow + i;
-                            int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
-                            var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
-                            colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                        }
-
-                        var colStartCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow, tc];
-                        var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
-                        ctx.Sheet.Range[colStartCell, colEndCell].Value2 = colArr;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed writing refreshed data for column {tc} ('{modifiedName}')");
-                    }
+                    WriteRefreshedColumnData(ctx, tc);
                 }
             }
+        }
+
+        // Extracted from WriteRefreshedDataToTableAsync - resolves and writes the refreshed values
+        // for a single table column.
+        private static void WriteRefreshedColumnData(RefreshContext ctx, int tc)
+        {
+            string modifiedName = string.Empty;
+            try { modifiedName = ctx.ListObject.ListColumns[tc].Name; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{tc}].Name while writing refreshed data - {ex.Message}");
+                return;
+            }
+
+            var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, modifiedName, StringComparison.OrdinalIgnoreCase));
+            if (map.Modified == null)
+            {
+                return;
+            }
+
+            int rawIndex = map.RawIndex;
+            if (rawIndex < 1 || rawIndex > ctx.RawCols)
+            {
+                return;
+            }
+
+            bool hasRow1Formula = ctx.FirstRowFormulas.ContainsKey(tc);
+            int colWriteStartRow = hasRow1Formula ? ctx.DataStartRow + 1 : ctx.DataStartRow;
+            int colRowCount = ctx.TargetTotalRows - (hasRow1Formula ? 1 : 0);
+
+            if (colRowCount <= 0)
+            {
+                return;
+            }
+
+            try
+            {
+                object[,] colArr = BuildRefreshedColumnArray(ctx, colWriteStartRow, colRowCount, rawIndex);
+
+                var colStartCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow, tc];
+                var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
+                ctx.Sheet.Range[colStartCell, colEndCell].Value2 = colArr;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Failed writing refreshed data for column {tc} ('{modifiedName}')");
+            }
+        }
+
+        // Extracted from WriteRefreshedColumnData - builds the single-column value array to write.
+        private static object[,] BuildRefreshedColumnArray(RefreshContext ctx, int colWriteStartRow, int colRowCount, int rawIndex)
+        {
+            object[,] colArr = new object[colRowCount, 1];
+            for (int i = 0; i < colRowCount; i++)
+            {
+                int physicalRow = colWriteStartRow + i;
+                int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
+                var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
+                colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+            }
+
+            return colArr;
         }
 
         // Extracted from RefreshListObjectAsync (STEP 11) - fills down formulas from the first data
@@ -4017,43 +4085,52 @@ namespace XLEdge.Helpers
         // Extracted from RefreshListObjectAsync (STEP 12) - handles RefreshSync column cleanup.
         private static void HandleRefreshSyncColumnCleanup(RefreshContext ctx)
         {
-            if (XLEdgeAppState.Instance.RefreshSync)
+            if (!XLEdgeAppState.Instance.RefreshSync)
             {
-                try
+                return;
+            }
+
+            try
+            {
+                for (int c = ctx.ListObject.ListColumns.Count; c >= 1; c--)
                 {
-                    for (int c = ctx.ListObject.ListColumns.Count; c >= 1; c--)
+                    if (ShouldDeleteRefreshSyncColumn(ctx, c))
                     {
-                        string colName = string.Empty;
-                        try { colName = ctx.ListObject.ListColumns[c].Name; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{c}].Name during RefreshSync cleanup - {ex.Message}");
-                        }
-                        var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, colName, StringComparison.OrdinalIgnoreCase));
-                        bool hasMapping = map.Modified != null;
-
-                        bool hasFormula = false;
-                        try
-                        {
-                            var firstRowObj = ctx.ListObject.DataBodyRange.Resize[1, ctx.ListObject.ListColumns.Count];
-                            var firstCell = firstRowObj?.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
-                            var formula = firstCell?.Formula as string;
-                            if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
-                                hasFormula = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} during RefreshSync cleanup - {ex.Message}");
-                        }
-
-                        if (!hasMapping && !hasFormula)
-                        {
-                            try { ctx.ListObject.ListColumns[c].Delete(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete column"); }
-                        }
+                        try { ctx.ListObject.ListColumns[c].Delete(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete column"); }
                     }
                 }
-                catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete columns not present in mapping and not formula columns"); }
             }
+            catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete columns not present in mapping and not formula columns"); }
+        }
+
+        // Extracted from HandleRefreshSyncColumnCleanup - determines whether column c has neither a
+        // raw-data mapping nor a preserved formula, and should therefore be deleted.
+        private static bool ShouldDeleteRefreshSyncColumn(RefreshContext ctx, int c)
+        {
+            string colName = string.Empty;
+            try { colName = ctx.ListObject.ListColumns[c].Name; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{c}].Name during RefreshSync cleanup - {ex.Message}");
+            }
+            var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, colName, StringComparison.OrdinalIgnoreCase));
+            bool hasMapping = map.Modified != null;
+
+            bool hasFormula = false;
+            try
+            {
+                var firstRowObj = ctx.ListObject.DataBodyRange.Resize[1, ctx.ListObject.ListColumns.Count];
+                var firstCell = firstRowObj?.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
+                var formula = firstCell?.Formula as string;
+                if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
+                    hasFormula = true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} during RefreshSync cleanup - {ex.Message}");
+            }
+
+            return !hasMapping && !hasFormula;
         }
 
         // Extracted from RefreshListObjectAsync (STEP 13) - re-embeds drilldown/attachment/image
