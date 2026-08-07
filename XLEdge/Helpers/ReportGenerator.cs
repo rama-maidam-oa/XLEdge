@@ -853,6 +853,10 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 85): the original single method is
+        // decomposed below into small, single-purpose private helpers. Every line of logic is
+        // unchanged - this only changes how the logic is packaged into methods, not what it does or
+        // the order in which it runs, to avoid introducing any behavioral regression.
         private static void BuildReportTable(EdgeRequest request, ReportMeta reportMeta, string csvResponse, string metaJson, string paramsJson, string title)
         {
             Excel.Application excelApp = XLApp.App;
@@ -867,6 +871,43 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("No active workbook.");
             }
 
+            (string tableId, List<List<string>> rows, int dataRowCount, List<(string Original, string Modified, int RawIndex)> mappings) =
+                BuildColumnMappings(request, reportMeta, csvResponse);
+
+            bool sameSheet = XLEdgeAppState.Instance.ParamDataSameSheet;
+            int headerRow = sameSheet ? 8 : 1;
+            int dataStartRow = headerRow + 1;
+
+            Excel.Worksheet sheet = ResolveOrCreateReportSheet(workbook, tableId, reportMeta, sameSheet, headerRow, out string companionSheetToDelete);
+
+            ActivateAndUnfreezeSheet(excelApp, sheet);
+
+            Excel.ListObject listObject = WriteReportDataAndCreateTable(sheet, tableId, headerRow, dataStartRow, mappings, reportMeta, rows, dataRowCount);
+
+            HideFlaggedColumns(listObject, reportMeta, mappings);
+
+            string reportTitleText = ComputeReportTitleText(reportMeta, request);
+
+            WriteReportParameterSection(workbook, sheet, sameSheet, reportTitleText, paramsJson, dataRowCount, tableId);
+
+            AddDrilldownHyperlinks(sheet, listObject, reportMeta);
+            AddAttachmentAndImageColumns(sheet, listObject, reportMeta);
+
+            PersistReportMetadata(workbook, title, tableId, metaJson, paramsJson, mappings);
+
+            ApplyReportTableStyling(listObject);
+
+            ApplyColumnFreeze(excelApp, reportMeta, mappings.Count);
+
+            DeleteOrphanedCompanionSheet(workbook, companionSheetToDelete);
+        }
+
+        // Extracted from BuildReportTable - builds the Excel table identifier, parses the raw CSV
+        // response, and produces the ordered list of (original, sanitized, raw-column-index)
+        // mappings used to write the header/data.
+        private static (string TableId, List<List<string>> Rows, int DataRowCount, List<(string Original, string Modified, int RawIndex)> Mappings) BuildColumnMappings(
+            EdgeRequest request, ReportMeta reportMeta, string csvResponse)
+        {
             // Matches VB.NET's FormProcessBar.vb EETableID assignment: a submitted/scheduled
             // ("Process") report's table is suffixed "_P" instead of "_E". AddinModule.cs's
             // UpdateTabLabel/XLEdgeRibbonHelper.ProcessActiveWorkbook already recognize "_P" tables
@@ -911,96 +952,149 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("Report has no columns to write.");
             }
 
-            bool sameSheet = XLEdgeAppState.Instance.ParamDataSameSheet;
-            int headerRow = sameSheet ? 8 : 1;
-            int dataStartRow = headerRow + 1;
-            string companionSheetToDelete = null;
+            return (tableId, rows, dataRowCount, mappings);
+        }
 
+        // Extracted from BuildReportTable - finds/prepares the worksheet to write this report's
+        // table into, and tracks the name of any now-orphaned companion parameter sheet that should
+        // be deleted once the new table/banner has been written.
+        private static Excel.Worksheet ResolveOrCreateReportSheet(Excel.Workbook workbook, string tableId, ReportMeta reportMeta, bool sameSheet, int headerRow, out string companionSheetToDelete)
+        {
             Excel.Worksheet sheet = FindSheetWithTable(workbook, tableId);
+
             if (sheet != null)
             {
-                int? oldHeaderRow = null;
-                try
-                {
-                    Excel.ListObject existing = sheet.ListObjects[tableId];
-                    oldHeaderRow = existing.HeaderRowRange.Row;
-                    existing.Delete();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to remove existing table before rebuilding");
-                }
-
-                if (oldHeaderRow == 8 && headerRow == 1)
-                {
-                    RemoveSameSheetBanner(sheet);
-                }
-                else if (oldHeaderRow == 1 && headerRow == 8)
-                {
-                    try
-                    {
-                        Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet($"P_{sheet.Name}", tableId);
-                        if (oldParamSheet != null)
-                        {
-                            companionSheetToDelete = oldParamSheet.Name;
-                            Marshal.ReleaseComObject(oldParamSheet);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "Failed to resolve old companion parameter sheet before switching to same-sheet mode");
-                    }
-
-                    InsertRoomForSameSheetBanner(sheet);
-                }
+                PrepareExistingReportSheet(sheet, tableId, headerRow, out companionSheetToDelete);
             }
             else
             {
-                string sheetName = BuildSheetName(reportMeta);
-                if (ExcelSheetHelper.SheetExists(sheetName, workbook))
-                {
-                    sheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
-                    sheet.Cells.Clear();
-                    ResetLeftoverRowArtifacts(sheet);
-                }
-                else
-                {
-                    try
-                    {
-                        sheet = (Excel.Worksheet)workbook.Worksheets.Add();
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogDebug($"{nameof(BuildReportTable)}: default Worksheets.Add() failed, falling back to append-at-end - {ex.Message}");
-                        sheet = (Excel.Worksheet)workbook.Worksheets.Add(Type.Missing, workbook.Worksheets[workbook.Worksheets.Count]);
-                    }
-                    sheet.Name = sheetName;
-                }
+                sheet = CreateOrReuseReportSheet(workbook, reportMeta);
+                companionSheetToDelete = null;
             }
 
             if (sameSheet && string.IsNullOrEmpty(companionSheetToDelete))
             {
-                try
-                {
-                    string paramSheetName = $"P_{sheet.Name}";
-                    if (paramSheetName.Length >= 29)
-                    {
-                        paramSheetName = paramSheetName.Substring(0, 28);
-                    }
-
-                    Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, tableId);
-                    if (oldParamSheet != null)
-                    {
-                        companionSheetToDelete = oldParamSheet.Name;
-                        Marshal.ReleaseComObject(oldParamSheet);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to resolve orphaned companion parameter sheet before same-sheet write");
-                }
+                companionSheetToDelete = FindOrphanedCompanionSheetName(workbook, sheet.Name, tableId);
             }
 
+            return sheet;
+        }
+
+        // Extracted from BuildReportTable - when a table with this tableId already exists on a
+        // sheet, removes the old table and, if the header-row layout is changing (same-sheet banner
+        // added/removed), reconciles the banner/companion-sheet state to match the new layout.
+        private static void PrepareExistingReportSheet(Excel.Worksheet sheet, string tableId, int headerRow, out string companionSheetToDelete)
+        {
+            companionSheetToDelete = null;
+            int? oldHeaderRow = null;
+            try
+            {
+                Excel.ListObject existing = sheet.ListObjects[tableId];
+                oldHeaderRow = existing.HeaderRowRange.Row;
+                existing.Delete();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to remove existing table before rebuilding");
+            }
+
+            if (oldHeaderRow == 8 && headerRow == 1)
+            {
+                RemoveSameSheetBanner(sheet);
+            }
+            else if (oldHeaderRow == 1 && headerRow == 8)
+            {
+                companionSheetToDelete = TransitionSheetToSameSheetMode(sheet, tableId);
+            }
+        }
+
+        // Extracted from BuildReportTable - handles the "sheet is switching into same-sheet mode"
+        // case: resolves the now-orphaned companion parameter sheet's name (if any) and makes room
+        // for the in-sheet banner.
+        private static string TransitionSheetToSameSheetMode(Excel.Worksheet sheet, string tableId)
+        {
+            string companionSheetToDelete = null;
+            try
+            {
+                Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet($"P_{sheet.Name}", tableId);
+                if (oldParamSheet != null)
+                {
+                    companionSheetToDelete = oldParamSheet.Name;
+                    Marshal.ReleaseComObject(oldParamSheet);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to resolve old companion parameter sheet before switching to same-sheet mode");
+            }
+
+            InsertRoomForSameSheetBanner(sheet);
+            return companionSheetToDelete;
+        }
+
+        // Extracted from BuildReportTable - resolves the worksheet to use when no existing table
+        // with this tableId was found: reuse the report's named sheet if it already exists (clearing
+        // it first), otherwise create a brand-new sheet.
+        private static Excel.Worksheet CreateOrReuseReportSheet(Excel.Workbook workbook, ReportMeta reportMeta)
+        {
+            string sheetName = BuildSheetName(reportMeta);
+            if (ExcelSheetHelper.SheetExists(sheetName, workbook))
+            {
+                Excel.Worksheet existingSheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
+                existingSheet.Cells.Clear();
+                ResetLeftoverRowArtifacts(existingSheet);
+                return existingSheet;
+            }
+
+            Excel.Worksheet newSheet;
+            try
+            {
+                newSheet = (Excel.Worksheet)workbook.Worksheets.Add();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(CreateOrReuseReportSheet)}: default Worksheets.Add() failed, falling back to append-at-end - {ex.Message}");
+                newSheet = (Excel.Worksheet)workbook.Worksheets.Add(Type.Missing, workbook.Worksheets[workbook.Worksheets.Count]);
+            }
+
+            newSheet.Name = sheetName;
+            return newSheet;
+        }
+
+        // Extracted from BuildReportTable - when writing into same-sheet mode, checks for a
+        // leftover companion parameter sheet (from a prior non-same-sheet run of this report) that
+        // is now orphaned and should be cleaned up.
+        private static string FindOrphanedCompanionSheetName(Excel.Workbook workbook, string sheetName, string tableId)
+        {
+            try
+            {
+                string paramSheetName = $"P_{sheetName}";
+                if (paramSheetName.Length >= 29)
+                {
+                    paramSheetName = paramSheetName.Substring(0, 28);
+                }
+
+                Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, tableId);
+                if (oldParamSheet != null)
+                {
+                    string orphanedName = oldParamSheet.Name;
+                    Marshal.ReleaseComObject(oldParamSheet);
+                    return orphanedName;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to resolve orphaned companion parameter sheet before same-sheet write");
+            }
+
+            return null;
+        }
+
+        // Extracted from BuildReportTable - activates the target sheet and unfreezes panes so the
+        // header/data write always lands starting at row/column 1 regardless of the previous
+        // report's frozen-pane state.
+        private static void ActivateAndUnfreezeSheet(Excel.Application excelApp, Excel.Worksheet sheet)
+        {
             sheet.Activate();
 
             //unfreezing the columns and rows if they are frozen
@@ -1012,7 +1106,12 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to unfreeze panes on report sheet");
             }
+        }
 
+        // Extracted from BuildReportTable - writes the header row and (if any) the data rows as bulk
+        // Value2 array writes, then wraps the written range in a new ListObject named tableId.
+        private static Excel.ListObject WriteReportDataAndCreateTable(Excel.Worksheet sheet, string tableId, int headerRow, int dataStartRow, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows, int dataRowCount)
+        {
             object[,] headerArr = new object[1, mappings.Count];
             for (int c = 0; c < mappings.Count; c++)
             {
@@ -1026,22 +1125,7 @@ namespace XLEdge.Helpers
 
             if (dataRowCount > 0)
             {
-                object[,] writeArr = new object[dataRowCount, mappings.Count];
-
-                for (int c = 0; c < mappings.Count; c++)
-                {
-                    int rawIndex = mappings[c].RawIndex;
-                    string colType = reportMeta.Columns?
-                        .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
-                        .DataType;
-
-                    for (int r = 0; r < dataRowCount; r++)
-                    {
-                        List<string> rowVals = rows[r + 1];
-                        object raw = (rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                        writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
-                    }
-                }
+                object[,] writeArr = BuildDataWriteArray(rows, mappings, reportMeta, dataRowCount);
 
                 Excel.Range startCell = (Excel.Range)sheet.Cells[dataStartRow, 1];
                 Excel.Range writeRange = startCell.Resize[dataRowCount, mappings.Count];
@@ -1053,6 +1137,38 @@ namespace XLEdge.Helpers
             listObject.Name = tableId;
             listObject.TableStyle = "TableStyleLight9";
 
+            return listObject;
+        }
+
+        // Extracted from BuildReportTable - builds the 2D data array (row-major) to bulk-write into
+        // the sheet, applying each column's configured DataType formatting via
+        // XLEdgeValueFormatter.FormatValue.
+        private static object[,] BuildDataWriteArray(List<List<string>> rows, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, int dataRowCount)
+        {
+            object[,] writeArr = new object[dataRowCount, mappings.Count];
+
+            for (int c = 0; c < mappings.Count; c++)
+            {
+                int rawIndex = mappings[c].RawIndex;
+                string colType = reportMeta.Columns?
+                    .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
+                    .DataType;
+
+                for (int r = 0; r < dataRowCount; r++)
+                {
+                    List<string> rowVals = rows[r + 1];
+                    object raw = (rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+                    writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
+                }
+            }
+
+            return writeArr;
+        }
+
+        // Extracted from BuildReportTable - hides any table column whose report-metadata column is
+        // flagged Properties.Hidden.
+        private static void HideFlaggedColumns(Excel.ListObject listObject, ReportMeta reportMeta, List<(string Original, string Modified, int RawIndex)> mappings)
+        {
             foreach (RptColumn col in reportMeta.Columns ?? Array.Empty<RptColumn>())
             {
                 if (col.Properties?.Hidden != true)
@@ -1076,12 +1192,22 @@ namespace XLEdge.Helpers
                     LogUtility.LogException(ex, $"Failed to hide column '{mapping.Modified}'");
                 }
             }
+        }
 
-            string reportTitleText = XLEdgeValueFormatter.RemoveEquaSymbol(
+        // Extracted from BuildReportTable - resolves the display title used for the same-sheet
+        // banner / companion parameter sheet header (drilldown child label takes priority when set).
+        private static string ComputeReportTitleText(ReportMeta reportMeta, EdgeRequest request)
+        {
+            return XLEdgeValueFormatter.RemoveEquaSymbol(
                 (XLEdgeAppState.Instance.FollowDrilldown && !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.ChildRptLabel))
                     ? XLEdgeAppState.Instance.ChildRptLabel
                     : (reportMeta.Name ?? request.ReportName));
+        }
 
+        // Extracted from BuildReportTable - writes the report's parameter display, either as the
+        // in-sheet banner (same-sheet mode) or the separate companion parameter sheet.
+        private static void WriteReportParameterSection(Excel.Workbook workbook, Excel.Worksheet sheet, bool sameSheet, string reportTitleText, string paramsJson, int dataRowCount, string tableId)
+        {
             if (sameSheet)
             {
                 try
@@ -1104,10 +1230,11 @@ namespace XLEdge.Helpers
                     LogUtility.LogException(ex, "Failed to build companion parameter sheet");
                 }
             }
+        }
 
-            AddDrilldownHyperlinks(sheet, listObject, reportMeta);
-            AddAttachmentAndImageColumns(sheet, listObject, reportMeta);
-
+        // Extracted from BuildReportTable - persists the report's custom XML metadata part.
+        private static void PersistReportMetadata(Excel.Workbook workbook, string title, string tableId, string metaJson, string paramsJson, List<(string Original, string Modified, int RawIndex)> mappings)
+        {
             try
             {
                 string xml = BuildCustomXml(title, tableId, metaJson, paramsJson, mappings);
@@ -1117,7 +1244,12 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to persist report metadata");
             }
+        }
 
+        // Extracted from BuildReportTable - cosmetic-only column autofit/font sizing; safe to ignore
+        // on failure.
+        private static void ApplyReportTableStyling(Excel.ListObject listObject)
+        {
             try
             {
                 Excel.Range styleRange = listObject.Range;
@@ -1128,12 +1260,17 @@ namespace XLEdge.Helpers
             {
                 // Cosmetic-only (column width/font size); safe to ignore if it fails.
             }
+        }
 
+        // Extracted from BuildReportTable - freezes panes at the metadata-configured locked-column
+        // boundary, if any.
+        private static void ApplyColumnFreeze(Excel.Application excelApp, ReportMeta reportMeta, int mappingCount)
+        {
             //Attempting to freeae the columns based on metadata settings
             try
             {
                 int columnLockCount = reportMeta.LockedColumnsCount;
-                if (columnLockCount > 0 && columnLockCount < mappings.Count)
+                if (columnLockCount > 0 && columnLockCount < mappingCount)
                 {
                     excelApp.ActiveWindow.SplitColumn = columnLockCount;
                     excelApp.ActiveWindow.SplitRow = 0;
@@ -1145,20 +1282,27 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to freeze panes on report sheet");
             }
+        }
 
-            if (!string.IsNullOrEmpty(companionSheetToDelete))
+        // Extracted from BuildReportTable - deletes the now-orphaned companion parameter sheet left
+        // behind when a report table switched into/out of same-sheet mode.
+        private static void DeleteOrphanedCompanionSheet(Excel.Workbook workbook, string companionSheetToDelete)
+        {
+            if (string.IsNullOrEmpty(companionSheetToDelete))
             {
-                try
+                return;
+            }
+
+            try
+            {
+                if (ExcelSheetHelper.SheetExists(companionSheetToDelete, workbook))
                 {
-                    if (ExcelSheetHelper.SheetExists(companionSheetToDelete, workbook))
-                    {
-                        ((Excel.Worksheet)workbook.Worksheets[companionSheetToDelete]).Delete();
-                    }
+                    ((Excel.Worksheet)workbook.Worksheets[companionSheetToDelete]).Delete();
                 }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to delete orphaned companion parameter sheet after switching to same-sheet mode");
-                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to delete orphaned companion parameter sheet after switching to same-sheet mode");
             }
         }
 
