@@ -292,6 +292,12 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 33): each network fetch-and-validate
+        // step is pulled into its own method returning (ShouldContinue, Value); the core method
+        // becomes a linear sequence of "if a step failed, stop" checks. Every step's exact URL
+        // construction, message text, and catch-clause ordering (OperationCanceledException before
+        // ApiTimeoutException before the generic Exception fallback) is preserved unchanged - only
+        // the packaging into methods changed, not the behavior.
         private static async Task CreateReportFromTitleAsyncCore(string title, AppOverlay appOverlay, bool useWaitWindow, string paramsJsonPayload)
         {
             using var excelBulkScope = new ExcelBulkOperationScope();
@@ -323,14 +329,8 @@ namespace XLEdge.Helpers
                 await CreateAndShowWaitWindow();
             }
 
-            try
+            if (!await ParseEdgeRequestOrShowErrorAsync(title))
             {
-                GetEdgeRequestFromTitle(title);
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, $"Failed to parse title for report generation: {title}");
-                await DisplayErrorAsync($"Invalid title format for report generation. Title Format {title}");
                 return;
             }
 
@@ -347,7 +347,59 @@ namespace XLEdge.Helpers
             // Download report data first, matching FormProcessBar.vb's original order (StartTaskHere/
             // ReturnHTTP runs before Edge_GenerateData_Multisheet's MetaInfo/ParamInfo calls) - do not
             // reorder this.
-            string csvResponse = null;
+            (bool csvOk, string csvResponse) = await FetchAndPersistCsvResponseAsync(isDrilldownRequest, isProcessReport, paramsJsonPayload);
+            if (!csvOk)
+            {
+                return;
+            }
+
+            (bool metaOk, string metaResponse) = await FetchReportMetaResponseAsync(isProcessReport, isDrilldownRequest);
+            if (!metaOk)
+            {
+                return;
+            }
+
+            (bool paramsOk, string paramsResponse) = await FetchReportParamsResponseAsync(isDrilldownRequest, paramsJsonPayload);
+            if (!paramsOk)
+            {
+                return;
+            }
+
+            (bool metaParsedOk, ReportMeta reportMeta) = await TryDeserializeReportMetaAsync(metaResponse);
+            if (!metaParsedOk)
+            {
+                return;
+            }
+
+            if (!await TryBuildReportTableAsync(reportMeta, csvResponse, metaResponse, paramsResponse, title))
+            {
+                return;
+            }
+
+            await CleanupAsync();
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore.
+        private static async Task<bool> ParseEdgeRequestOrShowErrorAsync(string title)
+        {
+            try
+            {
+                GetEdgeRequestFromTitle(title);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Failed to parse title for report generation: {title}");
+                await DisplayErrorAsync($"Invalid title format for report generation. Title Format {title}");
+                return false;
+            }
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore - downloads the report's CSV data and writes
+        // it to the temporary CSV file used by BuildReportTable.
+        private static async Task<(bool ShouldContinue, string CsvResponse)> FetchAndPersistCsvResponseAsync(bool isDrilldownRequest, bool isProcessReport, string paramsJsonPayload)
+        {
+            string csvResponse;
             try
             {
                 await SetMessage("Downloading report data...");
@@ -382,14 +434,14 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
                 await DisplayErrorAsync("Report generation was cancelled by the user.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report generation request timed out");
                 await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (Exception ex)
             {
@@ -397,7 +449,7 @@ namespace XLEdge.Helpers
                 LogUtility.LogException(ex, "Unhandled error in report generation");
                 await DisplayErrorAsync($"An unexpected error occurred during report generation.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             if (string.IsNullOrWhiteSpace(csvResponse))
@@ -405,24 +457,28 @@ namespace XLEdge.Helpers
                 LogUtility.LogWarn("CSV response is empty. Cannot generate report.");
                 await DisplayErrorAsync("Failed to download report data. The response was empty.");
                 await CleanupAsync();
-                return;
-            }
-            else
-            {
-                try
-                {
-                    await SetMessage("Writing temporary CSV file...");
-                    await Task.Run(() => WriteTempCsv(csvResponse, _edgeRequest.ReportRunId));
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to write temporary CSV file");
-                    await DisplayErrorAsync($"Failed to write temporary CSV file for report generation.{Environment.NewLine}{ex.Message}");
-                    await CleanupAsync();
-                    return;
-                }
+                return (false, null);
             }
 
+            try
+            {
+                await SetMessage("Writing temporary CSV file...");
+                await Task.Run(() => WriteTempCsv(csvResponse, _edgeRequest.ReportRunId));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to write temporary CSV file");
+                await DisplayErrorAsync($"Failed to write temporary CSV file for report generation.{Environment.NewLine}{ex.Message}");
+                await CleanupAsync();
+                return (false, null);
+            }
+
+            return (true, csvResponse);
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore - fetches the report definition (Meta).
+        private static async Task<(bool ShouldContinue, string MetaResponse)> FetchReportMetaResponseAsync(bool isProcessReport, bool isDrilldownRequest)
+        {
             // Fetch report definition (Meta) - always need this from API. Process reports use a
             // different endpoint/id shape than live Edge reports or drilldowns - matches VB.NET's
             // MetaInfo (FollowDrilldown always wins and uses the reportId+runId shape; otherwise
@@ -451,21 +507,21 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
                 await DisplayErrorAsync("Report definition fetch was cancelled by the user.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report definition fetch timed out");
                 await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Unhandled error fetching report definition");
                 await DisplayErrorAsync($"An unexpected error occurred while fetching report definition.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             if (string.IsNullOrWhiteSpace(metaResponse))
@@ -473,11 +529,18 @@ namespace XLEdge.Helpers
                 LogUtility.LogWarn("Report definition response is empty. Cannot generate report.");
                 await DisplayErrorAsync("Failed to fetch report definition. The response was empty.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             LogResponsePayload("Report definition response (metaResponse)", metaResponse);
 
+            return (true, metaResponse);
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore - fetches the report's parameter display
+        // payload (including the round trip required for a drilldown request).
+        private static async Task<(bool ShouldContinue, string ParamsResponse)> FetchReportParamsResponseAsync(bool isDrilldownRequest, string paramsJsonPayload)
+        {
             // Fetch report parameters. For a drilldown, paramsJsonPayload is the request body built
             // by DrilldownRequestBuilder (reportId/parameters/extraParameters scoped to the clicked
             // row) - it has to be POSTed to this endpoint and the actual response captured, matching
@@ -502,21 +565,21 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
                 await DisplayErrorAsync("Report parameters fetch was cancelled by the user.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report parameters fetch timed out");
                 await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Unhandled error fetching report parameters");
                 await DisplayErrorAsync($"An unexpected error occurred while fetching report parameters.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             if (string.IsNullOrWhiteSpace(paramsResponse))
@@ -524,44 +587,54 @@ namespace XLEdge.Helpers
                 LogUtility.LogWarn("Report parameters response is empty. Cannot generate report.");
                 await DisplayErrorAsync("Failed to fetch report parameters. The response was empty.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             LogResponsePayload("Report parameters response (paramsResponse)", paramsResponse);
 
-            ReportMeta reportMeta;
+            return (true, paramsResponse);
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore.
+        private static async Task<(bool ShouldContinue, ReportMeta ReportMeta)> TryDeserializeReportMetaAsync(string metaResponse)
+        {
             try
             {
-                reportMeta = JsonSerializer.Deserialize<ReportMeta>(metaResponse, JsonGlobals.Options);
+                ReportMeta reportMeta = JsonSerializer.Deserialize<ReportMeta>(metaResponse, JsonGlobals.Options);
                 if (reportMeta == null)
                 {
                     await DisplayErrorAsync("Report definition could not be parsed.");
                     await CleanupAsync();
-                    return;
+                    return (false, null);
                 }
+
+                return (true, reportMeta);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Failed to parse report definition JSON");
                 await DisplayErrorAsync("Report definition is not in the expected format.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
+        }
 
+        // Extracted from CreateReportFromTitleAsyncCore.
+        private static async Task<bool> TryBuildReportTableAsync(ReportMeta reportMeta, string csvResponse, string metaResponse, string paramsResponse, string title)
+        {
             try
             {
                 await SetMessage("Building report in Excel...");
                 BuildReportTable(_edgeRequest, reportMeta, csvResponse, metaResponse, paramsResponse, title);
+                return true;
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Failed to build report table in Excel");
                 await DisplayErrorAsync($"Failed to write the report into Excel.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return false;
             }
-
-            await CleanupAsync();
         }
 
         /// <summary>
