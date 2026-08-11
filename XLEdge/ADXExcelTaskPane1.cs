@@ -200,8 +200,26 @@ namespace XLEdge
             _wpfControl?.RefreshWebViewHeight();
         }
 
+        // Guards against infinite Resize reentrancy: setting this.Width/_host.Width below
+        // synchronously re-raises this same Resize event before the setter returns. Confirmed via
+        // a real test log at >100% DPI - without this guard, the reentrant call re-ran the exact
+        // same clamp logic, which (for reasons not fully pinned down at the Win32-message level,
+        // but consistently reproduced) kept flipping the pane back to a too-narrow width right
+        // after each clamp, producing dozens of recursive Resize calls per second - visually
+        // indistinguishable from "distorted" while it churned, and it only ever visually settled
+        // once a later, non-reentrant interaction (e.g. clicking the pane's border) issued one
+        // more resize that didn't re-trigger the loop. With the guard, a reentrant call just
+        // returns immediately instead of re-clamping, so each real resize event settles in at
+        // most two steps (the user's/OS's resize, then this handler's one corrective clamp).
+        private bool _isEnforcingMinWidth;
+
         private void XLEdgeReportsPane_Resize(object sender, EventArgs e)
         {
+            if (_isEnforcingMinWidth)
+            {
+                return;
+            }
+
             using (new LogUtility.LogScope("ADXExcelTaskPane1.Resize"))
             {
                 try
@@ -215,10 +233,19 @@ namespace XLEdge
                     {
                         int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
                         LogUtility.LogDebug($"Resize: dipWidth below minimum - clamping pane width to {minWidthPx}px");
-                        this.Width = minWidthPx;
-                        if (_host != null)
+
+                        _isEnforcingMinWidth = true;
+                        try
                         {
-                            _host.Width = minWidthPx;
+                            this.Width = minWidthPx;
+                            if (_host != null)
+                            {
+                                _host.Width = minWidthPx;
+                            }
+                        }
+                        finally
+                        {
+                            _isEnforcingMinWidth = false;
                         }
                     }
 
