@@ -91,22 +91,63 @@ namespace XLEdge
             ApplyDpiAwareSizing(GetEffectiveDpi());
             this.DpiChanged += XLEdgeReportsPane_DpiChanged;
 
+            // Same root cause and fix as GLSense's GLConfiguratorPane.cs ("Balance Configurator
+            // appears zoomed in for some users"): the WPF content's real native window
+            // (ElementHost's HwndSource) is NOT created when _wpfControl/_host are constructed -
+            // building a WPF object creates no HWND at all. WinForms creates it lazily, only once
+            // the handle is actually needed - typically when this task pane's own handle is
+            // realized by Excel/ADX and the control tree cascades handle creation down to its
+            // children. A "using" block that only covers the WPF object's managed construction
+            // (as this used to) reverts the thread's DPI context back to whatever it was before
+            // long before that real handle gets created, so the WPF/WebView2 content ends up
+            // rendering under whatever DPI awareness happened to be ambient at that later, untimed
+            // moment instead of Per-Monitor-V2. That race is what produces content rendering at the
+            // wrong scale/position relative to the pane - most visible at >100% display scaling,
+            // or when Excel isn't on the primary monitor at load time - because Windows falls back
+            // to bitmap-stretching the content to the monitor's actual DPI instead of it rendering
+            // natively. Widened the "using" scope to cover ElementHost creation and Controls.Add,
+            // and added a HandleCreated hook below to reapply the same context for the normal
+            // ADX-driven case where this task pane's own handle - and so the ElementHost's
+            // cascade-created handle - isn't realized until after this constructor has returned.
             using (DpiAwarenessHelper.SetPerMonitorAware())
             {
                 _wpfControl = new XLEdgeCTP(this);
+
+                _host = new ElementHost
+                {
+                    Dock = DockStyle.Fill,
+                    MinimumSize = this.MinimumSize,
+                    Child = _wpfControl
+                };
+
+                this.Controls.Add(_host);
             }
 
-            _host = new ElementHost
-            {
-                Dock = DockStyle.Fill,
-                MinimumSize = this.MinimumSize,
-                Child = _wpfControl
-            };
+            // Covers the case where this task pane's own native handle - and therefore the
+            // ElementHost's cascade-created handle - is realized after this constructor returns
+            // (the normal case for an ADX-hosted task pane), so the WPF/WebView2 content's
+            // HwndSource still ends up created under Per-Monitor-V2.
+            this.HandleCreated += ADXExcelTaskPane1_HandleCreated;
 
-            this.Controls.Add(_host);
             this.Resize += XLEdgeReportsPane_Resize;
             this.ResizeBegin += XLEdgeReportsPane_ResizeBegin;
             this.ResizeEnd += XLEdgeReportsPane_ResizeEnd;
+        }
+
+        private void ADXExcelTaskPane1_HandleCreated(object sender, EventArgs e)
+        {
+            LogUtility.LogDebug($"ADXExcelTaskPane1.HandleCreated: dpi={GetEffectiveDpi()}, host handle already created={_host?.IsHandleCreated}");
+
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                // Touching Handle forces WinForms to realize the ElementHost's native window now,
+                // while the per-monitor context is active, if it has not already been created by
+                // this point.
+                if (_host != null)
+                {
+                    _ = _host.Handle;
+                }
+            }
         }
 
         private void ADXExcelTaskPane1_ADXCloseButtonClick(object sender, ADXCloseButtonClickEventArgs e)
