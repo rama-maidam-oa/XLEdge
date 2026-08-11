@@ -778,6 +778,7 @@ namespace XLEdge.Views
                         if (sibling == this) continue;
                         HideWebView2Descendants(sibling);
                     }
+                    ForceNativeRepaint();
                     return;
                 }
 
@@ -790,10 +791,59 @@ namespace XLEdge.Views
                         HideWebView2Descendants(sibling);
                     }
                 }
+
+                ForceNativeRepaint();
             }
             catch (Exception ex)
             {
                 LogUtility.LogWarn($"HideWebView2DescendantsOfSiblings failed: {ex.Message}");
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_ERASE = 0x0004;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+        private const uint RDW_UPDATENOW = 0x0100;
+
+        /// <summary>
+        /// User-confirmed: after WebView2 is hidden, the pixels it last painted stay stuck on
+        /// screen - covering whatever WPF content (e.g. the toast's own close button) is
+        /// underneath - until something else forces a full native repaint (confirmed: widening the
+        /// task pane makes the button reappear immediately, and it never appears on its own).
+        /// WPF's own Visibility/IsVisible/layout state is already correct at the moment this
+        /// happens (see LogToastLayoutDiagnostics - always Visibility=Visible, IsVisible=True) -
+        /// this is specifically the "airspace" limitation already documented elsewhere in this
+        /// file: an HwndHost-backed control like WebView2 is composited by Windows/DWM outside
+        /// WPF's own rendering pipeline, so hiding it at the WPF property level does not
+        /// necessarily invalidate the screen region it previously painted.
+        ///
+        /// Forces exactly the kind of full native repaint a resize would trigger, without actually
+        /// resizing anything: RedrawWindow with RDW_INVALIDATE|RDW_ERASE clears the stale pixels,
+        /// RDW_ALLCHILDREN covers the WebView2 HWND (a child of this control's own HwndSource),
+        /// and RDW_UPDATENOW forces it to happen synchronously rather than waiting for the next
+        /// natural paint cycle.
+        /// </summary>
+        private void ForceNativeRepaint()
+        {
+            try
+            {
+                var hwndSource = System.Windows.Interop.HwndSource.FromVisual(this) as System.Windows.Interop.HwndSource;
+                if (hwndSource != null && hwndSource.Handle != IntPtr.Zero)
+                {
+                    bool result = RedrawWindow(hwndSource.Handle, IntPtr.Zero, IntPtr.Zero, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+                    LogUtility.LogDebug($"ForceNativeRepaint: RedrawWindow on handle {hwndSource.Handle} returned {result}");
+                }
+                else
+                {
+                    LogUtility.LogDebug("ForceNativeRepaint: no HwndSource found for this visual - nothing to repaint.");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ForceNativeRepaint failed: {ex.Message}");
             }
         }
 
