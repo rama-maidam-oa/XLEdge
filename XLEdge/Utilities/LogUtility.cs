@@ -1,68 +1,205 @@
-﻿using System;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net.NetworkInformation;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace XLEdge.Utilities
 {
+    // Per-action debug-log buffering, ported from GLSense's identical LogUtility.cs overhaul (see
+    // that project's history for the full design rationale). Debug-mode log lines are buffered per
+    // logical action (one top-level LogScope - one ribbon click, one API call, one window's
+    // lifecycle) and flushed to disk as one batched write when the outermost scope closes, instead
+    // of one file open+write+flush+close cycle per line. Previously, LogDebug wrote to the logger
+    // immediately AND separately appended to a global, never-cleared-until-flush "_debugBuffer" -
+    // that buffer was purely additive (every line was still written immediately either way) and
+    // shared across the whole process rather than scoped to one action, so it never actually
+    // avoided the per-line write cost it looked like it was trying to avoid.
     public static class LogUtility
     {
-        // Buffer for debug logs (used when DebugMode is true)
-        private static readonly List<string> _debugBuffer = new List<string>();
-
-        // Toggle debug buffering
         public static bool DebugMode => XLEdgeAppState.Instance.DebugLogs;
 
-        // Thread-local scope depth for nested indentation
-        [ThreadStatic]
-        private static int _scopeDepth;
+        private static readonly object _lock = new object();
 
-        internal static void IncrementScope()
+        private sealed class ActionBuffer
         {
-            _scopeDepth = Math.Max(0, _scopeDepth) + 1;
+            public readonly Guid Id = Guid.NewGuid();
+            public readonly List<string> Lines = new List<string>();
+            public readonly object Lock = new object();
+            public string RootScopeName;
+            public int Depth;
+            public DateTime OldestUnflushedAtUtc = DateTime.UtcNow;
         }
 
-        internal static void DecrementScope()
+        // AsyncLocal (not [ThreadStatic]) so the current buffer correctly follows an async method's
+        // continuations after a ConfigureAwait(false) resumes on a different thread-pool thread, and
+        // so two concurrent-but-unrelated actions never cross-contaminate each other's buffer -
+        // forking an async flow copies the *pointer* to the current buffer, not the underlying
+        // mutable object, so siblings never see each other's lines.
+        private static readonly AsyncLocal<ActionBuffer> _currentBuffer = new AsyncLocal<ActionBuffer>();
+
+        // Every action buffer currently open, keyed by its own id - lets the time-based safety net
+        // and FlushAllOpenBuffers (called from shutdown/unhandled-exception hooks) reach buffers that
+        // live on a different async flow than whichever thread happens to run them.
+        private static readonly ConcurrentDictionary<Guid, ActionBuffer> _openBuffers = new ConcurrentDictionary<Guid, ActionBuffer>();
+        private static readonly TimeSpan SafetyNetMaxAge = TimeSpan.FromSeconds(30);
+        private static Timer _safetyNetTimer;
+        private static readonly object _safetyNetInitLock = new object();
+
+        // Anything logged before AddinModule.Logger is actually initialized (very early startup)
+        // would otherwise be silently dropped - held here and flushed once the logger comes online.
+        private static readonly List<string> _startupFallbackBuffer = new List<string>();
+
+        private static void EnsureSafetyNetTimerStarted()
         {
-            _scopeDepth = Math.Max(0, _scopeDepth - 1);
+            if (_safetyNetTimer != null) return;
+            lock (_safetyNetInitLock)
+            {
+                if (_safetyNetTimer != null) return;
+                _safetyNetTimer = new Timer(_ => RunSafetyNetSweep(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+            }
+        }
+
+        private static void RunSafetyNetSweep()
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                foreach (var kvp in _openBuffers)
+                {
+                    var buffer = kvp.Value;
+                    bool stale;
+                    lock (buffer.Lock)
+                    {
+                        stale = buffer.Lines.Count > 0 && (now - buffer.OldestUnflushedAtUtc) > SafetyNetMaxAge;
+                    }
+
+                    if (stale)
+                    {
+                        FlushBuffer(buffer, $"{buffer.RootScopeName} - safety-net flush (still open after {SafetyNetMaxAge.TotalSeconds:F0}s)");
+                    }
+                }
+            }
+            catch
+            {
+                // The safety net must never itself throw - a missed sweep just means the next one
+                // (15s later) picks up whatever is still stale.
+            }
+        }
+
+        internal static object BeginScope(string scopeName)
+        {
+            if (!DebugMode) return null;
+            if (_currentBuffer.Value != null) return null; // nested - not the owner, don't create a second buffer
+
+            var buffer = new ActionBuffer { RootScopeName = scopeName };
+            _currentBuffer.Value = buffer;
+            _openBuffers[buffer.Id] = buffer;
+            EnsureSafetyNetTimerStarted();
+            return buffer;
+        }
+
+        internal static void IncrementDepth()
+        {
+            var buffer = _currentBuffer.Value;
+            if (buffer != null) buffer.Depth++;
+        }
+
+        internal static void DecrementDepth()
+        {
+            var buffer = _currentBuffer.Value;
+            if (buffer != null && buffer.Depth > 0) buffer.Depth--;
+        }
+
+        internal static void EndScope(object owned)
+        {
+            if (owned is ActionBuffer buffer)
+            {
+                FlushBuffer(buffer, buffer.RootScopeName);
+                _openBuffers.TryRemove(buffer.Id, out _);
+                _currentBuffer.Value = null;
+            }
         }
 
         private static string Indent()
         {
-            // Ensure _scopeDepth is never negative
-            int safeDepth = Math.Max(0, _scopeDepth);
-            return new string(' ', safeDepth * 2);
+            int depth = _currentBuffer.Value?.Depth ?? 0;
+            return new string(' ', Math.Max(0, depth) * 2);
+        }
+
+        private static void FlushBuffer(ActionBuffer buffer, string label)
+        {
+            string[] lines;
+            lock (buffer.Lock)
+            {
+                if (buffer.Lines.Count == 0) return;
+                lines = buffer.Lines.ToArray();
+                buffer.Lines.Clear();
+            }
+
+            var header = $"===== {label} | {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====";
+            var underline = new string('-', header.Length);
+            var sb = new StringBuilder();
+            sb.AppendLine(header);
+            sb.AppendLine(underline);
+            foreach (var line in lines)
+                sb.AppendLine(line);
+            sb.AppendLine(new string('-', underline.Length));
+
+            AddinModule.Logger?.Debug(sb.ToString());
+        }
+
+        /// <summary>
+        /// Flushes every action buffer currently open, whatever state it's in. Used by the ribbon
+        /// Debug toggle (turning debug off mid-action must not silently drop what's already
+        /// buffered), and by shutdown/unhandled-exception hooks so nothing buffered is ever lost.
+        /// </summary>
+        public static void FlushAllOpenBuffers(string reason)
+        {
+            foreach (var kvp in _openBuffers)
+            {
+                FlushBuffer(kvp.Value, $"{kvp.Value.RootScopeName} - {reason}");
+                _openBuffers.TryRemove(kvp.Key, out _);
+            }
         }
 
         #region Logging Methods
-        // Log levels: Warn and Error always write; Debug only writes when DebugMode is enabled.
+        // Log levels: Warn and Error always write immediately (and force-flush whatever's
+        // currently buffered, since a warning/error is exactly the kind of thing that must never be
+        // stuck behind a buffer that later gets lost); Debug only writes when DebugMode is enabled,
+        // and buffers instead of writing immediately whenever a scope is open.
         public static void LogWarn(string message)
         {
             var logMessage = $"{Indent()}WARN  | {DateTime.Now:HH:mm:ss} | {message}";
-            AddinModule.Logger?.Warn(logMessage);
+            WriteImmediate(logMessage, NLog.LogLevel.Warn);
+            FlushCurrentBuffer("warning logged");
         }
 
         public static void LogError(string message)
         {
             var logMessage = $"{Indent()}ERROR | {DateTime.Now:HH:mm:ss} | {message}";
-            AddinModule.Logger?.Error(logMessage);
+            WriteImmediate(logMessage, NLog.LogLevel.Error);
+            FlushCurrentBuffer("error logged");
         }
 
         public static void LogDebug(string message)
         {
-            // ONLY log if debug mode is enabled
-            if (!DebugMode)
-                return;
+            if (!DebugMode) return;
 
             var logMessage = $"{Indent()}DEBUG | {DateTime.Now:HH:mm:ss} | {message}";
 
-            // Write to logger
-            AddinModule.Logger?.Debug(logMessage);
+            var buffer = _currentBuffer.Value;
+            if (buffer == null)
+            {
+                WriteImmediate(logMessage, NLog.LogLevel.Debug);
+                return;
+            }
 
-            // Also buffer for flushing
-            _debugBuffer.Add(logMessage);
+            lock (buffer.Lock)
+            {
+                if (buffer.Lines.Count == 0) buffer.OldestUnflushedAtUtc = DateTime.UtcNow;
+                buffer.Lines.Add(logMessage);
+            }
         }
 
         public static void LogException(Exception ex, string context = "")
@@ -87,8 +224,8 @@ namespace XLEdge.Utilities
             }
             sb.AppendLine($"{Indent()}============================");
 
-            var exceptionMessage = sb.ToString();
-            AddinModule.Logger?.Error(exceptionMessage);
+            WriteImmediate(sb.ToString(), NLog.LogLevel.Error);
+            FlushCurrentBuffer("exception logged");
         }
 
         // Logs a raw JSON payload (e.g. on a parse failure) at Error level. The full payload is
@@ -114,53 +251,89 @@ namespace XLEdge.Utilities
             }
 
             sb.AppendLine($"{Indent()}----- End Raw JSON -----");
-            AddinModule.Logger?.Error(sb.ToString());
+            WriteImmediate(sb.ToString(), NLog.LogLevel.Error);
+            FlushCurrentBuffer("raw JSON logged");
         }
         #endregion
 
-        #region Flush
-        public static void FlushDebugLogs(string section = "Buffered Logs")
+        private static void FlushCurrentBuffer(string reason)
         {
-            if (_debugBuffer.Count == 0) return;
-
-            var header = $"===== {section} | {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====";
-            var underline = new string('-', header.Length);
-            var sb = new StringBuilder();
-            sb.AppendLine(header);
-            sb.AppendLine(underline);
-            foreach (var line in _debugBuffer)
-                sb.AppendLine(line);
-            sb.AppendLine(new string('-', underline.Length));
-            sb.AppendLine();
-
-            AddinModule.Logger?.Debug(sb.ToString());
-            _debugBuffer.Clear();
+            var buffer = _currentBuffer.Value;
+            if (buffer != null)
+            {
+                FlushBuffer(buffer, $"{buffer.RootScopeName} - {reason}");
+            }
         }
-        #endregion
+
+        // level controls only the NLog LogLevel the line is recorded under (so LogHelper's
+        // "${level:uppercase=true}" layout column shows the right thing) - every level is routed to
+        // the same file regardless (see LogHelper.InitializeLogger's AddRule calls), so this never
+        // affects whether a line is written, only how it's labeled.
+        private static void WriteImmediate(string logMessage, NLog.LogLevel level)
+        {
+            var logger = AddinModule.Logger;
+            if (logger == null)
+            {
+                lock (_lock)
+                {
+                    _startupFallbackBuffer.Add(logMessage);
+                }
+                return;
+            }
+
+            if (_startupFallbackBuffer.Count > 0)
+            {
+                FlushStartupFallbackBuffer(logger);
+            }
+
+            logger.Log(level, logMessage);
+        }
+
+        private static void FlushStartupFallbackBuffer(NLog.Logger logger)
+        {
+            List<string> pending;
+            lock (_lock)
+            {
+                if (_startupFallbackBuffer.Count == 0) return;
+                pending = new List<string>(_startupFallbackBuffer);
+                _startupFallbackBuffer.Clear();
+            }
+
+            // These lines already carry their own "WARN |"/"ERROR |"/"DEBUG |" text prefix from
+            // whichever LogXxx call originally buffered them, but the level at the time they were
+            // buffered (before the logger existed) isn't tracked - Debug is the safe default since
+            // AddRule wires every level to the same file/target anyway.
+            foreach (var line in pending)
+            {
+                logger.Debug(line);
+            }
+        }
 
         #region Additional Helper Methods (Optional)
         public static void LogMethodEntry([System.Runtime.CompilerServices.CallerMemberName] string methodName = "")
         {
             LogDebug($"Entering {methodName}");
-            IncrementScope();
+            IncrementDepth();
         }
 
         public static void LogMethodExit([System.Runtime.CompilerServices.CallerMemberName] string methodName = "")
         {
-            DecrementScope();
+            DecrementDepth();
             LogDebug($"Exiting {methodName}");
         }
 
-        // Helper class for scope-based logging
-        public class LogScope : IDisposable
+        public sealed class LogScope : IDisposable
         {
             private readonly string _scopeName;
-            private bool _disposed = false;
+            private readonly object _ownedBuffer;
+            private bool _disposed;
+
             public LogScope(string scopeName)
             {
                 _scopeName = scopeName;
+                _ownedBuffer = LogUtility.BeginScope(scopeName);
                 LogUtility.LogDebug($"BEGIN: {_scopeName}");
-                LogUtility.IncrementScope();
+                LogUtility.IncrementDepth();
             }
 
             public void Dispose()
@@ -169,20 +342,18 @@ namespace XLEdge.Utilities
                 GC.SuppressFinalize(this);
             }
 
-            protected virtual void Dispose(bool disposing)
+            private void Dispose(bool disposing)
             {
-                if (!_disposed)
-                {
-                    if (disposing)
-                    {
-                        // Dispose managed resources here
-                        LogUtility.DecrementScope();
-                        LogUtility.LogDebug($"END: {_scopeName}");
-                    }
+                if (_disposed) return;
 
-                    // Dispose unmanaged resources here (none in this case)
-                    _disposed = true;
+                if (disposing)
+                {
+                    LogUtility.DecrementDepth();
+                    LogUtility.LogDebug($"END: {_scopeName}");
+                    LogUtility.EndScope(_ownedBuffer);
                 }
+
+                _disposed = true;
             }
         }
         #endregion
