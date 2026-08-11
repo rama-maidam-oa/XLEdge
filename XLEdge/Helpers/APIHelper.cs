@@ -90,6 +90,7 @@ namespace XLEdge.Helpers
                 using (var client = CreateHttpClient())
                 {
                     client.Timeout = TimeSpan.FromSeconds(30);
+                    LogUtility.LogDebug($"NotifyCancelRunAsync|Authorization: Bearer present={!string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.LoginToken)}");
                     client.DefaultRequestHeaders.Authorization =
                         new AuthenticationHeaderValue("Bearer", XLEdgeAppState.Instance.LoginToken);
 
@@ -133,6 +134,7 @@ namespace XLEdge.Helpers
                 using (var client = CreateHttpClient())
                 {
                     client.Timeout = TimeSpan.FromMinutes(10);
+                    LogUtility.LogDebug($"DownloadFileAsync|Authorization: Bearer present={!string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.LoginToken)}");
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", XLEdgeAppState.Instance.LoginToken);
 
                     using (var request = new HttpRequestMessage(HttpMethod.Get, url))
@@ -301,24 +303,31 @@ namespace XLEdge.Helpers
         private static void LogRequestDetails(string url, string method, string contentType, string payload, TimeSpan timeout)
         {
             LogUtility.LogDebug($"API Request: {method} {url} (ContentType: {contentType}, Timeout: {timeout})");
+            bool hasAuthToken = !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.LoginToken);
+            LogUtility.LogDebug($"Authorization: Bearer present={hasAuthToken}");
 
             if (!string.IsNullOrWhiteSpace(payload))
             {
                 LogPayloadChunks(payload);
             }
-        }
-
-        private static void LogPayloadChunks(string payload)
-        {
-            const int maxLogLength = 2000;
-
-            if (payload.Length > maxLogLength)
-            {
-                LogUtility.LogDebug($"Payload (truncated {maxLogLength} chars of {payload.Length}): {payload.Substring(0, maxLogLength)}...");
-            }
             else
             {
-                LogUtility.LogDebug($"Payload: {payload}");
+                LogUtility.LogDebug("Payload: (empty)");
+            }
+        }
+
+        // No trimming - the complete payload is logged even when large, since data that looks fine
+        // at a glance can still be the reason nothing got written to Excel, and a truncated log can't
+        // show that. This can make the log file bigger, which is an accepted tradeoff.
+        private static void LogPayloadChunks(string payload)
+        {
+            const int chunkSize = 1000;
+
+            for (int i = 0; i < payload.Length; i += chunkSize)
+            {
+                var length = Math.Min(chunkSize, payload.Length - i);
+                var chunk = payload.Substring(i, length);
+                LogUtility.LogDebug($"Payload: {chunk}");
             }
         }
 
@@ -379,17 +388,14 @@ namespace XLEdge.Helpers
         {
             LogUtility.LogDebug($"API Response: {(int)response.StatusCode} {response.StatusCode} (ContentType: {response.Content?.Headers?.ContentType?.MediaType ?? "N/A"}, ContentLength: {response.Content?.Headers?.ContentLength ?? 0})");
 
+            // No trimming - see LogPayloadChunks' comment above for why.
             if (!string.IsNullOrWhiteSpace(responseBody))
             {
-                const int maxLogLength = 2000;
-                if (responseBody.Length > maxLogLength)
-                {
-                    LogUtility.LogDebug($"Response (truncated {maxLogLength} chars of {responseBody.Length}): {responseBody.Substring(0, maxLogLength)}...");
-                }
-                else
-                {
-                    LogUtility.LogDebug($"Response: {responseBody}");
-                }
+                LogUtility.LogDebug($"Response ({responseBody.Length} chars): {responseBody}");
+            }
+            else
+            {
+                LogUtility.LogDebug("Response: (empty)");
             }
         }
 

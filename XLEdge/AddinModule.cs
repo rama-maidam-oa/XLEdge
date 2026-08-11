@@ -49,11 +49,70 @@ namespace XLEdge
 
         public AddinModule()
         {
+            // No handler anywhere previously caught a truly unhandled exception in this AppDomain
+            // (only WPF-dispatcher-thread exceptions are covered elsewhere) - a background Task or
+            // COM callback thread throwing unhandled here would just silently crash/vanish with
+            // nothing in the log. Registered as early as possible, before anything else runs.
+            AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
             Application.EnableVisualStyles();
             InitializeComponent();
             // Please add any initialization code to the AddinInitialize event handler
             _deleteTimer.Interval = 200;
             _deleteTimer.Tick += DeleteTimer_Tick;
+        }
+
+        private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                var ex = e.ExceptionObject as Exception;
+                if (ex != null)
+                    LogUtility.LogException(ex, "AppDomain.UnhandledException");
+                else
+                    LogUtility.LogError($"AppDomain.UnhandledException with non-Exception payload: {e.ExceptionObject}");
+
+                LogUtility.FlushAllOpenBuffers("unhandled exception");
+            }
+            catch
+            {
+                // This handler must never itself throw.
+            }
+        }
+
+        /// <summary>
+        /// Logs a one-time snapshot of the running environment (version, Excel/OS/.NET, DPI,
+        /// culture, machine) so a customer-site issue can be root-caused from the log file alone,
+        /// without needing to ask the user for this context separately. Always logged (not gated
+        /// behind Debug mode) since it's cheap, one-shot, and exactly the kind of thing that's
+        /// useful to have upfront in every log file.
+        /// </summary>
+        private void LogEnvironmentSnapshot()
+        {
+            try
+            {
+                string excelVersion = "unknown";
+                try { excelVersion = (this.HostApplication as Excel.Application)?.Version ?? "unknown"; }
+                catch (Exception ex) { LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}"); }
+
+                double dpi = 96d;
+                try { using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero)) { dpi = g.DpiX; } }
+                catch (Exception ex) { LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}"); }
+
+                LogUtility.LogWarn("===== Environment Snapshot =====");
+                LogUtility.LogWarn($"XLEdge version: {XLEdgeAppConstants.DefaultVersion} (released {XLEdgeAppConstants.DefaultCommitDate})");
+                LogUtility.LogWarn($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+                LogUtility.LogWarn($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
+                LogUtility.LogWarn($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+                LogUtility.LogWarn($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
+                LogUtility.LogWarn($"Culture: {System.Globalization.CultureInfo.CurrentCulture.Name} (UI: {System.Globalization.CultureInfo.CurrentUICulture.Name})");
+                LogUtility.LogWarn($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
+                LogUtility.LogWarn("=================================");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "LogEnvironmentSnapshot");
+            }
         }
  
         #region Add-in Express automatic code
@@ -522,6 +581,7 @@ namespace XLEdge
             try
             {
                 LogHelper.InitializeLogger();
+                LogEnvironmentSnapshot();
 
                 XLApp.Initialize(this.HostApplication as Excel.Application);
 
@@ -1286,6 +1346,7 @@ namespace XLEdge
             try
             {
                 XLEdgeAppState.Instance.DebugLogs = pressed;
+                LogUtility.FlushAllOpenBuffers("Debug session ended");
             }
             catch (Exception ex)
             {
@@ -1707,6 +1768,8 @@ namespace XLEdge
             // workbook-closing loop and any forced process termination.
             try
             {
+                LogUtility.FlushAllOpenBuffers("add-in shutting down");
+
                 UnsubscribeFromAllExcelEvents();
 
                 Excel.Worksheet worksheetOverride = XLEdgeAppState.Instance.ActiveWorksheetOverride;

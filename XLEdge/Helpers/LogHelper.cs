@@ -37,7 +37,11 @@ namespace XLEdge.Helpers
                         AutoFlush = true,
                         // Includes callsite info (file/method) to make it easier to trace which method logged what.
                         Layout = "${longdate}|${level:uppercase=true}|${callsite:className=false:fileName=true:includeSourcePath=false:methodName=true}|${message:withException=true:exceptionSeparator=|}",
-                        KeepFileOpen = false,
+                        // Was false - every single log call opened, wrote, flushed, and closed the file
+                        // handle. Combined with LogUtility's per-action buffering, most Debug lines now
+                        // arrive as one batched write per action rather than one write per line, so
+                        // keeping the handle open between writes is both safe and meaningfully faster.
+                        KeepFileOpen = true,
                         DeleteOldFileOnStartup = false,
                         ArchiveAboveSize = XLEdgeAppConstants.LogMaxFileSizeBytes,  // 20MB archive size
                         MaxArchiveFiles = XLEdgeAppConstants.LogMaxArchiveFiles,
