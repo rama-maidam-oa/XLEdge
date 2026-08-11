@@ -138,6 +138,27 @@ namespace XLEdge
         {
             LogUtility.LogDebug($"ADXExcelTaskPane1.HandleCreated: dpi={GetEffectiveDpi()}, host handle already created={_host?.IsHandleCreated}");
 
+            // ApplyDpiAwareSizing was already called once, from the constructor - but at that
+            // point this.IsHandleCreated is false, so GetEffectiveDpi() cannot call
+            // GetDpiForWindow and falls back to this.DeviceDpi/96, which is wrong whenever the
+            // pane is created on an already->100%-DPI monitor (the common case: the user sets
+            // display scaling, THEN launches/reloads Excel, so DpiChanged never fires - there is
+            // no live DPI *change* while the pane is running, so it never gets a second chance to
+            // correct itself). this.MinimumSize (and _host.MinimumSize) were left permanently
+            // wrong at the 96-DPI value for the pane's entire lifetime.
+            //
+            // That stale MinimumSize.Width is exactly what WndProc's WM_SIZING/
+            // WM_WINDOWPOSCHANGING handlers below clamp against - confirmed via a real test log:
+            // at 150% DPI, WM_WINDOWPOSCHANGING logged "MinimumSize.Width=600" (the wrong,
+            // 96-DPI value) when it should have been 900, so it under-clamped a live native
+            // resize down to 600px, which then fought with SetBoundsCore's own (separately and
+            // correctly computed) 900px clamp - two enforcement paths disagreeing on the true
+            // minimum is what let the pane settle below its real minimum width in the first
+            // place. Now that the handle exists, GetEffectiveDpi() can read the real DPI via
+            // GetDpiForWindow, so re-running ApplyDpiAwareSizing here corrects MinimumSize (and
+            // _host.MinimumSize) before any live resize message arrives that depends on it.
+            ApplyDpiAwareSizing(GetEffectiveDpi());
+
             using (DpiAwarenessHelper.SetPerMonitorAware())
             {
                 // Touching Handle forces WinForms to realize the ElementHost's native window now,
