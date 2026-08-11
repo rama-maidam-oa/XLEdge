@@ -308,6 +308,7 @@ namespace XLEdge
                 if (width < this.MinimumSize.Width)
                 {
                     int minWidth = this.MinimumSize.Width;
+                    LogUtility.LogDebug($"WndProc WM_SIZING: requested width={width} below MinimumSize.Width={minWidth} - clamping (wParam={(int)m.WParam})");
                     switch ((int)m.WParam)
                     {
                         case WMSZ_LEFT:
@@ -328,6 +329,7 @@ namespace XLEdge
                 var pos = (Windowspos)Marshal.PtrToStructure(m.LParam, typeof(Windowspos));
                 if (pos.cx < this.MinimumSize.Width)
                 {
+                    LogUtility.LogDebug($"WndProc WM_WINDOWPOSCHANGING: requested cx={pos.cx} below MinimumSize.Width={this.MinimumSize.Width} - clamping");
                     pos.cx = this.MinimumSize.Width;
                     Marshal.StructureToPtr(pos, m.LParam, true);
                 }
@@ -342,6 +344,9 @@ namespace XLEdge
             int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
             int minHeightPx = (int)Math.Round(_minHeightDip * dpi / (float)DefaultDpi);
 
+            int requestedWidth = width;
+            int requestedHeight = height;
+
             if ((specified & BoundsSpecified.Width) != 0 && width < minWidthPx)
             {
                 width = minWidthPx;
@@ -351,6 +356,8 @@ namespace XLEdge
             {
                 height = minHeightPx;
             }
+
+            LogUtility.LogDebug($"SetBoundsCore: requested=({x},{y},{requestedWidth}x{requestedHeight}), specified={specified}, minWidthPx={minWidthPx}, applied=({x},{y},{width}x{height})");
 
             base.SetBoundsCore(x, y, width, height, specified);
         }
