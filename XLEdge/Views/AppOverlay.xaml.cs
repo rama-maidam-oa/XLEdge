@@ -98,6 +98,41 @@ namespace XLEdge.Views
         public bool IsConfirmVisible => ConfirmOverlay.Visibility == Visibility.Visible;
 
         /// <summary>
+        /// Diagnostic only: logs the toast's actual post-layout dimensions and the close button's
+        /// own state, scheduled after a real layout pass (DispatcherPriority.Loaded) so
+        /// ActualWidth/Height aren't still the stale pre-layout values. Added to investigate a
+        /// reported "close button invisible at 150% DPI only (visible at 100/125/175%)" bug -
+        /// nothing in this file's own code branches on DPI at all, so this captures whatever WPF's
+        /// own layout/rendering actually produced at runtime rather than guessing blind.
+        /// </summary>
+        private void LogToastLayoutDiagnostics()
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var dpi = VisualTreeHelper.GetDpi(this);
+                    double? colWidth = null;
+                    if (BtnCloseToast?.Parent is Grid grid && grid.ColumnDefinitions.Count > 2)
+                    {
+                        colWidth = grid.ColumnDefinitions[2].ActualWidth;
+                    }
+
+                    LogUtility.LogDebug(
+                        $"ToastLayoutDiagnostics: dpi={dpi.PixelsPerInchX} (scale={dpi.DpiScaleX:F2}), " +
+                        $"Toast actual={Toast?.ActualWidth:F0}x{Toast?.ActualHeight:F0}, MaxHeight={Toast?.MaxHeight:F0}, " +
+                        $"BtnCloseToast actual={BtnCloseToast?.ActualWidth:F0}x{BtnCloseToast?.ActualHeight:F0}, " +
+                        $"Visibility={BtnCloseToast?.Visibility}, IsVisible={BtnCloseToast?.IsVisible}, " +
+                        $"Opacity={BtnCloseToast?.Opacity}, columnActualWidth={colWidth:F0}");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"LogToastLayoutDiagnostics error: {ex.Message}");
+                }
+            }), DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
         /// Sets the toast's MaxHeight based on the parent container's current height, so the toast
         /// sizes correctly against available space and can grow with its content.
         /// </summary>
@@ -197,6 +232,8 @@ namespace XLEdge.Views
                 _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
                 _toastTimer.Tick += OnToastTimerTick;
                 _toastTimer.Start();
+
+                LogToastLayoutDiagnostics();
             }
             catch (Exception ex)
             {
@@ -263,6 +300,8 @@ namespace XLEdge.Views
                 ToastIcon.Foreground = color;
 
                 Panel.SetZIndex(this, 9999);
+
+                LogToastLayoutDiagnostics();
 
                 _toastTimer?.Stop();
                 _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
