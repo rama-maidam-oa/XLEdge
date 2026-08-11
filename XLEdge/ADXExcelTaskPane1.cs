@@ -117,8 +117,13 @@ namespace XLEdge
 
         private void XLEdgeReportsPane_DpiChanged(object sender, DpiChangedEventArgs e)
         {
-            ApplyDpiAwareSizing(e.DeviceDpiNew);
-            _wpfControl?.RefreshWebViewHeight();
+            using (new LogUtility.LogScope("ADXExcelTaskPane1.DpiChanged"))
+            {
+                LogUtility.LogDebug($"DpiChanged: {e.DeviceDpiOld} -> {e.DeviceDpiNew}, pane size before: {this.Width}x{this.Height}");
+                ApplyDpiAwareSizing(e.DeviceDpiNew);
+                _wpfControl?.RefreshWebViewHeight();
+                LogUtility.LogDebug($"DpiChanged: pane size after: {this.Width}x{this.Height}");
+            }
         }
 
         private void ApplyDpiAwareSizing(float dpiX)
@@ -126,6 +131,8 @@ namespace XLEdge
             var scale = dpiX / 96f;
             int minWidthPx = (int)Math.Round(_minWidthDip * scale);
             int minHeightPx = (int)Math.Round(_minHeightDip * scale);
+
+            LogUtility.LogDebug($"ApplyDpiAwareSizing: dpi={dpiX}, scale={scale:F2}, minWidthPx={minWidthPx}, minHeightPx={minHeightPx}, pane size before: {this.Width}x{this.Height}");
 
             this.MinimumSize = new Size(minWidthPx, minHeightPx);
             if (_host != null)
@@ -137,40 +144,49 @@ namespace XLEdge
                 this.Width = minWidthPx;
             if (this.Height < minHeightPx)
                 this.Height = minHeightPx;
+
+            LogUtility.LogDebug($"ApplyDpiAwareSizing: pane size after: {this.Width}x{this.Height}, host size: {_host?.Width}x{_host?.Height}");
         }
 
         private void XLEdgeReportsPane_ResizeBegin(object sender, EventArgs e)
         {
-            // Handle resize begin if needed
+            LogUtility.LogDebug($"ResizeBegin: pane size={this.Width}x{this.Height}");
         }
 
         private void XLEdgeReportsPane_ResizeEnd(object sender, EventArgs e)
         {
+            LogUtility.LogDebug($"ResizeEnd: pane size={this.Width}x{this.Height}, host size={_host?.Width}x{_host?.Height}");
             _wpfControl?.RefreshWebViewHeight();
         }
 
         private void XLEdgeReportsPane_Resize(object sender, EventArgs e)
         {
-            try
+            using (new LogUtility.LogScope("ADXExcelTaskPane1.Resize"))
             {
-                var dpi = GetEffectiveDpi();
-                var dipWidth = this.Width * DefaultDpi / (float)dpi;
-
-                if (dipWidth < _minWidthDip)
+                try
                 {
-                    int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
-                    this.Width = minWidthPx;
-                    if (_host != null)
-                    {
-                        _host.Width = minWidthPx;
-                    }
-                }
+                    var dpi = GetEffectiveDpi();
+                    var dipWidth = this.Width * DefaultDpi / (float)dpi;
 
-                _wpfControl?.RefreshWebViewHeight();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogDebug($"XLEdgeReportsPane_Resize error: {ex.Message}");
+                    LogUtility.LogDebug($"Resize: dpi={dpi}, pane size={this.Width}x{this.Height}, dipWidth={dipWidth:F1} (min required={_minWidthDip}), host size={_host?.Width}x{_host?.Height}, WebCtrl actual size={_wpfControl?.GetWebCtrlActualSize()}");
+
+                    if (dipWidth < _minWidthDip)
+                    {
+                        int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+                        LogUtility.LogDebug($"Resize: dipWidth below minimum - clamping pane width to {minWidthPx}px");
+                        this.Width = minWidthPx;
+                        if (_host != null)
+                        {
+                            _host.Width = minWidthPx;
+                        }
+                    }
+
+                    _wpfControl?.RefreshWebViewHeight();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"XLEdgeReportsPane_Resize error: {ex.Message}");
+                }
             }
         }
 
@@ -191,21 +207,27 @@ namespace XLEdge
 
         private void ADXExcelTaskPane1_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
         {
-            try
+            using (new LogUtility.LogScope("ADXExcelTaskPane1.AfterTaskPaneShow"))
             {
-                var dpi = GetEffectiveDpi();
-                int targetWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
-                if (this.Width < targetWidthPx)
+                try
                 {
-                    this.Width = targetWidthPx;
-                }
+                    var dpi = GetEffectiveDpi();
+                    int targetWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+                    LogUtility.LogDebug($"AfterTaskPaneShow: dpi={dpi}, targetWidthPx={targetWidthPx}, pane size before: {this.Width}x{this.Height}, WebCtrl actual size={_wpfControl?.GetWebCtrlActualSize()}");
 
-                XLEdgeAppState.Instance.EdgePaneShown = false;
-                _wpfControl?.RefreshWebViewHeight();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "Error in AfterTaskPaneShow");
+                    if (this.Width < targetWidthPx)
+                    {
+                        this.Width = targetWidthPx;
+                    }
+
+                    XLEdgeAppState.Instance.EdgePaneShown = false;
+                    _wpfControl?.RefreshWebViewHeight();
+                    LogUtility.LogDebug($"AfterTaskPaneShow: pane size after: {this.Width}x{this.Height}");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "Error in AfterTaskPaneShow");
+                }
             }
         }
 

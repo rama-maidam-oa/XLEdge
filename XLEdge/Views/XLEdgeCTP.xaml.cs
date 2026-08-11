@@ -273,10 +273,14 @@ namespace XLEdge.Views
         {
             SafeFireAndForget(() => RunOnUIAsync(() =>
             {
-                EnsureMinimumWidth();
-                UpdateLayout();
-                ContentContainer?.UpdateLayout();
-                ScheduleHeightCheck();
+                using (new LogUtility.LogScope("XLEdgeCTP.OnSizeChanged"))
+                {
+                    LogUtility.LogDebug($"OnSizeChanged: {e.PreviousSize.Width:F0}x{e.PreviousSize.Height:F0} -> {e.NewSize.Width:F0}x{e.NewSize.Height:F0}, WidthChanged={e.WidthChanged}, HeightChanged={e.HeightChanged}. {GetWebCtrlActualSize()}");
+                    EnsureMinimumWidth();
+                    UpdateLayout();
+                    ContentContainer?.UpdateLayout();
+                    ScheduleHeightCheck();
+                }
             }), "Error in OnSizeChanged");
         }
 
@@ -286,15 +290,18 @@ namespace XLEdge.Views
             {
                 await RunOnUIAsync(() =>
                 {
-                    EnsureMinimumWidth();
-                    UpdateLayout();
-                    ContentContainer?.UpdateLayout();
-
-                    Dispatcher.BeginInvoke(new Action(() =>
+                    using (new LogUtility.LogScope("XLEdgeCTP.OnParentPaneResize"))
                     {
-                        ScheduleHeightCheck();
-                    }), DispatcherPriority.Background);
+                        LogUtility.LogDebug($"OnParentPaneResize: pane size={_parentPane?.Width}x{_parentPane?.Height}. {GetWebCtrlActualSize()}");
+                        EnsureMinimumWidth();
+                        UpdateLayout();
+                        ContentContainer?.UpdateLayout();
 
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            ScheduleHeightCheck();
+                        }), DispatcherPriority.Background);
+                    }
                 }, DispatcherPriority.Loaded);
             }, "Error in OnParentPaneResize");
         }
@@ -307,6 +314,8 @@ namespace XLEdge.Views
                 return;
             }
 
+            LogUtility.LogDebug($"EnsureMinimumWidth: {GetWebCtrlActualSize()}");
+
             if (ContentContainer != null)
             {
                 ContentContainer.MinWidth = MinimumConfiguratorWidth;
@@ -314,7 +323,31 @@ namespace XLEdge.Views
 
             if (_parentPane != null && _parentPane.Width < MinimumConfiguratorWidth)
             {
+                LogUtility.LogDebug($"EnsureMinimumWidth: pane width {_parentPane.Width} below minimum {MinimumConfiguratorWidth} - clamping.");
                 _parentPane.Width = (int)MinimumConfiguratorWidth;
+            }
+        }
+
+        /// <summary>
+        /// Diagnostic-only: a snapshot of every WPF-side size that matters for the task-pane
+        /// overflow bug, so a resize/DPI-change test's logs show whether WebCtrl's own
+        /// ActualWidth/Height ever disagrees with its container's - if they always agree but the
+        /// rendered content still overflows visually, that points at the native WebView2 HWND
+        /// itself lagging behind WPF layout (see MIGRATION_STATUS.md's "airspace" write-up) rather
+        /// than a WPF measure/arrange bug.
+        /// </summary>
+        public string GetWebCtrlActualSize()
+        {
+            try
+            {
+                return $"WebCtrl actual={WebCtrl?.ActualWidth:F0}x{WebCtrl?.ActualHeight:F0}, " +
+                       $"ContentContainer actual={ContentContainer?.ActualWidth:F0}x{ContentContainer?.ActualHeight:F0}, " +
+                       $"XLEdgeCTP actual={this.ActualWidth:F0}x{this.ActualHeight:F0}, " +
+                       $"parentPane={_parentPane?.Width}x{_parentPane?.Height}";
+            }
+            catch (Exception ex)
+            {
+                return $"<error reading sizes: {ex.Message}>";
             }
         }
 
@@ -324,6 +357,7 @@ namespace XLEdge.Views
         {
             if (WebCtrl != null && !_isHeightCheckScheduled)
             {
+                LogUtility.LogDebug($"WebCtrl_SizeChanged: {e.PreviousSize.Width:F0}x{e.PreviousSize.Height:F0} -> {e.NewSize.Width:F0}x{e.NewSize.Height:F0}");
                 _isHeightCheckScheduled = true;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -371,8 +405,16 @@ namespace XLEdge.Views
                             parent.UpdateLayout();
                         }
 
-                        LogUtility.LogDebug($"Adjusted WebCtrl height to {desiredHeight} (available: {availableHeight})");
+                        LogUtility.LogDebug($"Adjusted WebCtrl height to {desiredHeight} (available: {availableHeight}). {GetWebCtrlActualSize()}");
                     }
+                    else
+                    {
+                        LogUtility.LogDebug($"EnsureWebViewFillsAvailableSpace: no height adjustment needed (available: {availableHeight}, current WebCtrl.Height: {WebCtrl.Height}). {GetWebCtrlActualSize()}");
+                    }
+                }
+                else
+                {
+                    LogUtility.LogDebug($"EnsureWebViewFillsAvailableSpace: ActualHeight is 0 - skipping. {GetWebCtrlActualSize()}");
                 }
             }
             catch (Exception ex)
