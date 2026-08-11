@@ -292,6 +292,12 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 33): each network fetch-and-validate
+        // step is pulled into its own method returning (ShouldContinue, Value); the core method
+        // becomes a linear sequence of "if a step failed, stop" checks. Every step's exact URL
+        // construction, message text, and catch-clause ordering (OperationCanceledException before
+        // ApiTimeoutException before the generic Exception fallback) is preserved unchanged - only
+        // the packaging into methods changed, not the behavior.
         private static async Task CreateReportFromTitleAsyncCore(string title, AppOverlay appOverlay, bool useWaitWindow, string paramsJsonPayload)
         {
             using var excelBulkScope = new ExcelBulkOperationScope();
@@ -323,14 +329,8 @@ namespace XLEdge.Helpers
                 await CreateAndShowWaitWindow();
             }
 
-            try
+            if (!await ParseEdgeRequestOrShowErrorAsync(title))
             {
-                GetEdgeRequestFromTitle(title);
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, $"Failed to parse title for report generation: {title}");
-                await DisplayErrorAsync($"Invalid title format for report generation. Title Format {title}");
                 return;
             }
 
@@ -347,7 +347,59 @@ namespace XLEdge.Helpers
             // Download report data first, matching FormProcessBar.vb's original order (StartTaskHere/
             // ReturnHTTP runs before Edge_GenerateData_Multisheet's MetaInfo/ParamInfo calls) - do not
             // reorder this.
-            string csvResponse = null;
+            (bool csvOk, string csvResponse) = await FetchAndPersistCsvResponseAsync(isDrilldownRequest, isProcessReport, paramsJsonPayload);
+            if (!csvOk)
+            {
+                return;
+            }
+
+            (bool metaOk, string metaResponse) = await FetchReportMetaResponseAsync(isProcessReport, isDrilldownRequest);
+            if (!metaOk)
+            {
+                return;
+            }
+
+            (bool paramsOk, string paramsResponse) = await FetchReportParamsResponseAsync(isDrilldownRequest, paramsJsonPayload);
+            if (!paramsOk)
+            {
+                return;
+            }
+
+            (bool metaParsedOk, ReportMeta reportMeta) = await TryDeserializeReportMetaAsync(metaResponse);
+            if (!metaParsedOk)
+            {
+                return;
+            }
+
+            if (!await TryBuildReportTableAsync(reportMeta, csvResponse, metaResponse, paramsResponse, title))
+            {
+                return;
+            }
+
+            await CleanupAsync();
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore.
+        private static async Task<bool> ParseEdgeRequestOrShowErrorAsync(string title)
+        {
+            try
+            {
+                GetEdgeRequestFromTitle(title);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Failed to parse title for report generation: {title}");
+                await DisplayErrorAsync($"Invalid title format for report generation. Title Format {title}");
+                return false;
+            }
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore - downloads the report's CSV data and writes
+        // it to the temporary CSV file used by BuildReportTable.
+        private static async Task<(bool ShouldContinue, string CsvResponse)> FetchAndPersistCsvResponseAsync(bool isDrilldownRequest, bool isProcessReport, string paramsJsonPayload)
+        {
+            string csvResponse;
             try
             {
                 await SetMessage("Downloading report data...");
@@ -382,14 +434,14 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
                 await DisplayErrorAsync("Report generation was cancelled by the user.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report generation request timed out");
                 await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (Exception ex)
             {
@@ -397,7 +449,7 @@ namespace XLEdge.Helpers
                 LogUtility.LogException(ex, "Unhandled error in report generation");
                 await DisplayErrorAsync($"An unexpected error occurred during report generation.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             if (string.IsNullOrWhiteSpace(csvResponse))
@@ -405,24 +457,28 @@ namespace XLEdge.Helpers
                 LogUtility.LogWarn("CSV response is empty. Cannot generate report.");
                 await DisplayErrorAsync("Failed to download report data. The response was empty.");
                 await CleanupAsync();
-                return;
-            }
-            else
-            {
-                try
-                {
-                    await SetMessage("Writing temporary CSV file...");
-                    await Task.Run(() => WriteTempCsv(csvResponse, _edgeRequest.ReportRunId));
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to write temporary CSV file");
-                    await DisplayErrorAsync($"Failed to write temporary CSV file for report generation.{Environment.NewLine}{ex.Message}");
-                    await CleanupAsync();
-                    return;
-                }
+                return (false, null);
             }
 
+            try
+            {
+                await SetMessage("Writing temporary CSV file...");
+                await Task.Run(() => WriteTempCsv(csvResponse, _edgeRequest.ReportRunId));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to write temporary CSV file");
+                await DisplayErrorAsync($"Failed to write temporary CSV file for report generation.{Environment.NewLine}{ex.Message}");
+                await CleanupAsync();
+                return (false, null);
+            }
+
+            return (true, csvResponse);
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore - fetches the report definition (Meta).
+        private static async Task<(bool ShouldContinue, string MetaResponse)> FetchReportMetaResponseAsync(bool isProcessReport, bool isDrilldownRequest)
+        {
             // Fetch report definition (Meta) - always need this from API. Process reports use a
             // different endpoint/id shape than live Edge reports or drilldowns - matches VB.NET's
             // MetaInfo (FollowDrilldown always wins and uses the reportId+runId shape; otherwise
@@ -451,21 +507,21 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
                 await DisplayErrorAsync("Report definition fetch was cancelled by the user.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report definition fetch timed out");
                 await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Unhandled error fetching report definition");
                 await DisplayErrorAsync($"An unexpected error occurred while fetching report definition.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             if (string.IsNullOrWhiteSpace(metaResponse))
@@ -473,11 +529,18 @@ namespace XLEdge.Helpers
                 LogUtility.LogWarn("Report definition response is empty. Cannot generate report.");
                 await DisplayErrorAsync("Failed to fetch report definition. The response was empty.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             LogResponsePayload("Report definition response (metaResponse)", metaResponse);
 
+            return (true, metaResponse);
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore - fetches the report's parameter display
+        // payload (including the round trip required for a drilldown request).
+        private static async Task<(bool ShouldContinue, string ParamsResponse)> FetchReportParamsResponseAsync(bool isDrilldownRequest, string paramsJsonPayload)
+        {
             // Fetch report parameters. For a drilldown, paramsJsonPayload is the request body built
             // by DrilldownRequestBuilder (reportId/parameters/extraParameters scoped to the clicked
             // row) - it has to be POSTed to this endpoint and the actual response captured, matching
@@ -502,21 +565,21 @@ namespace XLEdge.Helpers
                 await ApiHelper.NotifyCancelRunAsync(XLEdgeAppState.Instance.LoginUrl, _edgeRequest?.ReportRunId);
                 await DisplayErrorAsync("Report parameters fetch was cancelled by the user.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (ApiTimeoutException ex)
             {
                 LogUtility.LogException(ex, "Report parameters fetch timed out");
                 await DisplayErrorAsync(RequestTimedOutMessage);
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Unhandled error fetching report parameters");
                 await DisplayErrorAsync($"An unexpected error occurred while fetching report parameters.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             if (string.IsNullOrWhiteSpace(paramsResponse))
@@ -524,44 +587,54 @@ namespace XLEdge.Helpers
                 LogUtility.LogWarn("Report parameters response is empty. Cannot generate report.");
                 await DisplayErrorAsync("Failed to fetch report parameters. The response was empty.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
 
             LogResponsePayload("Report parameters response (paramsResponse)", paramsResponse);
 
-            ReportMeta reportMeta;
+            return (true, paramsResponse);
+        }
+
+        // Extracted from CreateReportFromTitleAsyncCore.
+        private static async Task<(bool ShouldContinue, ReportMeta ReportMeta)> TryDeserializeReportMetaAsync(string metaResponse)
+        {
             try
             {
-                reportMeta = JsonSerializer.Deserialize<ReportMeta>(metaResponse, JsonGlobals.Options);
+                ReportMeta reportMeta = JsonSerializer.Deserialize<ReportMeta>(metaResponse, JsonGlobals.Options);
                 if (reportMeta == null)
                 {
                     await DisplayErrorAsync("Report definition could not be parsed.");
                     await CleanupAsync();
-                    return;
+                    return (false, null);
                 }
+
+                return (true, reportMeta);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Failed to parse report definition JSON");
                 await DisplayErrorAsync("Report definition is not in the expected format.");
                 await CleanupAsync();
-                return;
+                return (false, null);
             }
+        }
 
+        // Extracted from CreateReportFromTitleAsyncCore.
+        private static async Task<bool> TryBuildReportTableAsync(ReportMeta reportMeta, string csvResponse, string metaResponse, string paramsResponse, string title)
+        {
             try
             {
                 await SetMessage("Building report in Excel...");
                 BuildReportTable(_edgeRequest, reportMeta, csvResponse, metaResponse, paramsResponse, title);
+                return true;
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Failed to build report table in Excel");
                 await DisplayErrorAsync($"Failed to write the report into Excel.{Environment.NewLine}{ex.Message}");
                 await CleanupAsync();
-                return;
+                return false;
             }
-
-            await CleanupAsync();
         }
 
         /// <summary>
@@ -853,6 +926,10 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 85): the original single method is
+        // decomposed below into small, single-purpose private helpers. Every line of logic is
+        // unchanged - this only changes how the logic is packaged into methods, not what it does or
+        // the order in which it runs, to avoid introducing any behavioral regression.
         private static void BuildReportTable(EdgeRequest request, ReportMeta reportMeta, string csvResponse, string metaJson, string paramsJson, string title)
         {
             Excel.Application excelApp = XLApp.App;
@@ -867,6 +944,43 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("No active workbook.");
             }
 
+            (string tableId, List<List<string>> rows, int dataRowCount, List<(string Original, string Modified, int RawIndex)> mappings) =
+                BuildColumnMappings(request, reportMeta, csvResponse);
+
+            bool sameSheet = XLEdgeAppState.Instance.ParamDataSameSheet;
+            int headerRow = sameSheet ? 8 : 1;
+            int dataStartRow = headerRow + 1;
+
+            Excel.Worksheet sheet = ResolveOrCreateReportSheet(workbook, tableId, reportMeta, sameSheet, headerRow, out string companionSheetToDelete);
+
+            ActivateAndUnfreezeSheet(excelApp, sheet);
+
+            Excel.ListObject listObject = WriteReportDataAndCreateTable(sheet, tableId, headerRow, dataStartRow, mappings, reportMeta, rows);
+
+            HideFlaggedColumns(listObject, reportMeta, mappings);
+
+            string reportTitleText = ComputeReportTitleText(reportMeta, request);
+
+            WriteReportParameterSection(workbook, sheet, sameSheet, reportTitleText, paramsJson, dataRowCount, tableId);
+
+            AddDrilldownHyperlinks(sheet, listObject, reportMeta);
+            AddAttachmentAndImageColumns(sheet, listObject, reportMeta);
+
+            PersistReportMetadata(workbook, title, tableId, metaJson, paramsJson, mappings);
+
+            ApplyReportTableStyling(listObject);
+
+            ApplyColumnFreeze(excelApp, reportMeta, mappings.Count);
+
+            DeleteOrphanedCompanionSheet(workbook, companionSheetToDelete);
+        }
+
+        // Extracted from BuildReportTable - builds the Excel table identifier, parses the raw CSV
+        // response, and produces the ordered list of (original, sanitized, raw-column-index)
+        // mappings used to write the header/data.
+        private static (string TableId, List<List<string>> Rows, int DataRowCount, List<(string Original, string Modified, int RawIndex)> Mappings) BuildColumnMappings(
+            EdgeRequest request, ReportMeta reportMeta, string csvResponse)
+        {
             // Matches VB.NET's FormProcessBar.vb EETableID assignment: a submitted/scheduled
             // ("Process") report's table is suffixed "_P" instead of "_E". AddinModule.cs's
             // UpdateTabLabel/XLEdgeRibbonHelper.ProcessActiveWorkbook already recognize "_P" tables
@@ -911,96 +1025,149 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("Report has no columns to write.");
             }
 
-            bool sameSheet = XLEdgeAppState.Instance.ParamDataSameSheet;
-            int headerRow = sameSheet ? 8 : 1;
-            int dataStartRow = headerRow + 1;
-            string companionSheetToDelete = null;
+            return (tableId, rows, dataRowCount, mappings);
+        }
 
+        // Extracted from BuildReportTable - finds/prepares the worksheet to write this report's
+        // table into, and tracks the name of any now-orphaned companion parameter sheet that should
+        // be deleted once the new table/banner has been written.
+        private static Excel.Worksheet ResolveOrCreateReportSheet(Excel.Workbook workbook, string tableId, ReportMeta reportMeta, bool sameSheet, int headerRow, out string companionSheetToDelete)
+        {
             Excel.Worksheet sheet = FindSheetWithTable(workbook, tableId);
+
             if (sheet != null)
             {
-                int? oldHeaderRow = null;
-                try
-                {
-                    Excel.ListObject existing = sheet.ListObjects[tableId];
-                    oldHeaderRow = existing.HeaderRowRange.Row;
-                    existing.Delete();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to remove existing table before rebuilding");
-                }
-
-                if (oldHeaderRow == 8 && headerRow == 1)
-                {
-                    RemoveSameSheetBanner(sheet);
-                }
-                else if (oldHeaderRow == 1 && headerRow == 8)
-                {
-                    try
-                    {
-                        Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet($"P_{sheet.Name}", tableId);
-                        if (oldParamSheet != null)
-                        {
-                            companionSheetToDelete = oldParamSheet.Name;
-                            Marshal.ReleaseComObject(oldParamSheet);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "Failed to resolve old companion parameter sheet before switching to same-sheet mode");
-                    }
-
-                    InsertRoomForSameSheetBanner(sheet);
-                }
+                PrepareExistingReportSheet(sheet, tableId, headerRow, out companionSheetToDelete);
             }
             else
             {
-                string sheetName = BuildSheetName(reportMeta);
-                if (ExcelSheetHelper.SheetExists(sheetName, workbook))
-                {
-                    sheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
-                    sheet.Cells.Clear();
-                    ResetLeftoverRowArtifacts(sheet);
-                }
-                else
-                {
-                    try
-                    {
-                        sheet = (Excel.Worksheet)workbook.Worksheets.Add();
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogDebug($"{nameof(BuildReportTable)}: default Worksheets.Add() failed, falling back to append-at-end - {ex.Message}");
-                        sheet = (Excel.Worksheet)workbook.Worksheets.Add(Type.Missing, workbook.Worksheets[workbook.Worksheets.Count]);
-                    }
-                    sheet.Name = sheetName;
-                }
+                sheet = CreateOrReuseReportSheet(workbook, reportMeta);
+                companionSheetToDelete = null;
             }
 
             if (sameSheet && string.IsNullOrEmpty(companionSheetToDelete))
             {
-                try
-                {
-                    string paramSheetName = $"P_{sheet.Name}";
-                    if (paramSheetName.Length >= 29)
-                    {
-                        paramSheetName = paramSheetName.Substring(0, 28);
-                    }
-
-                    Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, tableId);
-                    if (oldParamSheet != null)
-                    {
-                        companionSheetToDelete = oldParamSheet.Name;
-                        Marshal.ReleaseComObject(oldParamSheet);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to resolve orphaned companion parameter sheet before same-sheet write");
-                }
+                companionSheetToDelete = FindOrphanedCompanionSheetName(sheet.Name, tableId);
             }
 
+            return sheet;
+        }
+
+        // Extracted from BuildReportTable - when a table with this tableId already exists on a
+        // sheet, removes the old table and, if the header-row layout is changing (same-sheet banner
+        // added/removed), reconciles the banner/companion-sheet state to match the new layout.
+        private static void PrepareExistingReportSheet(Excel.Worksheet sheet, string tableId, int headerRow, out string companionSheetToDelete)
+        {
+            companionSheetToDelete = null;
+            int? oldHeaderRow = null;
+            try
+            {
+                Excel.ListObject existing = sheet.ListObjects[tableId];
+                oldHeaderRow = existing.HeaderRowRange.Row;
+                existing.Delete();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to remove existing table before rebuilding");
+            }
+
+            if (oldHeaderRow == 8 && headerRow == 1)
+            {
+                RemoveSameSheetBanner(sheet);
+            }
+            else if (oldHeaderRow == 1 && headerRow == 8)
+            {
+                companionSheetToDelete = TransitionSheetToSameSheetMode(sheet, tableId);
+            }
+        }
+
+        // Extracted from BuildReportTable - handles the "sheet is switching into same-sheet mode"
+        // case: resolves the now-orphaned companion parameter sheet's name (if any) and makes room
+        // for the in-sheet banner.
+        private static string TransitionSheetToSameSheetMode(Excel.Worksheet sheet, string tableId)
+        {
+            string companionSheetToDelete = null;
+            try
+            {
+                Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet($"P_{sheet.Name}", tableId);
+                if (oldParamSheet != null)
+                {
+                    companionSheetToDelete = oldParamSheet.Name;
+                    Marshal.ReleaseComObject(oldParamSheet);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to resolve old companion parameter sheet before switching to same-sheet mode");
+            }
+
+            InsertRoomForSameSheetBanner(sheet);
+            return companionSheetToDelete;
+        }
+
+        // Extracted from BuildReportTable - resolves the worksheet to use when no existing table
+        // with this tableId was found: reuse the report's named sheet if it already exists (clearing
+        // it first), otherwise create a brand-new sheet.
+        private static Excel.Worksheet CreateOrReuseReportSheet(Excel.Workbook workbook, ReportMeta reportMeta)
+        {
+            string sheetName = BuildSheetName(reportMeta);
+            if (ExcelSheetHelper.SheetExists(sheetName, workbook))
+            {
+                Excel.Worksheet existingSheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
+                existingSheet.Cells.Clear();
+                ResetLeftoverRowArtifacts(existingSheet);
+                return existingSheet;
+            }
+
+            Excel.Worksheet newSheet;
+            try
+            {
+                newSheet = (Excel.Worksheet)workbook.Worksheets.Add();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(CreateOrReuseReportSheet)}: default Worksheets.Add() failed, falling back to append-at-end - {ex.Message}");
+                newSheet = (Excel.Worksheet)workbook.Worksheets.Add(Type.Missing, workbook.Worksheets[workbook.Worksheets.Count]);
+            }
+
+            newSheet.Name = sheetName;
+            return newSheet;
+        }
+
+        // Extracted from BuildReportTable - when writing into same-sheet mode, checks for a
+        // leftover companion parameter sheet (from a prior non-same-sheet run of this report) that
+        // is now orphaned and should be cleaned up.
+        private static string FindOrphanedCompanionSheetName(string sheetName, string tableId)
+        {
+            try
+            {
+                string paramSheetName = $"P_{sheetName}";
+                if (paramSheetName.Length >= 29)
+                {
+                    paramSheetName = paramSheetName.Substring(0, 28);
+                }
+
+                Excel.Worksheet oldParamSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, tableId);
+                if (oldParamSheet != null)
+                {
+                    string orphanedName = oldParamSheet.Name;
+                    Marshal.ReleaseComObject(oldParamSheet);
+                    return orphanedName;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to resolve orphaned companion parameter sheet before same-sheet write");
+            }
+
+            return null;
+        }
+
+        // Extracted from BuildReportTable - activates the target sheet and unfreezes panes so the
+        // header/data write always lands starting at row/column 1 regardless of the previous
+        // report's frozen-pane state.
+        private static void ActivateAndUnfreezeSheet(Excel.Application excelApp, Excel.Worksheet sheet)
+        {
             sheet.Activate();
 
             //unfreezing the columns and rows if they are frozen
@@ -1012,6 +1179,13 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to unfreeze panes on report sheet");
             }
+        }
+
+        // Extracted from BuildReportTable - writes the header row and (if any) the data rows as bulk
+        // Value2 array writes, then wraps the written range in a new ListObject named tableId.
+        private static Excel.ListObject WriteReportDataAndCreateTable(Excel.Worksheet sheet, string tableId, int headerRow, int dataStartRow, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows)
+        {
+            int dataRowCount = Math.Max(0, rows.Count - 1);
 
             object[,] headerArr = new object[1, mappings.Count];
             for (int c = 0; c < mappings.Count; c++)
@@ -1026,22 +1200,7 @@ namespace XLEdge.Helpers
 
             if (dataRowCount > 0)
             {
-                object[,] writeArr = new object[dataRowCount, mappings.Count];
-
-                for (int c = 0; c < mappings.Count; c++)
-                {
-                    int rawIndex = mappings[c].RawIndex;
-                    string colType = reportMeta.Columns?
-                        .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
-                        .DataType;
-
-                    for (int r = 0; r < dataRowCount; r++)
-                    {
-                        List<string> rowVals = rows[r + 1];
-                        object raw = (rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                        writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
-                    }
-                }
+                object[,] writeArr = BuildDataWriteArray(rows, mappings, reportMeta, dataRowCount);
 
                 Excel.Range startCell = (Excel.Range)sheet.Cells[dataStartRow, 1];
                 Excel.Range writeRange = startCell.Resize[dataRowCount, mappings.Count];
@@ -1053,6 +1212,38 @@ namespace XLEdge.Helpers
             listObject.Name = tableId;
             listObject.TableStyle = "TableStyleLight9";
 
+            return listObject;
+        }
+
+        // Extracted from BuildReportTable - builds the 2D data array (row-major) to bulk-write into
+        // the sheet, applying each column's configured DataType formatting via
+        // XLEdgeValueFormatter.FormatValue.
+        private static object[,] BuildDataWriteArray(List<List<string>> rows, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, int dataRowCount)
+        {
+            object[,] writeArr = new object[dataRowCount, mappings.Count];
+
+            for (int c = 0; c < mappings.Count; c++)
+            {
+                int rawIndex = mappings[c].RawIndex;
+                string colType = reportMeta.Columns?
+                    .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
+                    .DataType;
+
+                for (int r = 0; r < dataRowCount; r++)
+                {
+                    List<string> rowVals = rows[r + 1];
+                    object raw = (rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+                    writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
+                }
+            }
+
+            return writeArr;
+        }
+
+        // Extracted from BuildReportTable - hides any table column whose report-metadata column is
+        // flagged Properties.Hidden.
+        private static void HideFlaggedColumns(Excel.ListObject listObject, ReportMeta reportMeta, List<(string Original, string Modified, int RawIndex)> mappings)
+        {
             foreach (RptColumn col in reportMeta.Columns ?? Array.Empty<RptColumn>())
             {
                 if (col.Properties?.Hidden != true)
@@ -1076,12 +1267,22 @@ namespace XLEdge.Helpers
                     LogUtility.LogException(ex, $"Failed to hide column '{mapping.Modified}'");
                 }
             }
+        }
 
-            string reportTitleText = XLEdgeValueFormatter.RemoveEquaSymbol(
+        // Extracted from BuildReportTable - resolves the display title used for the same-sheet
+        // banner / companion parameter sheet header (drilldown child label takes priority when set).
+        private static string ComputeReportTitleText(ReportMeta reportMeta, EdgeRequest request)
+        {
+            return XLEdgeValueFormatter.RemoveEquaSymbol(
                 (XLEdgeAppState.Instance.FollowDrilldown && !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.ChildRptLabel))
                     ? XLEdgeAppState.Instance.ChildRptLabel
                     : (reportMeta.Name ?? request.ReportName));
+        }
 
+        // Extracted from BuildReportTable - writes the report's parameter display, either as the
+        // in-sheet banner (same-sheet mode) or the separate companion parameter sheet.
+        private static void WriteReportParameterSection(Excel.Workbook workbook, Excel.Worksheet sheet, bool sameSheet, string reportTitleText, string paramsJson, int dataRowCount, string tableId)
+        {
             if (sameSheet)
             {
                 try
@@ -1104,10 +1305,11 @@ namespace XLEdge.Helpers
                     LogUtility.LogException(ex, "Failed to build companion parameter sheet");
                 }
             }
+        }
 
-            AddDrilldownHyperlinks(sheet, listObject, reportMeta);
-            AddAttachmentAndImageColumns(sheet, listObject, reportMeta);
-
+        // Extracted from BuildReportTable - persists the report's custom XML metadata part.
+        private static void PersistReportMetadata(Excel.Workbook workbook, string title, string tableId, string metaJson, string paramsJson, List<(string Original, string Modified, int RawIndex)> mappings)
+        {
             try
             {
                 string xml = BuildCustomXml(title, tableId, metaJson, paramsJson, mappings);
@@ -1117,7 +1319,12 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to persist report metadata");
             }
+        }
 
+        // Extracted from BuildReportTable - cosmetic-only column autofit/font sizing; safe to ignore
+        // on failure.
+        private static void ApplyReportTableStyling(Excel.ListObject listObject)
+        {
             try
             {
                 Excel.Range styleRange = listObject.Range;
@@ -1128,12 +1335,17 @@ namespace XLEdge.Helpers
             {
                 // Cosmetic-only (column width/font size); safe to ignore if it fails.
             }
+        }
 
+        // Extracted from BuildReportTable - freezes panes at the metadata-configured locked-column
+        // boundary, if any.
+        private static void ApplyColumnFreeze(Excel.Application excelApp, ReportMeta reportMeta, int mappingCount)
+        {
             //Attempting to freeae the columns based on metadata settings
             try
             {
                 int columnLockCount = reportMeta.LockedColumnsCount;
-                if (columnLockCount > 0 && columnLockCount < mappings.Count)
+                if (columnLockCount > 0 && columnLockCount < mappingCount)
                 {
                     excelApp.ActiveWindow.SplitColumn = columnLockCount;
                     excelApp.ActiveWindow.SplitRow = 0;
@@ -1145,20 +1357,27 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to freeze panes on report sheet");
             }
+        }
 
-            if (!string.IsNullOrEmpty(companionSheetToDelete))
+        // Extracted from BuildReportTable - deletes the now-orphaned companion parameter sheet left
+        // behind when a report table switched into/out of same-sheet mode.
+        private static void DeleteOrphanedCompanionSheet(Excel.Workbook workbook, string companionSheetToDelete)
+        {
+            if (string.IsNullOrEmpty(companionSheetToDelete))
             {
-                try
+                return;
+            }
+
+            try
+            {
+                if (ExcelSheetHelper.SheetExists(companionSheetToDelete, workbook))
                 {
-                    if (ExcelSheetHelper.SheetExists(companionSheetToDelete, workbook))
-                    {
-                        ((Excel.Worksheet)workbook.Worksheets[companionSheetToDelete]).Delete();
-                    }
+                    ((Excel.Worksheet)workbook.Worksheets[companionSheetToDelete]).Delete();
                 }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to delete orphaned companion parameter sheet after switching to same-sheet mode");
-                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to delete orphaned companion parameter sheet after switching to same-sheet mode");
             }
         }
 
@@ -1304,6 +1523,9 @@ namespace XLEdge.Helpers
         /// and report refresh. Always clears the target rows/columns first, so a refresh with fewer
         /// parameters than the prior run doesn't leave stale label/value pairs behind.
         /// </summary>
+        // Cognitive-complexity refactor (SonarQube S3776, was 29): decomposed into single-purpose
+        // helpers, one per parameter-sheet cell group. Every clear/write, comment, and error message
+        // is unchanged.
         private static void RewriteParameterSectionRows(Excel.Worksheet paramSheet, string paramsJson, string tableId, bool sameSheetMode)
         {
             List<(string Label, string ValueText)> paramRows = ParseParamDisplayRows(
@@ -1311,72 +1533,95 @@ namespace XLEdge.Helpers
 
             if (sameSheetMode)
             {
-                try
-                {
-                    // Generously wide/tall clear (rows 4-6, columns A through BZ) so a refresh that now
-                    // has fewer parameters than the previous run doesn't leave old label/value pairs
-                    // behind in columns/rows the new, shorter list no longer reaches.
-                    paramSheet.Range[paramSheet.Cells[4, 1], paramSheet.Cells[6, 78]].Clear();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RewriteParameterSectionRows)}: failed to clear stale same-sheet parameter rows before rewrite - {ex.Message}");
-                }
-
-                int irow = 4;
-                int icol = 1;
-                foreach ((string Label, string ValueText) param in paramRows)
-                {
-                    if (irow > 6)
-                    {
-                        irow = 4;
-                        icol += 2;
-                    }
-
-                    try
-                    {
-                        WriteParamLabelCell((Excel.Range)paramSheet.Cells[irow, icol], param.Label);
-                        WriteParamValueCell((Excel.Range)paramSheet.Cells[irow, icol + 1], param.ValueText, tableId);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to write same-sheet parameter row for '{param.Label}'");
-                    }
-
-                    irow++;
-                }
+                WriteSameSheetParamRows(paramSheet, paramRows, tableId);
             }
             else
             {
+                WriteCompanionParamRows(paramSheet, paramRows, tableId);
+            }
+
+            WriteParameterBookkeepingCells(paramSheet, tableId, sameSheetMode);
+            WriteOracleResponsibilityCells(paramSheet, oracleRespId, oracleRespValue);
+            WriteSegmentValueCell(paramSheet, segmentValues);
+            WriteSegmentDisplayValueCell(paramSheet, segmentDisplayValues);
+        }
+
+        // Extracted from RewriteParameterSectionRows - writes the multi-column, row-wrapping
+        // (rows 4-6, then next column pair) same-sheet banner parameter grid.
+        private static void WriteSameSheetParamRows(Excel.Worksheet paramSheet, List<(string Label, string ValueText)> paramRows, string tableId)
+        {
+            try
+            {
+                // Generously wide/tall clear (rows 4-6, columns A through BZ) so a refresh that now
+                // has fewer parameters than the previous run doesn't leave old label/value pairs
+                // behind in columns/rows the new, shorter list no longer reaches.
+                paramSheet.Range[paramSheet.Cells[4, 1], paramSheet.Cells[6, 78]].Clear();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(WriteSameSheetParamRows)}: failed to clear stale same-sheet parameter rows before rewrite - {ex.Message}");
+            }
+
+            int irow = 4;
+            int icol = 1;
+            foreach ((string Label, string ValueText) param in paramRows)
+            {
+                if (irow > 6)
+                {
+                    irow = 4;
+                    icol += 2;
+                }
+
                 try
                 {
-                    // Companion parameter sheet rows grow downward with no fixed cap (row 3, 4, 5, ...) -
-                    // clear a generously tall range so a refresh with fewer parameters doesn't leave
-                    // stale rows below the new, shorter list.
-                    paramSheet.Range[paramSheet.Cells[3, 1], paramSheet.Cells[300, 2]].Clear();
+                    WriteParamLabelCell((Excel.Range)paramSheet.Cells[irow, icol], param.Label);
+                    WriteParamValueCell((Excel.Range)paramSheet.Cells[irow, icol + 1], param.ValueText, tableId);
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogDebug($"{nameof(RewriteParameterSectionRows)}: failed to clear stale companion-sheet parameter rows before rewrite - {ex.Message}");
+                    LogUtility.LogException(ex, $"Failed to write same-sheet parameter row for '{param.Label}'");
                 }
 
-                int row = 3;
-                foreach ((string Label, string ValueText) param in paramRows)
-                {
-                    try
-                    {
-                        WriteParamLabelCell((Excel.Range)paramSheet.Cells[row, 1], param.Label);
-                        WriteParamValueCell((Excel.Range)paramSheet.Cells[row, 2], param.ValueText, tableId);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to write companion parameter row for '{param.Label}'");
-                    }
+                irow++;
+            }
+        }
 
-                    row++;
-                }
+        // Extracted from RewriteParameterSectionRows - writes the single-column, downward-growing
+        // companion-sheet parameter list.
+        private static void WriteCompanionParamRows(Excel.Worksheet paramSheet, List<(string Label, string ValueText)> paramRows, string tableId)
+        {
+            try
+            {
+                // Companion parameter sheet rows grow downward with no fixed cap (row 3, 4, 5, ...) -
+                // clear a generously tall range so a refresh with fewer parameters doesn't leave
+                // stale rows below the new, shorter list.
+                paramSheet.Range[paramSheet.Cells[3, 1], paramSheet.Cells[300, 2]].Clear();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(WriteCompanionParamRows)}: failed to clear stale companion-sheet parameter rows before rewrite - {ex.Message}");
             }
 
+            int row = 3;
+            foreach ((string Label, string ValueText) param in paramRows)
+            {
+                try
+                {
+                    WriteParamLabelCell((Excel.Range)paramSheet.Cells[row, 1], param.Label);
+                    WriteParamValueCell((Excel.Range)paramSheet.Cells[row, 2], param.ValueText, tableId);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Failed to write companion parameter row for '{param.Label}'");
+                }
+
+                row++;
+            }
+        }
+
+        // Extracted from RewriteParameterSectionRows - writes the IT1/IT2/IT5 bookkeeping cells.
+        private static void WriteParameterBookkeepingCells(Excel.Worksheet paramSheet, string tableId, bool sameSheetMode)
+        {
             try
             {
                 paramSheet.Range["IT1"].Value2 = XLEdgeAppState.Instance.FollowDrilldown ? "Child Report" : string.Empty;
@@ -1395,9 +1640,13 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to write parameter sheet IT1/IT2/IT5 bookkeeping cells");
             }
+        }
 
-            // Each of IT4/IU4/IV4/IW4 is cleared first, then only re-populated if it has a value -
-            // ensures a blank value this round leaves an actually-blank cell rather than stale content.
+        // Extracted from RewriteParameterSectionRows - IT4/IU4 are cleared first, then only
+        // re-populated if there's an actual value - ensures a blank value this round leaves an
+        // actually-blank cell rather than stale content.
+        private static void WriteOracleResponsibilityCells(Excel.Worksheet paramSheet, string oracleRespId, string oracleRespValue)
+        {
             try
             {
                 paramSheet.Range["IT4"].Clear();
@@ -1416,7 +1665,11 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to write parameter sheet IT4/IU4 responsibility cells");
             }
+        }
 
+        // Extracted from RewriteParameterSectionRows.
+        private static void WriteSegmentValueCell(Excel.Worksheet paramSheet, string segmentValues)
+        {
             try
             {
                 paramSheet.Range["IV4"].Clear();
@@ -1431,8 +1684,12 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, "Failed to write parameter sheet IV4 segment values cell");
             }
+        }
 
-            // IW4 holds the segment display value, alongside IV4's raw segment value.
+        // Extracted from RewriteParameterSectionRows - IW4 holds the segment display value,
+        // alongside IV4's raw segment value.
+        private static void WriteSegmentDisplayValueCell(Excel.Worksheet paramSheet, string segmentDisplayValues)
+        {
             try
             {
                 paramSheet.Range["IW4"].Clear();
@@ -1660,6 +1917,11 @@ namespace XLEdge.Helpers
 
         // Parses the parameter rows for display, also returning the responsibility id/value and the
         // raw/display GL segment values via out parameters so callers can persist them separately.
+        // Cognitive-complexity refactor (SonarQube S3776, was 33): each foreach loop's per-item body
+        // is pulled into its own helper. The out-parameters are threaded through the first helper by
+        // ref (an out-parameter is a normal assignable variable once definitely assigned, which
+        // oracleRespId/oracleRespValue/segmentValues/segmentDisplayValues already are by that point).
+        // Every condition, comment, and error message is unchanged.
         private static List<(string Label, string ValueText)> ParseParamDisplayRows(string paramsJson, out string oracleRespId, out string oracleRespValue, out string segmentValues, out string segmentDisplayValues)
         {
             oracleRespId = null;
@@ -1684,80 +1946,12 @@ namespace XLEdge.Helpers
 
                 foreach (JsonElement item in doc.RootElement.EnumerateArray())
                 {
-                    try
-                    {
-                        if (!JsonHelper.TryGetProperty(item, ExtraParametersKey, out JsonElement extraEl) ||
-                            extraEl.ValueKind != JsonValueKind.Object)
-                        {
-                            continue;
-                        }
-
-                        (string RespId, string RespValue, string GlSegments, string GLSegmentValues) extra = ExtractExtraParams(extraEl);
-
-                        if (!string.IsNullOrWhiteSpace(extra.RespId) && !string.IsNullOrWhiteSpace(extra.RespValue))
-                        {
-                            oracleRespId = extra.RespId;
-                            oracleRespValue = extra.RespValue;
-                            result.Add(("Responsibility", "'" + extra.RespValue));
-                        }
-
-                        // The raw segment value (IV4) and display segment value (IW4) are surfaced
-                        // independently, each based on its own non-blank check.
-                        if (!string.IsNullOrWhiteSpace(extra.GLSegmentValues))
-                        {
-                            segmentValues = extra.GLSegmentValues;
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(extra.GlSegments))
-                        {
-                            segmentDisplayValues = extra.GlSegments;
-                            result.Add(("GL Accounts", extra.GlSegments));
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "ParseParamDisplayRows: failed to extract extraParameters for one entry");
-                    }
+                    ProcessExtraParamsForRow(item, result, ref oracleRespId, ref oracleRespValue, ref segmentValues, ref segmentDisplayValues);
                 }
 
                 foreach (JsonElement item in doc.RootElement.EnumerateArray())
                 {
-                    try
-                    {
-                        string label;
-
-                        if (JsonHelper.TryGetProperty(item, "label", out JsonElement labelEl) && labelEl.ValueKind != JsonValueKind.Null)
-                        {
-                            label = labelEl.ToString();
-                        }
-                        else if (JsonHelper.TryGetProperty(item, "name", out JsonElement nameEl))
-                        {
-                            label = nameEl.ToString();
-                        }
-                        else
-                        {
-                            label = null;
-                        }
-
-                        string paramOperator = JsonHelper.TryGetProperty(item, "operator", out JsonElement opEl) ? opEl.ToString() : null;
-                        string paramType = JsonHelper.TryGetProperty(item, "type", out JsonElement typeEl) ? typeEl.ToString() : null;
-
-                        if (string.IsNullOrWhiteSpace(label) || paramOperator == null || paramType == null)
-                        {
-                            continue;
-                        }
-
-                        string componentType = JsonHelper.TryGetProperty(item, "componentType", out JsonElement ctEl) ? ctEl.ToString() : null;
-                        string operatorKey = XLEdgeOperatorMappings.Map.FirstOrDefault(kvp => kvp.Value == paramOperator).Key ?? paramOperator;
-
-                        string valueText = BuildReportParamValue(item, componentType, paramOperator, paramType, operatorKey);
-
-                        result.Add((XLEdgeValueFormatter.RemoveEquaSymbol(label), XLEdgeValueFormatter.RemoveEquaSymbol(valueText)));
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "ParseParamDisplayRows: failed to parse one parameter entry");
-                    }
+                    ProcessLabelValueRow(item, result);
                 }
             }
             catch (Exception ex)
@@ -1768,6 +1962,92 @@ namespace XLEdge.Helpers
             return result;
         }
 
+        // Extracted from ParseParamDisplayRows - handles one array entry's "extraParameters" block:
+        // Oracle responsibility id/value and GL segment raw/display values.
+        private static void ProcessExtraParamsForRow(JsonElement item, List<(string Label, string ValueText)> result, ref string oracleRespId, ref string oracleRespValue, ref string segmentValues, ref string segmentDisplayValues)
+        {
+            try
+            {
+                if (!JsonHelper.TryGetProperty(item, ExtraParametersKey, out JsonElement extraEl) ||
+                    extraEl.ValueKind != JsonValueKind.Object)
+                {
+                    return;
+                }
+
+                (string RespId, string RespValue, string GlSegments, string GLSegmentValues) extra = ExtractExtraParams(extraEl);
+
+                if (!string.IsNullOrWhiteSpace(extra.RespId) && !string.IsNullOrWhiteSpace(extra.RespValue))
+                {
+                    oracleRespId = extra.RespId;
+                    oracleRespValue = extra.RespValue;
+                    result.Add(("Responsibility", "'" + extra.RespValue));
+                }
+
+                // The raw segment value (IV4) and display segment value (IW4) are surfaced
+                // independently, each based on its own non-blank check.
+                if (!string.IsNullOrWhiteSpace(extra.GLSegmentValues))
+                {
+                    segmentValues = extra.GLSegmentValues;
+                }
+
+                if (!string.IsNullOrWhiteSpace(extra.GlSegments))
+                {
+                    segmentDisplayValues = extra.GlSegments;
+                    result.Add(("GL Accounts", extra.GlSegments));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "ParseParamDisplayRows: failed to extract extraParameters for one entry");
+            }
+        }
+
+        // Extracted from ParseParamDisplayRows - handles one array entry's label/operator/type/value
+        // display row.
+        private static void ProcessLabelValueRow(JsonElement item, List<(string Label, string ValueText)> result)
+        {
+            try
+            {
+                string label;
+
+                if (JsonHelper.TryGetProperty(item, "label", out JsonElement labelEl) && labelEl.ValueKind != JsonValueKind.Null)
+                {
+                    label = labelEl.ToString();
+                }
+                else if (JsonHelper.TryGetProperty(item, "name", out JsonElement nameEl))
+                {
+                    label = nameEl.ToString();
+                }
+                else
+                {
+                    label = null;
+                }
+
+                string paramOperator = JsonHelper.TryGetProperty(item, "operator", out JsonElement opEl) ? opEl.ToString() : null;
+                string paramType = JsonHelper.TryGetProperty(item, "type", out JsonElement typeEl) ? typeEl.ToString() : null;
+
+                if (string.IsNullOrWhiteSpace(label) || paramOperator == null || paramType == null)
+                {
+                    return;
+                }
+
+                string componentType = JsonHelper.TryGetProperty(item, "componentType", out JsonElement ctEl) ? ctEl.ToString() : null;
+                string operatorKey = XLEdgeOperatorMappings.Map.FirstOrDefault(kvp => kvp.Value == paramOperator).Key ?? paramOperator;
+
+                string valueText = BuildReportParamValue(item, componentType, paramOperator, paramType, operatorKey);
+
+                result.Add((XLEdgeValueFormatter.RemoveEquaSymbol(label), XLEdgeValueFormatter.RemoveEquaSymbol(valueText)));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "ParseParamDisplayRows: failed to parse one parameter entry");
+            }
+        }
+
+        // Cognitive-complexity refactor (SonarQube S3776, was 55): the "ORACLE_GL_SEGMENT_DISPLAY_VALUES"
+        // case (by far the deepest-nested branch here - object-vs-string-vs-parsed-string resolution,
+        // then a nested foreach building the formatted string) is pulled into its own helper chain.
+        // Every condition, comment, and log message is unchanged.
         private static (string RespId, string RespValue, string GlSegments, string GLSegmentValues) ExtractExtraParams(JsonElement extraParamsEl)
         {
             string respId = null;
@@ -1798,54 +2078,7 @@ namespace XLEdge.Helpers
                             break;
 
                         case "ORACLE_GL_SEGMENT_DISPLAY_VALUES":
-                            // Accepts either a real JSON object, or a string whose content itself
-                            // parses as a JSON object (e.g. {"Company":"1000-5000","Department":"-",...}).
-                            JsonElement? segmentObjectEl = null;
-                            if (prop.Value.ValueKind == JsonValueKind.Object)
-                            {
-                                segmentObjectEl = prop.Value;
-                            }
-                            else if (prop.Value.ValueKind == JsonValueKind.String)
-                            {
-                                string rawText = prop.Value.GetString();
-                                if (!string.IsNullOrWhiteSpace(rawText))
-                                {
-                                    try
-                                    {
-                                        using var innerDoc = JsonDocument.Parse(rawText);
-                                        if (innerDoc.RootElement.ValueKind == JsonValueKind.Object)
-                                        {
-                                            segmentObjectEl = innerDoc.RootElement.Clone();
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogUtility.LogDebug($"{nameof(ExtractExtraParams)}: ORACLE_GL_SEGMENT_DISPLAY_VALUES string value did not parse as a JSON object - {ex.Message}");
-                                    }
-                                }
-                            }
-
-                            if (segmentObjectEl.HasValue)
-                            {
-                                var segmentString = new StringBuilder();
-                                foreach (JsonProperty innerProp in segmentObjectEl.Value.EnumerateObject())
-                                {
-                                    string val = innerProp.Value.ValueKind == JsonValueKind.Null ? null : innerProp.Value.ToString()?.Trim();
-                                    if (string.IsNullOrEmpty(val) || val == "-")
-                                    {
-                                        val = "\"\"";
-                                    }
-
-                                    segmentString.AppendFormat("{0}={1}, ", innerProp.Name, val);
-                                }
-
-                                if (segmentString.Length > 2)
-                                {
-                                    segmentString.Length -= 2;
-                                }
-
-                                glSegments = segmentString.ToString();
-                            }
+                            glSegments = ExtractGlSegmentsDisplayString(prop.Value);
                             break;
                     }
                 }
@@ -1857,6 +2090,71 @@ namespace XLEdge.Helpers
                 LogUtility.LogException(ex, nameof(ExtractExtraParams));
                 return (string.Empty, string.Empty, string.Empty, string.Empty);
             }
+        }
+
+        // Extracted from ExtractExtraParams - resolves the ORACLE_GL_SEGMENT_DISPLAY_VALUES property
+        // (either a real JSON object, or a string that itself parses as one) into the formatted
+        // "Key=Value, Key=Value" display string.
+        private static string ExtractGlSegmentsDisplayString(JsonElement propValue)
+        {
+            JsonElement? segmentObjectEl = ResolveSegmentObjectElement(propValue);
+            return segmentObjectEl.HasValue ? FormatSegmentObjectAsString(segmentObjectEl.Value) : null;
+        }
+
+        // Extracted from ExtractExtraParams - accepts either a real JSON object, or a string whose
+        // content itself parses as a JSON object (e.g. {"Company":"1000-5000","Department":"-",...}).
+        private static JsonElement? ResolveSegmentObjectElement(JsonElement propValue)
+        {
+            if (propValue.ValueKind == JsonValueKind.Object)
+            {
+                return propValue;
+            }
+
+            if (propValue.ValueKind == JsonValueKind.String)
+            {
+                string rawText = propValue.GetString();
+                if (!string.IsNullOrWhiteSpace(rawText))
+                {
+                    try
+                    {
+                        using var innerDoc = JsonDocument.Parse(rawText);
+                        if (innerDoc.RootElement.ValueKind == JsonValueKind.Object)
+                        {
+                            return innerDoc.RootElement.Clone();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(ResolveSegmentObjectElement)}: ORACLE_GL_SEGMENT_DISPLAY_VALUES string value did not parse as a JSON object - {ex.Message}");
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        // Extracted from ExtractExtraParams - formats a resolved segment object as "Key=Value, ..."
+        // (blank/"-" values are rendered as an explicit empty-quoted string).
+        private static string FormatSegmentObjectAsString(JsonElement segmentObjectEl)
+        {
+            var segmentString = new StringBuilder();
+            foreach (JsonProperty innerProp in segmentObjectEl.EnumerateObject())
+            {
+                string val = innerProp.Value.ValueKind == JsonValueKind.Null ? null : innerProp.Value.ToString()?.Trim();
+                if (string.IsNullOrEmpty(val) || val == "-")
+                {
+                    val = "\"\"";
+                }
+
+                segmentString.AppendFormat("{0}={1}, ", innerProp.Name, val);
+            }
+
+            if (segmentString.Length > 2)
+            {
+                segmentString.Length -= 2;
+            }
+
+            return segmentString.ToString();
         }
 
         private static string BuildReportParamValue(JsonElement item, string componentType, string paramOperator, string paramType, string operatorKey)
@@ -1879,78 +2177,82 @@ namespace XLEdge.Helpers
         /// <summary>
         /// Computes the raw (pre-operator-formatting) display value for a single report parameter item.
         /// </summary>
+        // Cognitive-complexity refactor (SonarQube S3776, was 28): the three "just return empty"
+        // conditions are merged into a single guard (identical short-circuit order and null-safety -
+        // paramOperator is confirmed non-null before .Contains("NULL") runs, exactly as before), and
+        // the two deeply-nested displayValue/displayValues branches are pulled into their own
+        // helpers. Every condition, comment, and log message is unchanged.
         private static string ComputeRawParamDisplayValue(JsonElement item, string componentType, string paramOperator, string paramType)
         {
-            string paramValue;
-
             bool hasAnyProperty = item.ValueKind == JsonValueKind.Object && item.EnumerateObject().Any();
 
-            if (!hasAnyProperty)
+            if (!hasAnyProperty || paramOperator == null || paramType == null || paramOperator.Contains("NULL"))
             {
-                paramValue = string.Empty;
-            }
-            else if (paramOperator == null || paramType == null)
-            {
-                paramValue = string.Empty;
-            }
-            else if (paramOperator.Contains("NULL"))
-            {
-                paramValue = string.Empty;
-            }
-            else if (JsonHelper.TryGetProperty(item, "displayValue", out JsonElement dvEl) && dvEl.ValueKind != JsonValueKind.Null && dvEl.ValueKind != JsonValueKind.Undefined)
-            {
-                if (dvEl.ValueKind == JsonValueKind.Array)
-                {
-                    List<string> items = dvEl.EnumerateArray().Select(v => v.ToString()).ToList();
-                    paramValue = items.Count > 0
-                        ? string.Join(",", items.Select(v => JoinFormatted(v, paramType)))
-                        : string.Empty;
-                }
-                else if (dvEl.ValueKind == JsonValueKind.Object)
-                {
-                    LogUtility.LogWarn($"Type of jToken as object is not handled yet. {dvEl}");
-                    paramValue = string.Empty;
-                }
-                else
-                {
-                    paramValue = Convert.ToString(XLEdgeValueFormatter.FormatValue(dvEl.ToString(), paramType));
-                }
-            }
-            else if (JsonHelper.TryGetProperty(item, "displayValues", out JsonElement dvsEl) && dvsEl.ValueKind == JsonValueKind.Array)
-            {
-                List<JsonElement> values = dvsEl.EnumerateArray().ToList();
-
-                if (values.Count == 0)
-                {
-                    paramValue = string.Empty;
-                }
-                else if ((componentType != null && componentType.Contains("range")) ||
-                         paramOperator == "BETWEEN" || paramOperator == "NOT BETWEEN")
-                {
-                    if (values.Count == 2)
-                    {
-                        paramValue = $"{XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType)} and {XLEdgeValueFormatter.FormatValue(values[1].ToString(), paramType)}";
-                    }
-                    else if (values.Count == 1)
-                    {
-                        paramValue = Convert.ToString(XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType));
-                    }
-                    else
-                    {
-                        paramValue = string.Empty;
-                    }
-                }
-                else
-                {
-                    paramValue = string.Join(",", values.Select(v => JoinFormatted(v.ToString(), paramType)));
-                }
-            }
-            else
-            {
-                paramValue = string.Empty;
+                return string.Empty;
             }
 
-            return paramValue;
+            if (JsonHelper.TryGetProperty(item, "displayValue", out JsonElement dvEl) && dvEl.ValueKind != JsonValueKind.Null && dvEl.ValueKind != JsonValueKind.Undefined)
+            {
+                return ComputeFromDisplayValue(dvEl, paramType);
+            }
+
+            if (JsonHelper.TryGetProperty(item, "displayValues", out JsonElement dvsEl) && dvsEl.ValueKind == JsonValueKind.Array)
+            {
+                return ComputeFromDisplayValues(dvsEl.EnumerateArray().ToList(), componentType, paramOperator, paramType);
+            }
+
+            return string.Empty;
+        }
+
+        // Extracted from ComputeRawParamDisplayValue - handles the single-item "displayValue"
+        // property (array / object / scalar).
+        private static string ComputeFromDisplayValue(JsonElement dvEl, string paramType)
+        {
+            if (dvEl.ValueKind == JsonValueKind.Array)
+            {
+                List<string> items = dvEl.EnumerateArray().Select(v => v.ToString()).ToList();
+                return items.Count > 0
+                    ? string.Join(",", items.Select(v => JoinFormatted(v, paramType)))
+                    : string.Empty;
+            }
+
+            if (dvEl.ValueKind == JsonValueKind.Object)
+            {
+                LogUtility.LogWarn($"Type of jToken as object is not handled yet. {dvEl}");
+                return string.Empty;
+            }
+
+            return Convert.ToString(XLEdgeValueFormatter.FormatValue(dvEl.ToString(), paramType));
+        }
+
+        // Extracted from ComputeRawParamDisplayValue - handles the multi-item "displayValues" array,
+        // including the range/BETWEEN "X and Y" formatting.
+        private static string ComputeFromDisplayValues(List<JsonElement> values, string componentType, string paramOperator, string paramType)
+        {
+            if (values.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            bool isRangeStyle = (componentType != null && componentType.Contains("range")) ||
+                paramOperator == "BETWEEN" || paramOperator == "NOT BETWEEN";
+
+            if (!isRangeStyle)
+            {
+                return string.Join(",", values.Select(v => JoinFormatted(v.ToString(), paramType)));
+            }
+
+            if (values.Count == 2)
+            {
+                return $"{XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType)} and {XLEdgeValueFormatter.FormatValue(values[1].ToString(), paramType)}";
+            }
+
+            if (values.Count == 1)
+            {
+                return Convert.ToString(XLEdgeValueFormatter.FormatValue(values[0].ToString(), paramType));
+            }
+
+            return string.Empty;
         }
 
         /// <summary>
@@ -2054,6 +2356,13 @@ namespace XLEdge.Helpers
             public List<(string Original, string Modified, int RawIndex)> Mappings = new();
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 35): the per-part "try current format,
+        // else try legacy format" logic is pulled out of the loop into TryResolveXmlPartForRefresh
+        // and its two format-specific helpers. Every "continue" in the original per-part logic maps
+        // to a "return false" here (the outer loop's finally-release still runs either way, exactly
+        // as it did for "continue" in a try/finally), and the current-format XDocument.Parse call is
+        // still uncaught here so a malformed part still surfaces through the same outer per-part
+        // catch as before. Every condition, comment, and log message is unchanged.
         private static bool TryResolveReportXmlForRefresh(
             Excel.Workbook workbook,
             string listObjectName,
@@ -2075,97 +2384,10 @@ namespace XLEdge.Helpers
                     Microsoft.Office.Core.CustomXMLPart part = parts[i];
                     try
                     {
-                        string xml = part.XML;
-                        if (string.IsNullOrWhiteSpace(xml))
+                        if (TryResolveXmlPartForRefresh(part.XML, listObjectName, listObject, result))
                         {
-                            continue;
-                        }
-
-                        if (xml.Contains($"<ListObjectName>{listObjectName}</ListObjectName>"))
-                        {
-                            XDocument xdoc = XDocument.Parse(xml);
-                            result.Title = xdoc.Root?.Element("Title")?.Value ?? string.Empty;
-                            result.MetaJson = xdoc.Root?.Element("Meta")?.Value ?? string.Empty;
-                            result.ParamsJson = xdoc.Root?.Element("Params")?.Value ?? string.Empty;
-
-                            string[] titleParts = result.Title.Split('|');
-                            if (titleParts.Length < 3)
-                            {
-                                continue;
-                            }
-
-                            result.ReportId = titleParts[1];
-                            result.RunId = titleParts[2];
-
-                            XElement colsElem = xdoc.Root?.Element("Columns");
-                            if (colsElem != null)
-                            {
-                                foreach (XElement ce in colsElem.Elements(ColumnElementName))
-                                {
-                                    string orig = ce.Attribute("original")?.Value ?? string.Empty;
-                                    string mod = ce.Attribute("modified")?.Value ?? string.Empty;
-                                    int.TryParse(ce.Attribute("rawIndex")?.Value ?? "0", out int idx);
-                                    result.Mappings.Add((orig, mod, idx));
-                                }
-                            }
-
                             return true;
                         }
-
-                        if (xml.IndexOf("<DataMeta>", StringComparison.OrdinalIgnoreCase) < 0 ||
-                            xml.IndexOf(listObjectName, StringComparison.OrdinalIgnoreCase) < 0)
-                        {
-                            continue;
-                        }
-
-                        XDocument legacyDoc;
-                        try
-                        {
-                            legacyDoc = XDocument.Parse(xml);
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "TryResolveReportXmlForRefresh: failed to parse a legacy CustomXMLPart");
-                            continue;
-                        }
-
-                        XElement dataElem = legacyDoc.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Data");
-                        if (dataElem == null)
-                        {
-                            continue;
-                        }
-
-                        string infoId = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "InfoID")?.Value ?? string.Empty;
-                        if (!string.Equals(infoId, listObjectName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        Match tableNameMatch = Regex.Match(listObjectName, @"^ORB_(?<reportId>[^_]+)_(?<runId>[^_]+)_[EP]$", RegexOptions.IgnoreCase);
-                        if (!tableNameMatch.Success)
-                        {
-                            LogUtility.LogWarn($"TryResolveReportXmlForRefresh|Legacy metadata found for '{listObjectName}' but its name doesn't match the expected ORB_<reportId>_<runId>_E/P pattern - cannot derive report/run id.");
-                            continue;
-                        }
-
-                        result.MetaJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataMeta")?.Value ?? string.Empty;
-                        result.ParamsJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataParam")?.Value ?? string.Empty;
-                        result.ReportId = tableNameMatch.Groups["reportId"].Value;
-                        result.RunId = tableNameMatch.Groups["runId"].Value;
-                        result.Title = $"Edge|{result.ReportId}|{result.RunId}|{listObjectName}";
-
-                        if (listObject?.HeaderRowRange != null)
-                        {
-                            int col = 1;
-                            foreach (Excel.Range headerCell in listObject.HeaderRowRange.Cells)
-                            {
-                                string headerText = Convert.ToString(headerCell.Value) ?? string.Empty;
-                                result.Mappings.Add((headerText, headerText, col));
-                                col++;
-                            }
-                        }
-
-                        return true;
                     }
                     catch (Exception ex)
                     {
@@ -2183,6 +2405,117 @@ namespace XLEdge.Helpers
             {
                 Marshal.ReleaseComObject(parts);
             }
+        }
+
+        // Extracted from TryResolveReportXmlForRefresh - tries the current XML format first (by
+        // <ListObjectName> tag match); a part matching that tag never falls through to the legacy
+        // format check, exactly as in the original inline logic.
+        private static bool TryResolveXmlPartForRefresh(string xml, string listObjectName, Excel.ListObject listObject, ReportXmlRefreshResult result)
+        {
+            if (string.IsNullOrWhiteSpace(xml))
+            {
+                return false;
+            }
+
+            if (xml.Contains($"<ListObjectName>{listObjectName}</ListObjectName>"))
+            {
+                return TryResolveCurrentFormatXmlPart(xml, result);
+            }
+
+            return TryResolveLegacyFormatXmlPart(xml, listObjectName, listObject, result);
+        }
+
+        // Extracted from TryResolveReportXmlForRefresh - current XML format (ListObjectName-tagged
+        // CustomXMLPart with Title/Meta/Params/Columns elements).
+        private static bool TryResolveCurrentFormatXmlPart(string xml, ReportXmlRefreshResult result)
+        {
+            XDocument xdoc = XDocument.Parse(xml);
+            result.Title = xdoc.Root?.Element("Title")?.Value ?? string.Empty;
+            result.MetaJson = xdoc.Root?.Element("Meta")?.Value ?? string.Empty;
+            result.ParamsJson = xdoc.Root?.Element("Params")?.Value ?? string.Empty;
+
+            string[] titleParts = result.Title.Split('|');
+            if (titleParts.Length < 3)
+            {
+                return false;
+            }
+
+            result.ReportId = titleParts[1];
+            result.RunId = titleParts[2];
+
+            XElement colsElem = xdoc.Root?.Element("Columns");
+            if (colsElem != null)
+            {
+                foreach (XElement ce in colsElem.Elements(ColumnElementName))
+                {
+                    string orig = ce.Attribute("original")?.Value ?? string.Empty;
+                    string mod = ce.Attribute("modified")?.Value ?? string.Empty;
+                    int.TryParse(ce.Attribute("rawIndex")?.Value ?? "0", out int idx);
+                    result.Mappings.Add((orig, mod, idx));
+                }
+            }
+
+            return true;
+        }
+
+        // Extracted from TryResolveReportXmlForRefresh - legacy XML format (a "Data" element with an
+        // InfoID matching listObjectName, and the report/run id derived from the table-name pattern).
+        private static bool TryResolveLegacyFormatXmlPart(string xml, string listObjectName, Excel.ListObject listObject, ReportXmlRefreshResult result)
+        {
+            if (xml.IndexOf("<DataMeta>", StringComparison.OrdinalIgnoreCase) < 0 ||
+                xml.IndexOf(listObjectName, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            XDocument legacyDoc;
+            try
+            {
+                legacyDoc = XDocument.Parse(xml);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "TryResolveReportXmlForRefresh: failed to parse a legacy CustomXMLPart");
+                return false;
+            }
+
+            XElement dataElem = legacyDoc.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Data");
+            if (dataElem == null)
+            {
+                return false;
+            }
+
+            string infoId = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "InfoID")?.Value ?? string.Empty;
+            if (!string.Equals(infoId, listObjectName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            Match tableNameMatch = Regex.Match(listObjectName, @"^ORB_(?<reportId>[^_]+)_(?<runId>[^_]+)_[EP]$", RegexOptions.IgnoreCase);
+            if (!tableNameMatch.Success)
+            {
+                LogUtility.LogWarn($"TryResolveReportXmlForRefresh|Legacy metadata found for '{listObjectName}' but its name doesn't match the expected ORB_<reportId>_<runId>_E/P pattern - cannot derive report/run id.");
+                return false;
+            }
+
+            result.MetaJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataMeta")?.Value ?? string.Empty;
+            result.ParamsJson = dataElem.Elements().FirstOrDefault(e => e.Name.LocalName == "DataParam")?.Value ?? string.Empty;
+            result.ReportId = tableNameMatch.Groups["reportId"].Value;
+            result.RunId = tableNameMatch.Groups["runId"].Value;
+            result.Title = $"Edge|{result.ReportId}|{result.RunId}|{listObjectName}";
+
+            if (listObject?.HeaderRowRange != null)
+            {
+                int col = 1;
+                foreach (Excel.Range headerCell in listObject.HeaderRowRange.Cells)
+                {
+                    string headerText = Convert.ToString(headerCell.Value) ?? string.Empty;
+                    result.Mappings.Add((headerText, headerText, col));
+                    col++;
+                }
+            }
+
+            return true;
         }
 
         private static Excel.Worksheet FindSheetWithTable(Excel.Workbook workbook, string tableId)
@@ -2291,6 +2624,12 @@ namespace XLEdge.Helpers
             return candidate;
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 24): the column-grouping step and the
+        // per-column hyperlink-writing loop are pulled into their own helpers. The original
+        // "return" (used once the hyperlink cap is hit, to exit the whole method from inside the
+        // innermost loop) becomes a "reachedLimit" bool that the caller checks and turns back into a
+        // "return" of its own - same overall stopping behavior. Every condition, comment, and log
+        // message is unchanged.
         private static void AddDrilldownHyperlinks(Excel.Worksheet sheet, Excel.ListObject listObject, ReportMeta reportMeta)
         {
             if (reportMeta.Drilldowns == null || reportMeta.Drilldowns.Length == 0 || listObject.DataBodyRange == null)
@@ -2301,8 +2640,23 @@ namespace XLEdge.Helpers
             const int maxHyperlinks = 65530;
             int hyperlinkCount = 0;
 
+            Dictionary<string, List<string>> byColumn = BuildDrilldownColumnMap(reportMeta.Drilldowns, reportMeta.ReportId);
+
+            foreach (KeyValuePair<string, List<string>> kvp in byColumn)
+            {
+                if (AddHyperlinksForColumn(sheet, listObject, kvp.Key, kvp.Value, ref hyperlinkCount, maxHyperlinks))
+                {
+                    return;
+                }
+            }
+        }
+
+        // Extracted from AddDrilldownHyperlinks - groups drilldown definitions by their target
+        // column name, joining every drilldown's tooltip text for columns shared by more than one.
+        private static Dictionary<string, List<string>> BuildDrilldownColumnMap(RptDrilldown[] drilldowns, int reportId)
+        {
             var byColumn = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (RptDrilldown dd in reportMeta.Drilldowns)
+            foreach (RptDrilldown dd in drilldowns)
             {
                 string col = dd.DrillColumnName?.Trim();
                 if (string.IsNullOrEmpty(col))
@@ -2316,60 +2670,66 @@ namespace XLEdge.Helpers
                     byColumn[col] = list;
                 }
 
-                list.Add($"DRILLDOWN|{dd.DrillReportId}|{dd.DrillReportName}|{reportMeta.ReportId}");
+                list.Add($"DRILLDOWN|{dd.DrillReportId}|{dd.DrillReportName}|{reportId}");
             }
 
-            foreach (KeyValuePair<string, List<string>> kvp in byColumn)
+            return byColumn;
+        }
+
+        // Extracted from AddDrilldownHyperlinks - writes the hyperlink for every data-row cell in one
+        // matched column. Returns true if the hyperlink cap was reached (caller should stop entirely).
+        private static bool AddHyperlinksForColumn(Excel.Worksheet sheet, Excel.ListObject listObject, string columnName, List<string> tooltipParts, ref int hyperlinkCount, int maxHyperlinks)
+        {
+            int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, columnName);
+            if (matchCol <= 0)
             {
-                int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, kvp.Key);
-                if (matchCol <= 0)
-                {
-                    continue;
-                }
+                return false;
+            }
 
-                string tooltip = string.Join(",", kvp.Value);
-                if (tooltip.Length > 255)
-                {
-                    tooltip = tooltip.Substring(0, 250) + "...";
-                }
+            string tooltip = string.Join(",", tooltipParts);
+            if (tooltip.Length > 255)
+            {
+                tooltip = tooltip.Substring(0, 250) + "...";
+            }
 
-                Excel.Range dataRange = listObject.DataBodyRange;
-                try
+            Excel.Range dataRange = listObject.DataBodyRange;
+            try
+            {
+                for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    for (int r = 1; r <= dataRange.Rows.Count; r++)
+                    if (hyperlinkCount >= maxHyperlinks)
                     {
-                        if (hyperlinkCount >= maxHyperlinks)
-                        {
-                            LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further drilldown hyperlinks.");
-                            return;
-                        }
+                        LogUtility.LogWarn($"Reached maximum hyperlink limit of {maxHyperlinks}; stopping further drilldown hyperlinks.");
+                        return true;
+                    }
 
-                        Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                        try
+                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+                    try
+                    {
+                        if (cell.Value2 != null && cell.Value2.ToString().Length > 0)
                         {
-                            if (cell.Value2 != null && cell.Value2.ToString().Length > 0)
-                            {
-                                sheet.Hyperlinks.Add(cell, "", cell.Address, tooltip, cell.Value2.ToString());
-                                hyperlinkCount++;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, $"Failed to add drilldown hyperlink at {cell.Address}");
-                        }
-                        finally
-                        {
-                            // Part of the COM-leak fix (see AddImageColumn) - every Range obtained
-                            // here is a live COM reference that must be explicitly released.
-                            Marshal.ReleaseComObject(cell);
+                            sheet.Hyperlinks.Add(cell, "", cell.Address, tooltip, cell.Value2.ToString());
+                            hyperlinkCount++;
                         }
                     }
-                }
-                finally
-                {
-                    Marshal.ReleaseComObject(dataRange);
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"Failed to add drilldown hyperlink at {cell.Address}");
+                    }
+                    finally
+                    {
+                        // Part of the COM-leak fix (see AddImageColumn) - every Range obtained
+                        // here is a live COM reference that must be explicitly released.
+                        Marshal.ReleaseComObject(cell);
+                    }
                 }
             }
+            finally
+            {
+                Marshal.ReleaseComObject(dataRange);
+            }
+
+            return false;
         }
 
         private static void DeleteReportShapes(Excel.Worksheet sheet)
@@ -2566,6 +2926,17 @@ namespace XLEdge.Helpers
             return hyperlinkCount;
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 34): the per-row body is pulled into
+        // EmbedImageForRow, with the destination-path-building and post-AddPicture sizing logic
+        // further split out. This is deliberately conservative about the existing COM-leak fix: every
+        // COM release still happens at exactly the same point, in the same finally block, as before -
+        // entireRow/entireColumn are threaded out of ApplyImagePlacementSizing via out parameters
+        // rather than being released inside it, so if an exception is thrown before one of them would
+        // have been assigned, the caller's variable simply keeps its pre-call null value (exactly
+        // like today) and the existing null-check-before-release guards in the caller's finally still
+        // behave identically. Every original "continue" becomes a "return" from the per-row method
+        // (the per-row finally still runs either way, exactly as it did for "continue" in a
+        // try/finally). Every condition, comment, and log message is unchanged.
         private static void AddImageColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col)
         {
             int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, col.Name?.Trim() ?? string.Empty);
@@ -2587,110 +2958,137 @@ namespace XLEdge.Helpers
             {
                 for (int r = 1; r <= dataRange.Rows.Count; r++)
                 {
-                    Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
-                    // Only ever assigned when actually needed below - released in `finally` alongside
-                    // `cell`/`imgShape` as part of the COM-leak fix (see comment at the end of this
-                    // method): every Range/Shape obtained from Excel here is a live COM reference
-                    // (RCW) that has to be explicitly released, or it lingers until the next GC pass
-                    // finalizes it - across a report with many image rows, that's a lot of
-                    // outstanding references piling up, which is what was keeping excel.exe running
-                    // in the background after closing the workbook following a report with images.
-                    Excel.Range entireRow = null;
-                    Excel.Range entireColumn = null;
-                    Excel.Shape imgShape = null;
-                    string destinationPath = null;
-                    try
-                    {
-                        object rawValue = cell.Value;
-                        if (rawValue == null)
-                        {
-                            continue;
-                        }
-
-                        string url = Convert.ToString(rawValue);
-                        cell.Clear();
-
-                        if (string.IsNullOrWhiteSpace(url))
-                        {
-                            continue;
-                        }
-
-                        string fileName = url.Contains("/") ? url.Substring(url.LastIndexOf('/') + 1) : url;
-                        foreach (char invalidChar in Path.GetInvalidFileNameChars())
-                        {
-                            fileName = fileName.Replace(invalidChar, '_');
-                        }
-
-                        string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-                        destinationPath = Path.Combine(downloadsFolder, fileName);
-
-                        bool downloaded = ImageDownloadHelper.TryDownloadImage(url, destinationPath);
-                        if (!downloaded || !File.Exists(destinationPath))
-                        {
-                            continue;
-                        }
-
-                        // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
-                        // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
-                        // that only succeeds if the boxed type is exactly float, so it always threw
-                        // InvalidCastException here. Ported from FormProcessBar.vb, which passed
-                        // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
-                        // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
-                        // Convert.ToDouble first (matches the same pattern already used for this exact
-                        // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
-                        imgShape = sheet.Shapes.AddPicture(
-                            destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
-                            (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imgHeight, (float)imgWidth);
-
-                        int rowIndex = cell.Row;
-                        int colIndex = cell.Column;
-
-                        double actualRowHeight = Math.Min(imgShape.Height, 409);
-                        if (!rowMaxHeights.TryGetValue(rowIndex, out double existingRowHeight) || actualRowHeight > existingRowHeight)
-                        {
-                            rowMaxHeights[rowIndex] = actualRowHeight;
-                            entireRow = cell.EntireRow;
-                            entireRow.RowHeight = actualRowHeight;
-                        }
-
-                        double colWidthEstimate = imgShape.Width / 10.0;
-                        double adjustedColWidth = colWidthEstimate + (colWidthEstimate - 1);
-                        if (!colMaxWidths.TryGetValue(colIndex, out double existingColWidth) || adjustedColWidth > existingColWidth)
-                        {
-                            colMaxWidths[colIndex] = adjustedColWidth;
-                            entireColumn = cell.EntireColumn;
-                            entireColumn.ColumnWidth = adjustedColWidth;
-                        }
-
-                        string address = cell.Address[false, false, Excel.XlReferenceStyle.xlA1];
-
-                        imgShape.Name = $"ORB_{sheet.Name}_{address}";
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"Failed to embed image at {cell.Address}");
-                    }
-                    finally
-                    {
-                        if (destinationPath != null)
-                        {
-                            try { File.Delete(destinationPath); }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(AddAttachmentAndImageColumns)}: failed to delete temp image '{destinationPath}' - {ex.Message}");
-                            }
-                        }
-
-                        if (entireRow != null) Marshal.ReleaseComObject(entireRow);
-                        if (entireColumn != null) Marshal.ReleaseComObject(entireColumn);
-                        if (imgShape != null) Marshal.ReleaseComObject(imgShape);
-                        Marshal.ReleaseComObject(cell);
-                    }
+                    EmbedImageForRow(sheet, dataRange, r, matchCol, (imgHeight, imgWidth), rowMaxHeights, colMaxWidths);
                 }
             }
             finally
             {
                 Marshal.ReleaseComObject(dataRange);
+            }
+        }
+
+        // Extracted from AddImageColumn - downloads and embeds the image for one data row's cell (if
+        // any), tracking per-row/per-column max size for row-height/column-width autosizing.
+        private static void EmbedImageForRow(Excel.Worksheet sheet, Excel.Range dataRange, int r, int matchCol, (double Height, double Width) imageSize, Dictionary<int, double> rowMaxHeights, Dictionary<int, double> colMaxWidths)
+        {
+            Excel.Range cell = (Excel.Range)dataRange.Cells[r, matchCol];
+            // entireRow/entireColumn/imgShape below are only ever assigned when actually needed -
+            // released in the finally block alongside cell as part of the COM-leak fix: every
+            // Range/Shape obtained from Excel here is a live COM reference (RCW) that has to be
+            // explicitly released, or it lingers until the next GC pass finalizes it - across a
+            // report with many image rows, that's a lot of outstanding references piling up, which
+            // is what was keeping excel.exe running in the background after closing the workbook
+            // following a report with images.
+            Excel.Range entireRow = null;
+            Excel.Range entireColumn = null;
+            Excel.Shape imgShape = null;
+            string destinationPath = null;
+            try
+            {
+                object rawValue = cell.Value;
+                if (rawValue == null)
+                {
+                    return;
+                }
+
+                string url = Convert.ToString(rawValue);
+                cell.Clear();
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    return;
+                }
+
+                destinationPath = BuildImageDestinationPath(url);
+
+                bool downloaded = ImageDownloadHelper.TryDownloadImage(url, destinationPath);
+                if (!downloaded || !File.Exists(destinationPath))
+                {
+                    return;
+                }
+
+                // cell.Left/cell.Top are declared as `object` in the Excel Interop PIA (boxed
+                // double at runtime) - a direct (float) cast is a strict CLR unboxing conversion
+                // that only succeeds if the boxed type is exactly float, so it always threw
+                // InvalidCastException here. Ported from FormProcessBar.vb, which passed
+                // CR.Left/CR.Top with no cast at all - VB's Option-Strict-Off runtime conversion
+                // helpers handle boxed-double-to-Single conversions the C# unboxing cast can't.
+                // Convert.ToDouble first (matches the same pattern already used for this exact
+                // property elsewhere - see ExcelWindowHelper.cs, XLEdgeDrilldownReports.xaml.cs).
+                imgShape = sheet.Shapes.AddPicture(
+                    destinationPath, Microsoft.Office.Core.MsoTriState.msoFalse, Microsoft.Office.Core.MsoTriState.msoCTrue,
+                    (float)Convert.ToDouble(cell.Left), (float)Convert.ToDouble(cell.Top), (float)imageSize.Height, (float)imageSize.Width);
+
+                ApplyImagePlacementSizing(cell, imgShape, rowMaxHeights, colMaxWidths, out entireRow, out entireColumn);
+
+                string address = cell.Address[false, false, Excel.XlReferenceStyle.xlA1];
+
+                imgShape.Name = $"ORB_{sheet.Name}_{address}";
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Failed to embed image at {cell.Address}");
+            }
+            finally
+            {
+                if (destinationPath != null)
+                {
+                    try { File.Delete(destinationPath); }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(AddAttachmentAndImageColumns)}: failed to delete temp image '{destinationPath}' - {ex.Message}");
+                    }
+                }
+
+                if (entireRow != null) Marshal.ReleaseComObject(entireRow);
+                if (entireColumn != null) Marshal.ReleaseComObject(entireColumn);
+                if (imgShape != null) Marshal.ReleaseComObject(imgShape);
+                Marshal.ReleaseComObject(cell);
+            }
+        }
+
+        // Extracted from AddImageColumn (EmbedImageForRow) - sanitizes the image URL's file name and
+        // builds the temporary download destination path under the user's Downloads folder.
+        private static string BuildImageDestinationPath(string url)
+        {
+            string fileName = url.Contains("/") ? url.Substring(url.LastIndexOf('/') + 1) : url;
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                fileName = fileName.Replace(invalidChar, '_');
+            }
+
+            string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            return Path.Combine(downloadsFolder, fileName);
+        }
+
+        // Extracted from AddImageColumn (EmbedImageForRow) - after a picture is embedded, grows the
+        // row height / column width to fit it if it's the tallest/widest seen so far for that
+        // row/column. entireRow/entireColumn are only assigned (via out) when actually touched, so
+        // the caller's existing null-check-before-release in its finally block behaves exactly as it
+        // did when this logic was inline.
+        private static void ApplyImagePlacementSizing(Excel.Range cell, Excel.Shape imgShape, Dictionary<int, double> rowMaxHeights, Dictionary<int, double> colMaxWidths, out Excel.Range entireRow, out Excel.Range entireColumn)
+        {
+            entireRow = null;
+            entireColumn = null;
+
+            int rowIndex = cell.Row;
+            int colIndex = cell.Column;
+
+            double actualRowHeight = Math.Min(imgShape.Height, 409);
+            if (!rowMaxHeights.TryGetValue(rowIndex, out double existingRowHeight) || actualRowHeight > existingRowHeight)
+            {
+                rowMaxHeights[rowIndex] = actualRowHeight;
+                entireRow = cell.EntireRow;
+                entireRow.RowHeight = actualRowHeight;
+            }
+
+            double colWidthEstimate = imgShape.Width / 10.0;
+            double adjustedColWidth = colWidthEstimate + (colWidthEstimate - 1);
+            if (!colMaxWidths.TryGetValue(colIndex, out double existingColWidth) || adjustedColWidth > existingColWidth)
+            {
+                colMaxWidths[colIndex] = adjustedColWidth;
+                entireColumn = cell.EntireColumn;
+                entireColumn.ColumnWidth = adjustedColWidth;
             }
         }
 
@@ -2819,80 +3217,100 @@ namespace XLEdge.Helpers
         /// </summary>
         // internal (not private): RibEdgeRefreshAll_OnClick (AddinModule.cs) also calls this directly,
         // once after its own aggregated summary message for a book-wide RefreshAll.
+        // Cognitive-complexity refactor (SonarQube S3776, was 16): the two independently-guarded
+        // steps are pulled into their own methods, called sequentially in the same order as before -
+        // this does NOT change the delicate proven timing of this fix (each step is still fully
+        // awaited before the next starts, exactly as when they were two sequential try blocks in one
+        // method; the closures capture the same variables the same way regardless of which method
+        // physically contains them). Every condition, comment, log message, Sleep duration, and
+        // thread-marshalling call is unchanged.
         internal static async Task ReleaseKeyboardFocusFromTaskPaneAsync()
         {
             try
             {
-                try
-                {
-                    await UiDispatcher.RunAsync(() =>
-                    {
-                        var addinModule = XLEdge.AddinModule.CurrentInstance;
-                        if (addinModule != null)
-                        {
-                            var pane = addinModule.GetPaneInstance();
-                            if (pane != null)
-                            {
-                                pane.ReleaseFocusToExcel();
-                            }
-                        }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Failed to release focus from task pane - {ex.Message}");
-                }
-
-                try
-                {
-                    var excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
-                    if (excelApp != null)
-                    {
-                        ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
-
-                        // Nudge keyboard focus off the WebView2 control by actually selecting a
-                        // different cell then reselecting the original one - a real COM selection
-                        // change, not a synthetic keystroke. This used to be preceded by SendKeys
-                        // {F2}/{ESC} "dummy key" presses, which were found to be flipping the user's
-                        // NumLock state on every report run (SendKeys/Application.SendKeys shares the
-                        // same low-level toggle-key-detection path implicated in that). Removed -
-                        // the Sleep below still runs on a background thread so Excel's own
-                        // STA/message-pump thread stays free to process the COM selection calls,
-                        // which are marshalled onto it via UiDispatcher.Run.
-                        await Task.Run(() =>
-                        {
-                            try
-                            {
-                                Thread.Sleep(50);
-
-                                Excel.Range originalCell = null;
-                                UiDispatcher.Run(() =>
-                                {
-                                    if (excelApp.ActiveCell != null)
-                                    {
-                                        originalCell = excelApp.ActiveCell;
-                                        var target = originalCell.Offset[1, 0];
-                                        target?.Select();
-                                    }
-                                });
-                                Thread.Sleep(20);
-                                UiDispatcher.Run(() => originalCell?.Select());
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogWarn($"ReleaseKeyboardFocusFromTaskPaneAsync: Background focus reset failed - {ex.Message}");
-                            }
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Focus activation failed - {ex.Message}");
-                }
+                await ReleaseTaskPaneFocusToExcelAsync();
+                await ReactivateExcelWindowAndReselectCellAsync();
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "ReleaseKeyboardFocusFromTaskPaneAsync: Failed to reset keyboard focus");
+            }
+        }
+
+        // Extracted from ReleaseKeyboardFocusFromTaskPaneAsync - releases the task pane's own
+        // keyboard focus back to Excel.
+        private static async Task ReleaseTaskPaneFocusToExcelAsync()
+        {
+            try
+            {
+                await UiDispatcher.RunAsync(() =>
+                {
+                    var addinModule = XLEdge.AddinModule.CurrentInstance;
+                    if (addinModule != null)
+                    {
+                        var pane = addinModule.GetPaneInstance();
+                        if (pane != null)
+                        {
+                            pane.ReleaseFocusToExcel();
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Failed to release focus from task pane - {ex.Message}");
+            }
+        }
+
+        // Extracted from ReleaseKeyboardFocusFromTaskPaneAsync - activates Excel's main window, then
+        // nudges keyboard focus off the WebView2 control with a real COM cell-selection round trip.
+        private static async Task ReactivateExcelWindowAndReselectCellAsync()
+        {
+            try
+            {
+                var excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
+                if (excelApp != null)
+                {
+                    ExcelWindowHelper.ActivateExcelMainWindow(excelApp);
+
+                    // Nudge keyboard focus off the WebView2 control by actually selecting a
+                    // different cell then reselecting the original one - a real COM selection
+                    // change, not a synthetic keystroke. This used to be preceded by SendKeys
+                    // {F2}/{ESC} "dummy key" presses, which were found to be flipping the user's
+                    // NumLock state on every report run (SendKeys/Application.SendKeys shares the
+                    // same low-level toggle-key-detection path implicated in that). Removed -
+                    // the Sleep below still runs on a background thread so Excel's own
+                    // STA/message-pump thread stays free to process the COM selection calls,
+                    // which are marshalled onto it via UiDispatcher.Run.
+                    await Task.Run(() =>
+                    {
+                        try
+                        {
+                            Thread.Sleep(50);
+
+                            Excel.Range originalCell = null;
+                            UiDispatcher.Run(() =>
+                            {
+                                if (excelApp.ActiveCell != null)
+                                {
+                                    originalCell = excelApp.ActiveCell;
+                                    var target = originalCell.Offset[1, 0];
+                                    target?.Select();
+                                }
+                            });
+                            Thread.Sleep(20);
+                            UiDispatcher.Run(() => originalCell?.Select());
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogWarn($"ReleaseKeyboardFocusFromTaskPaneAsync: Background focus reset failed - {ex.Message}");
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"ReleaseKeyboardFocusFromTaskPaneAsync: Focus activation failed - {ex.Message}");
             }
         }
 
@@ -2983,594 +3401,116 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Backing state for RefreshListObjectAsync's cognitive-complexity refactor (SonarQube S3776,
+        // was 192) - carries every value produced by one pipeline step and consumed by a later one,
+        // so step methods take one parameter instead of 8-10+. Field names mirror the original local
+        // variable names exactly.
+        private sealed class RefreshContext
+        {
+            public string ListObjectName;
+            public AppOverlay AppOverlay;
+            public bool UseWaitWindow;
+            public string ParamsJsonPayload;
+            public bool CollectErrors;
+
+            public XLEdgeWaitWindow WaitWindow;
+            public CancellationHelper CancelHelper;
+
+            public Excel.Application ExcelApp;
+            public Excel.Workbook Workbook;
+            public Excel.Worksheet Sheet;
+            public Excel.ListObject ListObject;
+
+            public string Title;
+            public string RunId;
+            public string StoredMetaJson;
+            public string StoredParamsJson;
+            public List<(string Original, string Modified, int RawIndex)> Mappings;
+            public string EeLoginUrl;
+
+            public bool HasParamsPayload;
+            public string ParamsWithLabels;
+
+            public string CsvResponse;
+            public List<List<string>> Rows;
+            public List<string> RawHeader;
+            public int RawCols;
+            public int NewDataCount;
+
+            public Dictionary<int, string> FirstRowFormulas;
+            public int HeaderRowIdx;
+            public int DataStartRow;
+            public int TargetTotalRows;
+            public int TableCols;
+        }
+
+        // Cognitive-complexity refactor (SonarQube S3776, was 192): this method is a long, mostly
+        // linear pipeline (already delimited by "STEP N" comments in the original code), so each
+        // step becomes its own method taking the shared RefreshContext above. Every step keeps its
+        // own original try/catch and log message; where the original called HandleFailureAsync/etc.
+        // and then returned out of the whole method, the step now returns a "ShouldContinue" bool
+        // that this method checks and turns back into a "return" - same overall stopping behavior,
+        // same order of operations, as before. Every condition, comment, and log message is
+        // unchanged; only the packaging into methods changed.
         public static async Task RefreshListObjectAsync(string listObjectName, AppOverlay appOverlay = null, bool useWaitWindow = true, string paramsJsonPayload = null, bool collectErrors = false)
         {
             using var excelBulkScope = new ExcelBulkOperationScope();
 
             if (string.IsNullOrWhiteSpace(listObjectName)) return;
 
-            XLEdgeWaitWindow waitWindow = null;
-            CancellationHelper cancelHelper = null;
+            var ctx = new RefreshContext
+            {
+                ListObjectName = listObjectName,
+                AppOverlay = appOverlay,
+                UseWaitWindow = useWaitWindow,
+                ParamsJsonPayload = paramsJsonPayload,
+                CollectErrors = collectErrors,
+            };
 
             try
             {
-                var excelApp = XLApp.App;
-                if (excelApp == null) throw new InvalidOperationException("Excel instance not available.");
+                ctx.ExcelApp = XLApp.App;
+                if (ctx.ExcelApp == null) throw new InvalidOperationException("Excel instance not available.");
 
-                // Check edit mode
-                try
+                if (!await CheckExcelEditModeAsync(ctx)) return;
+
+                await ShowRefreshProgressUiAsync(ctx);
+
+                if (!TryResolveWorkbookSheetAndListObject(ctx))
                 {
-                    var ac = excelApp.ActiveCell;
-                    var _ = ac?.Address;
-                }
-                catch (Exception editModeEx)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: Excel appears to be in edit mode - {editModeEx.Message}");
-                    await HandleFailureAsync("Excel is in edit mode. Please exit edit mode (press Enter or Esc) and try again.", null, appOverlay, useWaitWindow, collectErrors);
+                    await HandleFailureAsync($"Table '{listObjectName}' not found.", ctx.WaitWindow, appOverlay, useWaitWindow, collectErrors);
                     return;
                 }
 
-                if (useWaitWindow)
-                {
-                    var waitCancelHelper = new CancellationHelper();
-                    cancelHelper = waitCancelHelper;
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        try
-                        {
-                            waitWindow = new XLEdgeWaitWindow(waitCancelHelper);
-                            waitWindow.SetProcessTitle("Refreshing report", MahApps.Metro.IconPacks.PackIconFontAwesomeKind.SpinnerSolid);
-                            waitWindow.SetProcessMessage("Preparing to refresh report...");
-                            waitWindow.StartMonitoring();
-                            waitWindow.Show();
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Failed to show wait window for refresh");
-                        }
-                    });
-                }
-                else
-                {
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => appOverlay?.ShowBusyasyn("Refreshing report..."));
-                }
+                DeleteReportShapes(ctx.Sheet);
 
-                var wb = excelApp.ActiveWorkbook;
-                var sheet = excelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
-                if (sheet == null) throw new InvalidOperationException("No active worksheet.");
+                if (!await TryResolveXmlMetadataAsync(ctx)) return;
 
-                Microsoft.Office.Interop.Excel.ListObject lo = null;
-                try { lo = sheet.ListObjects[listObjectName]; }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: ListObject '{listObjectName}' not found - {ex.Message}");
-                }
-                if (lo == null)
-                {
-                    await HandleFailureAsync($"Table '{listObjectName}' not found.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
+                ResolveParamsPayload(ctx);
 
-                DeleteReportShapes(sheet);
+                if (!await TryFetchCsvDataAsync(ctx)) return;
 
-                // --- STEP 1: Get stored report data from CustomXMLParts (Meta Data) ---
-                // This is always from cache - meta data NEVER changes during refresh
-                if (!TryResolveReportXmlForRefresh(wb, listObjectName, lo, out ReportXmlRefreshResult xmlResult))
-                {
-                    await HandleFailureAsync("No metadata found for this table.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
+                if (!await TryParseCsvDataAsync(ctx)) return;
 
-                string title = xmlResult.Title;
-                string runId = xmlResult.RunId;
-                string storedMetaJson = xmlResult.MetaJson;
-                string storedParamsJson = xmlResult.ParamsJson;
-                List<(string Original, string Modified, int RawIndex)> mappings = xmlResult.Mappings;
+                AddMissingColumnsToTable(ctx);
+                ReorderTableColumns(ctx);
+                EnsureTableHasDataRow(ctx.ListObject);
+                ctx.FirstRowFormulas = CaptureFirstRowFormulas(ctx.ListObject);
 
-                LogUtility.LogDebug($"RefreshListObjectAsync|Using meta data from CustomXMLParts for table: {listObjectName}");
+                ctx.HeaderRowIdx = ctx.ListObject.HeaderRowRange.Row;
+                ctx.DataStartRow = ctx.HeaderRowIdx + 1;
+                ctx.TargetTotalRows = Math.Max(1, ctx.NewDataCount);
 
-                string eeLoginUrl = XLEdgeAppState.Instance.LoginUrl;
-                if (string.IsNullOrWhiteSpace(eeLoginUrl))
-                {
-                    await HandleFailureAsync("Login URL is not set.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
+                AdjustTableRowCount(ctx.ListObject, ctx.TargetTotalRows);
 
-                // --- STEP 2: Check if we have a payload from control sheet ---
-                // paramsJsonPayload is already the raw payload (no display values)
-                bool hasParamsPayload = !string.IsNullOrEmpty(paramsJsonPayload);
-                string paramsWithLabels = hasParamsPayload ? paramsJsonPayload : null;
+                ctx.TableCols = ctx.ListObject.ListColumns.Count;
 
-                if (hasParamsPayload)
-                {
-                    LogUtility.LogDebug($"RefreshListObjectAsync|Using control sheet payload for table: {listObjectName}");
-                }
-                else
-                {
-                    LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - using original params from CustomXMLParts");
-                }
-
-
-                // --- STEP 3: Fetch CSV data (with payload or empty) ---
-
-                if (cancelHelper == null)
-                {
-                    cancelHelper = new CancellationHelper();
-                }
-
-                await SetRefreshMessage("Downloading report data...", waitWindow, appOverlay, useWaitWindow);
-
-                string csvUrl = $"{eeLoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={runId}&type=csv";
-                string csvResponse = null;
-                try
-                {
-                    csvResponse = await ApiHelper.ServerAPI(csvUrl, "JSON", paramsWithLabels ?? string.Empty, "POST", cancelHelper.GetToken());
-                }
-                catch (OperationCanceledException)
-                {
-                    LogUtility.LogWarn("CSV fetch cancelled by user.");
-                    await ApiHelper.NotifyCancelRunAsync(eeLoginUrl, runId);
-                    await CancelCleanupAsync(waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    if (collectErrors) throw;
-                    if (useWaitWindow) { try { waitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window on cancel"); } }
-                    else { await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => { if (appOverlay != null) await appOverlay.HideBusyAsync(); }); }
-                    return;
-                }
-                catch (ApiTimeoutException ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync: CSV request timed out");
-                    await HandleFailureAsync(RequestTimedOutMessage, waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(csvResponse))
-                {
-                    await HandleFailureAsync("Failed to download report for refresh.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
-
-                // --- STEP 4: Parse CSV data ---
-                await SetRefreshMessage("Parsing report data...", waitWindow, appOverlay, useWaitWindow);
-                var rows = ParseCsv(csvResponse).ToList();
-                if (rows.Count == 0)
-                {
-                    await HandleFailureAsync("No data in report.", waitWindow, appOverlay, useWaitWindow, collectErrors);
-                    return;
-                }
-
-                var rawHeader = rows[0];
-                int rawCols = rawHeader.Count;
-                int newDataCount = Math.Max(0, rows.Count - 1);
-
-                // --- STEP 5: Add missing columns from raw data into the table ---
-                try
-                {
-                    var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 1; i <= lo.ListColumns.Count; i++)
-                    {
-                        try { existingNames.Add(lo.ListColumns[i].Name); }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumn[{i}].Name - {ex.Message}");
-                        }
-                    }
-
-                    for (int i = 1; i <= rawCols; i++)
-                    {
-                        bool mapped = mappings.Any(m => m.RawIndex == i);
-                        if (mapped) continue;
-
-                        string orig = rawHeader[i - 1] ?? string.Empty;
-                        string baseName = orig.Trim();
-                        if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + i;
-
-                        string mod = baseName;
-                        int suffix = 1;
-                        while (existingNames.Contains(mod) || mappings.Any(m => string.Equals(m.Modified, mod, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            mod = baseName + suffix.ToString();
-                            suffix++;
-                        }
-
-                        try
-                        {
-                            var added = lo.ListColumns.Add();
-                            try { added.Name = mod; }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename new column to '{mod}' - {ex.Message}");
-                            }
-                            existingNames.Add(mod);
-                            mappings.Add((Original: orig, Modified: mod, RawIndex: i));
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Failed to add missing column to table");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while adding missing columns to table - {ex.Message}");
-                }
-
-                // --- STEP 6: Re-order columns in the table to match original CSV order ---
-                try
-                {
-                    var desiredOrder = mappings.OrderBy(m => m.RawIndex).Select(m => m.Modified).ToList();
-                    int desiredCount = desiredOrder.Count;
-
-                    for (int pos = 1; pos <= desiredCount && pos <= lo.ListColumns.Count; pos++)
-                    {
-                        string desiredName = desiredOrder[pos - 1];
-                        string currentName = string.Empty;
-                        try { currentName = lo.ListColumns[pos].Name; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{pos}].Name during reorder - {ex.Message}");
-                        }
-
-                        if (string.Equals(currentName, desiredName, StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        int curIndex = -1;
-                        for (int i = 1; i <= lo.ListColumns.Count; i++)
-                        {
-                            try
-                            {
-                                if (string.Equals(lo.ListColumns[i].Name, desiredName, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    curIndex = i;
-                                    break;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{i}].Name while searching for '{desiredName}' - {ex.Message}");
-                            }
-                        }
-
-                        if (curIndex == -1)
-                            continue;
-
-                        try
-                        {
-                            var rangeA = lo.ListColumns[pos].Range;
-                            var rangeB = lo.ListColumns[curIndex].Range;
-                            if (rangeA != null && rangeB != null)
-                            {
-                                var temp = rangeA.Value2;
-                                rangeA.Value2 = rangeB.Value2;
-                                rangeB.Value2 = temp;
-                            }
-
-                            try
-                            {
-                                var headerRange = lo.HeaderRowRange;
-                                if (headerRange != null)
-                                {
-                                    var headerCellObj = headerRange.Cells[1, pos];
-                                    if (headerCellObj is Excel.Range headerCell)
-                                        headerCell.Value2 = desiredName;
-                                }
-                                try { lo.ListColumns[pos].Name = desiredName; }
-                                catch (Exception ex)
-                                {
-                                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename ListColumns[{pos}] to '{desiredName}' - {ex.Message}");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to sync header name for '{desiredName}' - {ex.Message}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Failed to reorder table columns");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while reordering table columns - {ex.Message}");
-                }
-
-                // --- STEP 7: Ensure table has at least one data row ---
-                int currentRows = 0;
-                try { currentRows = lo.DataBodyRange?.Rows.Count ?? 0; }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read DataBodyRange.Rows.Count - {ex.Message}");
-                    currentRows = 0;
-                }
-                if (currentRows == 0)
-                {
-                    try { lo.ListRows.Add(); }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to add an initial data row to the table - {ex.Message}");
-                    }
-                }
-
-                // --- STEP 8: Capture first data row formulas ---
-                var firstRowFormulas = new Dictionary<int, string>();
-                try
-                {
-                    var firstRowRange = lo.DataBodyRange.Resize[1, lo.ListColumns.Count];
-                    for (int c = 1; c <= lo.ListColumns.Count; c++)
-                    {
-                        try
-                        {
-                            var cell = firstRowRange.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
-                            var formula = cell?.Formula as string;
-                            if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
-                                firstRowFormulas[c] = formula;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} - {ex.Message}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while capturing first-row formulas - {ex.Message}");
-                }
-
-                int headerRowIdx = lo.HeaderRowRange.Row;
-                int dataStartRow = headerRowIdx + 1;
-                int targetTotalRows = Math.Max(1, newDataCount);
-
-                // --- STEP 9: Adjust table rows ---
-                try
-                {
-                    while ((lo.DataBodyRange?.Rows.Count ?? 0) < targetTotalRows)
-                    {
-                        lo.ListRows.Add();
-                    }
-
-                    while ((lo.DataBodyRange?.Rows.Count ?? 0) > targetTotalRows)
-                    {
-                        var last = lo.ListRows[lo.ListRows.Count];
-                        last.Delete();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to adjust table row count to {targetTotalRows} - {ex.Message}");
-                }
-
-                int tableCols = lo.ListColumns.Count;
-
-                // --- STEP 10: Write data to table ---
-                await SetRefreshMessage("Writing data to Excel...", waitWindow, appOverlay, useWaitWindow);
-
-                if (newDataCount > 0)
-                {
-                    for (int tc = 1; tc <= tableCols; tc++)
-                    {
-                        string modifiedName = string.Empty;
-                        try { modifiedName = lo.ListColumns[tc].Name; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{tc}].Name while writing refreshed data - {ex.Message}");
-                            continue;
-                        }
-
-                        var map = mappings.FirstOrDefault(m => string.Equals(m.Modified, modifiedName, StringComparison.OrdinalIgnoreCase));
-                        if (map.Modified == null)
-                        {
-                            continue;
-                        }
-
-                        int rawIndex = map.RawIndex;
-                        if (rawIndex < 1 || rawIndex > rawCols)
-                        {
-                            continue;
-                        }
-
-                        bool hasRow1Formula = firstRowFormulas.ContainsKey(tc);
-                        int colWriteStartRow = hasRow1Formula ? dataStartRow + 1 : dataStartRow;
-                        int colRowCount = targetTotalRows - (hasRow1Formula ? 1 : 0);
-
-                        if (colRowCount <= 0)
-                        {
-                            continue;
-                        }
-
-                        try
-                        {
-                            object[,] colArr = new object[colRowCount, 1];
-                            for (int i = 0; i < colRowCount; i++)
-                            {
-                                int physicalRow = colWriteStartRow + i;
-                                int csvRecordIndex = physicalRow - dataStartRow + 1;
-                                var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= newDataCount) ? rows[csvRecordIndex] : null;
-                                colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                            }
-
-                            var colStartCell = (Excel.Range)sheet.Cells[colWriteStartRow, tc];
-                            var colEndCell = (Excel.Range)sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
-                            sheet.Range[colStartCell, colEndCell].Value2 = colArr;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, $"Failed writing refreshed data for column {tc} ('{modifiedName}')");
-                        }
-                    }
-                }
-
-                // --- STEP 11: Fill down formulas from first data row where applicable ---
-                try
-                {
-                    int lastRow = dataStartRow + targetTotalRows - 1;
-                    for (int c = 1; c <= tableCols; c++)
-                    {
-                        if (firstRowFormulas.TryGetValue(c, out _))
-                        {
-                            var topCell = (Excel.Range)sheet.Cells[dataStartRow, c];
-                            var fillRange = sheet.Range[topCell, sheet.Cells[lastRow, c]];
-                            try { fillRange.FillDown(); }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to fill down formula for column {c} - {ex.Message}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while filling down preserved formulas - {ex.Message}");
-                }
-
-                // --- STEP 12: Handle RefreshSync ---
-                if (XLEdgeAppState.Instance.RefreshSync)
-                {
-                    try
-                    {
-                        for (int c = lo.ListColumns.Count; c >= 1; c--)
-                        {
-                            string colName = string.Empty;
-                            try { colName = lo.ListColumns[c].Name; }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{c}].Name during RefreshSync cleanup - {ex.Message}");
-                            }
-                            var map = mappings.FirstOrDefault(m => string.Equals(m.Modified, colName, StringComparison.OrdinalIgnoreCase));
-                            bool hasMapping = map.Modified != null;
-
-                            bool hasFormula = false;
-                            try
-                            {
-                                var firstRowObj = lo.DataBodyRange.Resize[1, lo.ListColumns.Count];
-                                var firstCell = firstRowObj?.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
-                                var formula = firstCell?.Formula as string;
-                                if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
-                                    hasFormula = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} during RefreshSync cleanup - {ex.Message}");
-                            }
-
-                            if (!hasMapping && !hasFormula)
-                            {
-                                try { lo.ListColumns[c].Delete(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete column"); }
-                            }
-                        }
-                    }
-                    catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete columns not present in mapping and not formula columns"); }
-                }
-
-                // --- STEP 13: Re-embed drilldown/attachment/image columns ---
-                // Use meta data from CustomXMLParts (storedMetaJson)
-                await SetRefreshMessage("Embedding attachment or drilldown links...", waitWindow, appOverlay, useWaitWindow);
-                ReportMeta reportMetaForLinks = null;
-                try
-                {
-                    if (!string.IsNullOrWhiteSpace(storedMetaJson))
-                    {
-                        reportMetaForLinks = JsonSerializer.Deserialize<ReportMeta>(storedMetaJson, JsonGlobals.Options);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for hyperlink/image re-embed");
-                }
-
-                // Re-embed drilldown/attachment/image columns
-                if (reportMetaForLinks != null)
-                {
-                    try
-                    {
-                        AddDrilldownHyperlinks(sheet, lo, reportMetaForLinks);
-                        AddAttachmentAndImageColumns(sheet, lo, reportMetaForLinks);
-                        LogUtility.LogDebug($"RefreshListObjectAsync|Re-embedded drilldown/attachment/image columns");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "RefreshListObjectAsync: failed to re-embed drilldown/attachment/image columns");
-                    }
-                }
-
-                // --- STEP 14: Update params data in worksheet (ONLY if control sheet exists) ---
-                await SetRefreshMessage("Updating param data...", waitWindow, appOverlay, useWaitWindow);
-                try
-                {
-                    if (hasParamsPayload && !string.IsNullOrEmpty(paramsWithLabels))
-                    {
-                        await SetRefreshMessage("Updating report parameters...", waitWindow, appOverlay, useWaitWindow);
-
-                        // Prefer the richly-merged array-shape params (preserves label/type/componentType
-                        // and carries forward untouched parameters) built by
-                        // AddinModule.BuildRefreshParamsPayload; falls back to the bare request-shape
-                        // payload if that merge is unavailable.
-                        string mergedParamsForDisplayAndStorage = !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.UpdatedParamData)
-                            ? XLEdgeAppState.Instance.UpdatedParamData
-                            : paramsWithLabels;
-
-                        // --- Update parameter sheet cells (IT4, IU4, IV4, IW4 + Parameters Section rows) ---
-                        UpdateParameterSheetCells(sheet, mergedParamsForDisplayAndStorage, lo);
-
-                        // --- Save the merged (label/type-preserving, untouched-params-preserving) params to CustomXMLParts ---
-                        SaveUpdatedReportData(wb, listObjectName, title, storedMetaJson, mergedParamsForDisplayAndStorage);
-
-                        // Clear cached data since we've saved it
-                        XLEdgeAppState.Instance.ClearCachedRefreshData();
-
-                        LogUtility.LogDebug($"RefreshListObjectAsync|Updated parameter sheet cells, saved merged params to CustomXMLParts, and cleared cached refresh data for table: {listObjectName}");
-                    }
-                    else
-                    {
-                        // No control sheet payload: rewrite the Parameters Section / IT4-IW4 cells from
-                        // the report's own stored parameter metadata, so a manually cleared or damaged
-                        // section is restored on every refresh. Nothing needs re-saving to the
-                        // CustomXMLPart here - storedParamsJson is already what's persisted.
-                        if (!string.IsNullOrWhiteSpace(storedParamsJson))
-                        {
-                            UpdateParameterSheetCells(sheet, storedParamsJson, lo);
-                            LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - restored Parameters Section from stored params JSON");
-                        }
-                        else
-                        {
-                            LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload and no stored params JSON - skipping parameter update");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync|Failed to update params/save to CustomXMLParts");
-                }
-
-                // --- STEP 15: Cleanup ---
-                await SetRefreshMessage("Cleaning up residual...", waitWindow, appOverlay, useWaitWindow);
-                try
-                {
-                    if (useWaitWindow)
-                    {
-                        try { waitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window"); }
-                    }
-                    else
-                    {
-                        if (appOverlay != null)
-                        {
-                            try
-                            {
-                                await System.Windows.Application.Current.Dispatcher
-                                    .InvokeAsync(() => appOverlay.HideBusyAsync())
-                                    .Task.Unwrap();
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUtility.LogException(ex, "Failed to hide busy overlay");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to clean up wait window/busy overlay after successful refresh");
-                }
+                await WriteRefreshedDataToTableAsync(ctx);
+                FillDownPreservedFormulas(ctx);
+                HandleRefreshSyncColumnCleanup(ctx);
+                await ReembedLinksAfterRefreshAsync(ctx);
+                await UpdateRefreshedParamsAsync(ctx);
+                await CleanupRefreshProgressUiAsync(ctx);
 
                 // Reclaim keyboard focus from the WebView2 task pane back to Excel.
                 await ReleaseKeyboardFocusFromTaskPaneAsync();
@@ -3586,7 +3526,7 @@ namespace XLEdge.Helpers
 
                 if (useWaitWindow)
                 {
-                    await ShowErrorAsync(ex.Message, waitWindow);
+                    await ShowErrorAsync(ex.Message, ctx.WaitWindow);
                 }
                 else
                 {
@@ -3594,6 +3534,723 @@ namespace XLEdge.Helpers
                 }
 
                 await ReleaseKeyboardFocusFromTaskPaneAsync();
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync.
+        private static async Task<bool> CheckExcelEditModeAsync(RefreshContext ctx)
+        {
+            // Check edit mode
+            try
+            {
+                var ac = ctx.ExcelApp.ActiveCell;
+                var _ = ac?.Address;
+                return true;
+            }
+            catch (Exception editModeEx)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: Excel appears to be in edit mode - {editModeEx.Message}");
+                await HandleFailureAsync("Excel is in edit mode. Please exit edit mode (press Enter or Esc) and try again.", null, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync - shows the wait window (or busy overlay) used while
+        // the refresh runs.
+        private static async Task ShowRefreshProgressUiAsync(RefreshContext ctx)
+        {
+            if (ctx.UseWaitWindow)
+            {
+                var waitCancelHelper = new CancellationHelper();
+                ctx.CancelHelper = waitCancelHelper;
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        ctx.WaitWindow = new XLEdgeWaitWindow(waitCancelHelper);
+                        ctx.WaitWindow.SetProcessTitle("Refreshing report", MahApps.Metro.IconPacks.PackIconFontAwesomeKind.SpinnerSolid);
+                        ctx.WaitWindow.SetProcessMessage("Preparing to refresh report...");
+                        ctx.WaitWindow.StartMonitoring();
+                        ctx.WaitWindow.Show();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Failed to show wait window for refresh");
+                    }
+                });
+            }
+            else
+            {
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => ctx.AppOverlay?.ShowBusyasyn("Refreshing report..."));
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync - resolves the active workbook/sheet/ListObject.
+        // Note: an absent active worksheet still throws (uncaught here), exactly as before -
+        // propagating up to RefreshListObjectAsync's own catch, not treated as a "ShouldContinue"
+        // failure like an absent ListObject is.
+        private static bool TryResolveWorkbookSheetAndListObject(RefreshContext ctx)
+        {
+            ctx.Workbook = ctx.ExcelApp.ActiveWorkbook;
+            ctx.Sheet = ctx.ExcelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
+            if (ctx.Sheet == null) throw new InvalidOperationException("No active worksheet.");
+
+            Microsoft.Office.Interop.Excel.ListObject lo = null;
+            try { lo = ctx.Sheet.ListObjects[ctx.ListObjectName]; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: ListObject '{ctx.ListObjectName}' not found - {ex.Message}");
+            }
+
+            ctx.ListObject = lo;
+            return lo != null;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 1) - gets stored report data from
+        // CustomXMLParts (Meta Data). This is always from cache - meta data NEVER changes during
+        // refresh.
+        private static async Task<bool> TryResolveXmlMetadataAsync(RefreshContext ctx)
+        {
+            if (!TryResolveReportXmlForRefresh(ctx.Workbook, ctx.ListObjectName, ctx.ListObject, out ReportXmlRefreshResult xmlResult))
+            {
+                await HandleFailureAsync("No metadata found for this table.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            ctx.Title = xmlResult.Title;
+            ctx.RunId = xmlResult.RunId;
+            ctx.StoredMetaJson = xmlResult.MetaJson;
+            ctx.StoredParamsJson = xmlResult.ParamsJson;
+            ctx.Mappings = xmlResult.Mappings;
+
+            LogUtility.LogDebug($"RefreshListObjectAsync|Using meta data from CustomXMLParts for table: {ctx.ListObjectName}");
+
+            ctx.EeLoginUrl = XLEdgeAppState.Instance.LoginUrl;
+            if (string.IsNullOrWhiteSpace(ctx.EeLoginUrl))
+            {
+                await HandleFailureAsync("Login URL is not set.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 2) - checks if we have a payload from the
+        // control sheet. paramsJsonPayload is already the raw payload (no display values).
+        private static void ResolveParamsPayload(RefreshContext ctx)
+        {
+            ctx.HasParamsPayload = !string.IsNullOrEmpty(ctx.ParamsJsonPayload);
+            ctx.ParamsWithLabels = ctx.HasParamsPayload ? ctx.ParamsJsonPayload : null;
+
+            if (ctx.HasParamsPayload)
+            {
+                LogUtility.LogDebug($"RefreshListObjectAsync|Using control sheet payload for table: {ctx.ListObjectName}");
+            }
+            else
+            {
+                LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - using original params from CustomXMLParts");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 3) - fetches CSV data (with payload or empty).
+        private static async Task<bool> TryFetchCsvDataAsync(RefreshContext ctx)
+        {
+            if (ctx.CancelHelper == null)
+            {
+                ctx.CancelHelper = new CancellationHelper();
+            }
+
+            await SetRefreshMessage("Downloading report data...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+
+            string csvUrl = $"{ctx.EeLoginUrl.TrimEnd('/')}/rest/secure/report/runner?runId={ctx.RunId}&type=csv";
+            try
+            {
+                ctx.CsvResponse = await ApiHelper.ServerAPI(csvUrl, "JSON", ctx.ParamsWithLabels ?? string.Empty, "POST", ctx.CancelHelper.GetToken());
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("CSV fetch cancelled by user.");
+                await ApiHelper.NotifyCancelRunAsync(ctx.EeLoginUrl, ctx.RunId);
+                await CancelCleanupAsync(ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                if (ctx.CollectErrors) throw;
+                await CloseCsvFetchProgressUiOnCancelAsync(ctx);
+                return false;
+            }
+            catch (ApiTimeoutException ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: CSV request timed out");
+                await HandleFailureAsync(RequestTimedOutMessage, ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(ctx.CsvResponse))
+            {
+                await HandleFailureAsync("Failed to download report for refresh.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Extracted from TryFetchCsvDataAsync - closes the progress UI after a cancelled CSV fetch
+        // when the caller isn't collecting errors (i.e. isn't going to rethrow).
+        private static async Task CloseCsvFetchProgressUiOnCancelAsync(RefreshContext ctx)
+        {
+            if (ctx.UseWaitWindow)
+            {
+                try { ctx.WaitWindow?.RequestClose(); }
+                catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window on cancel"); }
+            }
+            else
+            {
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => { if (ctx.AppOverlay != null) await ctx.AppOverlay.HideBusyAsync(); });
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 4) - parses the downloaded CSV data.
+        private static async Task<bool> TryParseCsvDataAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Parsing report data...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            ctx.Rows = ParseCsv(ctx.CsvResponse).ToList();
+            if (ctx.Rows.Count == 0)
+            {
+                await HandleFailureAsync("No data in report.", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow, ctx.CollectErrors);
+                return false;
+            }
+
+            ctx.RawHeader = ctx.Rows[0];
+            ctx.RawCols = ctx.RawHeader.Count;
+            ctx.NewDataCount = Math.Max(0, ctx.Rows.Count - 1);
+
+            return true;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 5) - adds missing columns from raw data into
+        // the table.
+        private static void AddMissingColumnsToTable(RefreshContext ctx)
+        {
+            try
+            {
+                var existingNames = CollectExistingColumnNames(ctx.ListObject);
+
+                for (int i = 1; i <= ctx.RawCols; i++)
+                {
+                    AddMissingColumnForRawIndex(ctx, existingNames, i);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while adding missing columns to table - {ex.Message}");
+            }
+        }
+
+        // Extracted from AddMissingColumnsToTable - snapshots the table's current column names.
+        private static HashSet<string> CollectExistingColumnNames(Excel.ListObject lo)
+        {
+            var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 1; i <= lo.ListColumns.Count; i++)
+            {
+                try { existingNames.Add(lo.ListColumns[i].Name); }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumn[{i}].Name - {ex.Message}");
+                }
+            }
+
+            return existingNames;
+        }
+
+        // Extracted from AddMissingColumnsToTable - adds a single missing column for the given raw
+        // header index, if it isn't already mapped.
+        private static void AddMissingColumnForRawIndex(RefreshContext ctx, HashSet<string> existingNames, int rawIndex)
+        {
+            bool mapped = ctx.Mappings.Any(m => m.RawIndex == rawIndex);
+            if (mapped) return;
+
+            string orig = ctx.RawHeader[rawIndex - 1] ?? string.Empty;
+            string baseName = orig.Trim();
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = ColumnElementName + rawIndex;
+
+            string mod = baseName;
+            int suffix = 1;
+            while (existingNames.Contains(mod) || ctx.Mappings.Any(m => string.Equals(m.Modified, mod, StringComparison.OrdinalIgnoreCase)))
+            {
+                mod = baseName + suffix.ToString();
+                suffix++;
+            }
+
+            try
+            {
+                var added = ctx.ListObject.ListColumns.Add();
+                try { added.Name = mod; }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename new column to '{mod}' - {ex.Message}");
+                }
+                existingNames.Add(mod);
+                ctx.Mappings.Add((Original: orig, Modified: mod, RawIndex: rawIndex));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to add missing column to table");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 6) - re-orders columns in the table to match
+        // original CSV order.
+        private static void ReorderTableColumns(RefreshContext ctx)
+        {
+            try
+            {
+                var desiredOrder = ctx.Mappings.OrderBy(m => m.RawIndex).Select(m => m.Modified).ToList();
+                int desiredCount = desiredOrder.Count;
+
+                for (int pos = 1; pos <= desiredCount && pos <= ctx.ListObject.ListColumns.Count; pos++)
+                {
+                    ReorderOneColumn(ctx.ListObject, pos, desiredOrder[pos - 1]);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while reordering table columns - {ex.Message}");
+            }
+        }
+
+        // Extracted from ReorderTableColumns - moves the column currently holding desiredName into
+        // position pos, if it isn't already there.
+        private static void ReorderOneColumn(Excel.ListObject lo, int pos, string desiredName)
+        {
+            string currentName = string.Empty;
+            try { currentName = lo.ListColumns[pos].Name; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{pos}].Name during reorder - {ex.Message}");
+            }
+
+            if (string.Equals(currentName, desiredName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            int curIndex = FindColumnIndexByName(lo, desiredName);
+            if (curIndex == -1)
+                return;
+
+            try
+            {
+                SwapColumnPositions(lo, pos, curIndex);
+                SyncReorderedColumnHeaderName(lo, pos, desiredName);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to reorder table columns");
+            }
+        }
+
+        // Extracted from ReorderTableColumns - finds the 1-based ListColumns index whose name
+        // matches desiredName, or -1 if not found.
+        private static int FindColumnIndexByName(Excel.ListObject lo, string desiredName)
+        {
+            for (int i = 1; i <= lo.ListColumns.Count; i++)
+            {
+                try
+                {
+                    if (string.Equals(lo.ListColumns[i].Name, desiredName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{i}].Name while searching for '{desiredName}' - {ex.Message}");
+                }
+            }
+
+            return -1;
+        }
+
+        // Extracted from ReorderTableColumns - swaps the cell values of two columns' ranges.
+        private static void SwapColumnPositions(Excel.ListObject lo, int pos, int curIndex)
+        {
+            var rangeA = lo.ListColumns[pos].Range;
+            var rangeB = lo.ListColumns[curIndex].Range;
+            if (rangeA != null && rangeB != null)
+            {
+                var temp = rangeA.Value2;
+                rangeA.Value2 = rangeB.Value2;
+                rangeB.Value2 = temp;
+            }
+        }
+
+        // Extracted from ReorderTableColumns - syncs the header cell text and column Name after a
+        // swap.
+        private static void SyncReorderedColumnHeaderName(Excel.ListObject lo, int pos, string desiredName)
+        {
+            try
+            {
+                var headerRange = lo.HeaderRowRange;
+                if (headerRange != null)
+                {
+                    var headerCellObj = headerRange.Cells[1, pos];
+                    if (headerCellObj is Excel.Range headerCell)
+                        headerCell.Value2 = desiredName;
+                }
+                try { lo.ListColumns[pos].Name = desiredName; }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to rename ListColumns[{pos}] to '{desiredName}' - {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to sync header name for '{desiredName}' - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 7) - ensures the table has at least one data
+        // row.
+        private static void EnsureTableHasDataRow(Excel.ListObject lo)
+        {
+            int currentRows = 0;
+            try { currentRows = lo.DataBodyRange?.Rows.Count ?? 0; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read DataBodyRange.Rows.Count - {ex.Message}");
+                currentRows = 0;
+            }
+            if (currentRows == 0)
+            {
+                try { lo.ListRows.Add(); }
+                catch (Exception ex)
+                {
+                    LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to add an initial data row to the table - {ex.Message}");
+                }
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 8) - captures first data row formulas.
+        private static Dictionary<int, string> CaptureFirstRowFormulas(Excel.ListObject lo)
+        {
+            var firstRowFormulas = new Dictionary<int, string>();
+            try
+            {
+                var firstRowRange = lo.DataBodyRange.Resize[1, lo.ListColumns.Count];
+                for (int c = 1; c <= lo.ListColumns.Count; c++)
+                {
+                    try
+                    {
+                        var cell = firstRowRange.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
+                        var formula = cell?.Formula as string;
+                        if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
+                            firstRowFormulas[c] = formula;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} - {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while capturing first-row formulas - {ex.Message}");
+            }
+
+            return firstRowFormulas;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 9) - adjusts table row count to match the new
+        // data.
+        private static void AdjustTableRowCount(Excel.ListObject lo, int targetTotalRows)
+        {
+            try
+            {
+                while ((lo.DataBodyRange?.Rows.Count ?? 0) < targetTotalRows)
+                {
+                    lo.ListRows.Add();
+                }
+
+                while ((lo.DataBodyRange?.Rows.Count ?? 0) > targetTotalRows)
+                {
+                    var last = lo.ListRows[lo.ListRows.Count];
+                    last.Delete();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to adjust table row count to {targetTotalRows} - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 10) - writes refreshed data to the table.
+        private static async Task WriteRefreshedDataToTableAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Writing data to Excel...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+
+            if (ctx.NewDataCount > 0)
+            {
+                for (int tc = 1; tc <= ctx.TableCols; tc++)
+                {
+                    WriteRefreshedColumnData(ctx, tc);
+                }
+            }
+        }
+
+        // Extracted from WriteRefreshedDataToTableAsync - resolves and writes the refreshed values
+        // for a single table column.
+        private static void WriteRefreshedColumnData(RefreshContext ctx, int tc)
+        {
+            string modifiedName = string.Empty;
+            try { modifiedName = ctx.ListObject.ListColumns[tc].Name; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{tc}].Name while writing refreshed data - {ex.Message}");
+                return;
+            }
+
+            var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, modifiedName, StringComparison.OrdinalIgnoreCase));
+            if (map.Modified == null)
+            {
+                return;
+            }
+
+            int rawIndex = map.RawIndex;
+            if (rawIndex < 1 || rawIndex > ctx.RawCols)
+            {
+                return;
+            }
+
+            bool hasRow1Formula = ctx.FirstRowFormulas.ContainsKey(tc);
+            int colWriteStartRow = hasRow1Formula ? ctx.DataStartRow + 1 : ctx.DataStartRow;
+            int colRowCount = ctx.TargetTotalRows - (hasRow1Formula ? 1 : 0);
+
+            if (colRowCount <= 0)
+            {
+                return;
+            }
+
+            try
+            {
+                object[,] colArr = BuildRefreshedColumnArray(ctx, colWriteStartRow, colRowCount, rawIndex);
+
+                var colStartCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow, tc];
+                var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
+                ctx.Sheet.Range[colStartCell, colEndCell].Value2 = colArr;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Failed writing refreshed data for column {tc} ('{modifiedName}')");
+            }
+        }
+
+        // Extracted from WriteRefreshedColumnData - builds the single-column value array to write.
+        private static object[,] BuildRefreshedColumnArray(RefreshContext ctx, int colWriteStartRow, int colRowCount, int rawIndex)
+        {
+            object[,] colArr = new object[colRowCount, 1];
+            for (int i = 0; i < colRowCount; i++)
+            {
+                int physicalRow = colWriteStartRow + i;
+                int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
+                var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
+                colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+            }
+
+            return colArr;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 11) - fills down formulas from the first data
+        // row where applicable.
+        private static void FillDownPreservedFormulas(RefreshContext ctx)
+        {
+            try
+            {
+                int lastRow = ctx.DataStartRow + ctx.TargetTotalRows - 1;
+                for (int c = 1; c <= ctx.TableCols; c++)
+                {
+                    if (ctx.FirstRowFormulas.TryGetValue(c, out _))
+                    {
+                        var topCell = (Excel.Range)ctx.Sheet.Cells[ctx.DataStartRow, c];
+                        var fillRange = ctx.Sheet.Range[topCell, ctx.Sheet.Cells[lastRow, c]];
+                        try { fillRange.FillDown(); }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to fill down formula for column {c} - {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed while filling down preserved formulas - {ex.Message}");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 12) - handles RefreshSync column cleanup.
+        private static void HandleRefreshSyncColumnCleanup(RefreshContext ctx)
+        {
+            if (!XLEdgeAppState.Instance.RefreshSync)
+            {
+                return;
+            }
+
+            try
+            {
+                for (int c = ctx.ListObject.ListColumns.Count; c >= 1; c--)
+                {
+                    if (ShouldDeleteRefreshSyncColumn(ctx, c))
+                    {
+                        try { ctx.ListObject.ListColumns[c].Delete(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete column"); }
+                    }
+                }
+            }
+            catch (Exception ex) { LogUtility.LogException(ex, "Failed to delete columns not present in mapping and not formula columns"); }
+        }
+
+        // Extracted from HandleRefreshSyncColumnCleanup - determines whether column c has neither a
+        // raw-data mapping nor a preserved formula, and should therefore be deleted.
+        private static bool ShouldDeleteRefreshSyncColumn(RefreshContext ctx, int c)
+        {
+            string colName = string.Empty;
+            try { colName = ctx.ListObject.ListColumns[c].Name; }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read ListColumns[{c}].Name during RefreshSync cleanup - {ex.Message}");
+            }
+            var map = ctx.Mappings.FirstOrDefault(m => string.Equals(m.Modified, colName, StringComparison.OrdinalIgnoreCase));
+            bool hasMapping = map.Modified != null;
+
+            bool hasFormula = false;
+            try
+            {
+                var firstRowObj = ctx.ListObject.DataBodyRange.Resize[1, ctx.ListObject.ListColumns.Count];
+                var firstCell = firstRowObj?.Cells[1, c] as Microsoft.Office.Interop.Excel.Range;
+                var formula = firstCell?.Formula as string;
+                if (!string.IsNullOrWhiteSpace(formula) && formula.StartsWith("=", StringComparison.Ordinal))
+                    hasFormula = true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to read first-row formula for column {c} during RefreshSync cleanup - {ex.Message}");
+            }
+
+            return !hasMapping && !hasFormula;
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 13) - re-embeds drilldown/attachment/image
+        // columns, using meta data from CustomXMLParts (storedMetaJson).
+        private static async Task ReembedLinksAfterRefreshAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Embedding attachment or drilldown links...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            ReportMeta reportMetaForLinks = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(ctx.StoredMetaJson))
+                {
+                    reportMetaForLinks = JsonSerializer.Deserialize<ReportMeta>(ctx.StoredMetaJson, JsonGlobals.Options);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for hyperlink/image re-embed");
+            }
+
+            // Re-embed drilldown/attachment/image columns
+            if (reportMetaForLinks != null)
+            {
+                try
+                {
+                    AddDrilldownHyperlinks(ctx.Sheet, ctx.ListObject, reportMetaForLinks);
+                    AddAttachmentAndImageColumns(ctx.Sheet, ctx.ListObject, reportMetaForLinks);
+                    LogUtility.LogDebug($"RefreshListObjectAsync|Re-embedded drilldown/attachment/image columns");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to re-embed drilldown/attachment/image columns");
+                }
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 14) - updates params data in the worksheet
+        // (only if a control sheet payload exists).
+        private static async Task UpdateRefreshedParamsAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Updating param data...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            try
+            {
+                if (ctx.HasParamsPayload && !string.IsNullOrEmpty(ctx.ParamsWithLabels))
+                {
+                    await SetRefreshMessage("Updating report parameters...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+
+                    // Prefer the richly-merged array-shape params (preserves label/type/componentType
+                    // and carries forward untouched parameters) built by
+                    // AddinModule.BuildRefreshParamsPayload; falls back to the bare request-shape
+                    // payload if that merge is unavailable.
+                    string mergedParamsForDisplayAndStorage = !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.UpdatedParamData)
+                        ? XLEdgeAppState.Instance.UpdatedParamData
+                        : ctx.ParamsWithLabels;
+
+                    // --- Update parameter sheet cells (IT4, IU4, IV4, IW4 + Parameters Section rows) ---
+                    UpdateParameterSheetCells(ctx.Sheet, mergedParamsForDisplayAndStorage, ctx.ListObject);
+
+                    // --- Save the merged (label/type-preserving, untouched-params-preserving) params to CustomXMLParts ---
+                    SaveUpdatedReportData(ctx.Workbook, ctx.ListObjectName, ctx.Title, ctx.StoredMetaJson, mergedParamsForDisplayAndStorage);
+
+                    // Clear cached data since we've saved it
+                    XLEdgeAppState.Instance.ClearCachedRefreshData();
+
+                    LogUtility.LogDebug($"RefreshListObjectAsync|Updated parameter sheet cells, saved merged params to CustomXMLParts, and cleared cached refresh data for table: {ctx.ListObjectName}");
+                }
+                else
+                {
+                    // No control sheet payload: rewrite the Parameters Section / IT4-IW4 cells from
+                    // the report's own stored parameter metadata, so a manually cleared or damaged
+                    // section is restored on every refresh. Nothing needs re-saving to the
+                    // CustomXMLPart here - storedParamsJson is already what's persisted.
+                    if (!string.IsNullOrWhiteSpace(ctx.StoredParamsJson))
+                    {
+                        UpdateParameterSheetCells(ctx.Sheet, ctx.StoredParamsJson, ctx.ListObject);
+                        LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload - restored Parameters Section from stored params JSON");
+                    }
+                    else
+                    {
+                        LogUtility.LogDebug($"RefreshListObjectAsync|No control sheet payload and no stored params JSON - skipping parameter update");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync|Failed to update params/save to CustomXMLParts");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync (STEP 15) - closes the wait window / hides the busy
+        // overlay after a successful refresh.
+        private static async Task CleanupRefreshProgressUiAsync(RefreshContext ctx)
+        {
+            await SetRefreshMessage("Cleaning up residual...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
+            try
+            {
+                if (ctx.UseWaitWindow)
+                {
+                    try { ctx.WaitWindow?.RequestClose(); } catch (Exception ex) { LogUtility.LogException(ex, "Failed to close wait window"); }
+                }
+                else
+                {
+                    if (ctx.AppOverlay != null)
+                    {
+                        try
+                        {
+                            await System.Windows.Application.Current.Dispatcher
+                                .InvokeAsync(() => ctx.AppOverlay.HideBusyAsync())
+                                .Task.Unwrap();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, "Failed to hide busy overlay");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: failed to clean up wait window/busy overlay after successful refresh");
             }
         }
         /// <summary>
@@ -3909,6 +4566,10 @@ namespace XLEdge.Helpers
             });
         }
 
+        // Cognitive-complexity refactor (SonarQube S3776, was 17): the per-line character-by-character
+        // state machine is pulled into ParseCsvLine, a plain (non-iterator) helper. The outer method
+        // stays an iterator (yield) but now just yields one already-built line at a time. Every
+        // condition and comment is unchanged.
         private static IEnumerable<List<string>> ParseCsv(string csv)
         {
             if (string.IsNullOrEmpty(csv)) yield break;
@@ -3917,47 +4578,54 @@ namespace XLEdge.Helpers
             string line;
             while ((line = reader.ReadLine()) != null)
             {
-                var fields = new List<string>();
-                var sb = new StringBuilder();
-                bool inQuotes = false;
-                // A while loop (rather than for) here so the escaped-quote branch's extra advance
-                // doesn't read as mutating a for loop's own stop-condition variable - behavior is
-                // unchanged: an escaped "" inside a quoted field advances by 2 (skipping both quote
-                // characters), every other branch advances by 1.
-                int i = 0;
-                while (i < line.Length)
+                yield return ParseCsvLine(line);
+            }
+        }
+
+        // Extracted from ParseCsv - splits one CSV line into fields, honoring quoted fields and
+        // escaped ("") double-quotes within them.
+        private static List<string> ParseCsvLine(string line)
+        {
+            var fields = new List<string>();
+            var sb = new StringBuilder();
+            bool inQuotes = false;
+            // A while loop (rather than for) here so the escaped-quote branch's extra advance
+            // doesn't read as mutating a for loop's own stop-condition variable - behavior is
+            // unchanged: an escaped "" inside a quoted field advances by 2 (skipping both quote
+            // characters), every other branch advances by 1.
+            int i = 0;
+            while (i < line.Length)
+            {
+                char ch = line[i];
+                if (ch == '"')
                 {
-                    char ch = line[i];
-                    if (ch == '"')
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
                     {
-                        if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                        {
-                            sb.Append('"');
-                            i += 2;
-                        }
-                        else
-                        {
-                            inQuotes = !inQuotes;
-                            i++;
-                        }
-                        continue;
+                        sb.Append('"');
+                        i += 2;
                     }
-
-                    if (ch == ',' && !inQuotes)
+                    else
                     {
-                        fields.Add(sb.ToString());
-                        sb.Clear();
+                        inQuotes = !inQuotes;
                         i++;
-                        continue;
                     }
-
-                    sb.Append(ch);
-                    i++;
+                    continue;
                 }
 
-                fields.Add(sb.ToString());
-                yield return fields;
+                if (ch == ',' && !inQuotes)
+                {
+                    fields.Add(sb.ToString());
+                    sb.Clear();
+                    i++;
+                    continue;
+                }
+
+                sb.Append(ch);
+                i++;
             }
+
+            fields.Add(sb.ToString());
+            return fields;
         }
     }
 

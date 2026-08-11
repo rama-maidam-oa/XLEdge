@@ -15,33 +15,36 @@
         </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
-        <ScrollViewer x:Name="MainScrollViewer" 
-                      VerticalScrollBarVisibility="Auto" 
-                      HorizontalScrollBarVisibility="Auto"
-                      CanContentScroll="True">
-            <Grid MinWidth="600">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+        <!-- WebCtrl is deliberately NOT inside a ScrollViewer (or any other scrolling/clipping
+             container): WebView2 always renders as a native HWND child on top of everything WPF
+             draws ("airspace" - WPF can't clip/composite an HWND child the way it composites its
+             own visuals), and nesting it inside a scrolling container is a known WebView2
+             limitation (WebView2Feedback #919/#2579/#286) that caused the hosted page's content to
+             render past the pane's actual bounds instead of clipping/scrolling with it. MinWidth is
+             enforced here directly instead of on a ScrollViewer; EnsureMinimumWidth (XLEdgeCTP.xaml.cs)
+             additionally forces the native pane itself no narrower than this. -->
+        <Grid x:Name="ContentContainer" MinWidth="600">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-                <Border Background="White" 
-                        BorderThickness="1" 
-                        BorderBrush="#E9ECEF" 
-                        CornerRadius="6" 
-                        Margin="4">
-                    <wpf:WebView2 x:Name="WebCtrl" 
-                                  HorizontalAlignment="Stretch" 
-                                  VerticalAlignment="Stretch"
-                                  MinHeight="400"/>
-                </Border>
-            </Grid>
-        </ScrollViewer>
+            <Border Background="White"
+                    BorderThickness="1"
+                    BorderBrush="#E9ECEF"
+                    CornerRadius="6"
+                    Margin="4">
+                <wpf:WebView2 x:Name="WebCtrl"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              MinHeight="400"/>
+            </Border>
+        </Grid>
 
         <!-- Toast / Busy overlay -->
-        <local:AppOverlay x:Name="AppOverlayControl" 
-                          HorizontalAlignment="Stretch" 
-                          VerticalAlignment="Stretch" 
-                          Visibility="Collapsed" 
+        <local:AppOverlay x:Name="AppOverlayControl"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Visibility="Collapsed"
                           Panel.ZIndex="100"/>
     </Grid>
 </UserControl>

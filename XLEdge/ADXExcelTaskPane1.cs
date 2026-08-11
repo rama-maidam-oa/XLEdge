@@ -91,22 +91,84 @@ namespace XLEdge
             ApplyDpiAwareSizing(GetEffectiveDpi());
             this.DpiChanged += XLEdgeReportsPane_DpiChanged;
 
+            // Same root cause and fix as GLSense's GLConfiguratorPane.cs ("Balance Configurator
+            // appears zoomed in for some users"): the WPF content's real native window
+            // (ElementHost's HwndSource) is NOT created when _wpfControl/_host are constructed -
+            // building a WPF object creates no HWND at all. WinForms creates it lazily, only once
+            // the handle is actually needed - typically when this task pane's own handle is
+            // realized by Excel/ADX and the control tree cascades handle creation down to its
+            // children. A "using" block that only covers the WPF object's managed construction
+            // (as this used to) reverts the thread's DPI context back to whatever it was before
+            // long before that real handle gets created, so the WPF/WebView2 content ends up
+            // rendering under whatever DPI awareness happened to be ambient at that later, untimed
+            // moment instead of Per-Monitor-V2. That race is what produces content rendering at the
+            // wrong scale/position relative to the pane - most visible at >100% display scaling,
+            // or when Excel isn't on the primary monitor at load time - because Windows falls back
+            // to bitmap-stretching the content to the monitor's actual DPI instead of it rendering
+            // natively. Widened the "using" scope to cover ElementHost creation and Controls.Add,
+            // and added a HandleCreated hook below to reapply the same context for the normal
+            // ADX-driven case where this task pane's own handle - and so the ElementHost's
+            // cascade-created handle - isn't realized until after this constructor has returned.
             using (DpiAwarenessHelper.SetPerMonitorAware())
             {
                 _wpfControl = new XLEdgeCTP(this);
+
+                _host = new ElementHost
+                {
+                    Dock = DockStyle.Fill,
+                    MinimumSize = this.MinimumSize,
+                    Child = _wpfControl
+                };
+
+                this.Controls.Add(_host);
             }
 
-            _host = new ElementHost
-            {
-                Dock = DockStyle.Fill,
-                MinimumSize = this.MinimumSize,
-                Child = _wpfControl
-            };
+            // Covers the case where this task pane's own native handle - and therefore the
+            // ElementHost's cascade-created handle - is realized after this constructor returns
+            // (the normal case for an ADX-hosted task pane), so the WPF/WebView2 content's
+            // HwndSource still ends up created under Per-Monitor-V2.
+            this.HandleCreated += ADXExcelTaskPane1_HandleCreated;
 
-            this.Controls.Add(_host);
             this.Resize += XLEdgeReportsPane_Resize;
             this.ResizeBegin += XLEdgeReportsPane_ResizeBegin;
             this.ResizeEnd += XLEdgeReportsPane_ResizeEnd;
+        }
+
+        private void ADXExcelTaskPane1_HandleCreated(object sender, EventArgs e)
+        {
+            LogUtility.LogDebug($"ADXExcelTaskPane1.HandleCreated: dpi={GetEffectiveDpi()}, host handle already created={_host?.IsHandleCreated}");
+
+            // ApplyDpiAwareSizing was already called once, from the constructor - but at that
+            // point this.IsHandleCreated is false, so GetEffectiveDpi() cannot call
+            // GetDpiForWindow and falls back to this.DeviceDpi/96, which is wrong whenever the
+            // pane is created on an already->100%-DPI monitor (the common case: the user sets
+            // display scaling, THEN launches/reloads Excel, so DpiChanged never fires - there is
+            // no live DPI *change* while the pane is running, so it never gets a second chance to
+            // correct itself). this.MinimumSize (and _host.MinimumSize) were left permanently
+            // wrong at the 96-DPI value for the pane's entire lifetime.
+            //
+            // That stale MinimumSize.Width is exactly what WndProc's WM_SIZING/
+            // WM_WINDOWPOSCHANGING handlers below clamp against - confirmed via a real test log:
+            // at 150% DPI, WM_WINDOWPOSCHANGING logged "MinimumSize.Width=600" (the wrong,
+            // 96-DPI value) when it should have been 900, so it under-clamped a live native
+            // resize down to 600px, which then fought with SetBoundsCore's own (separately and
+            // correctly computed) 900px clamp - two enforcement paths disagreeing on the true
+            // minimum is what let the pane settle below its real minimum width in the first
+            // place. Now that the handle exists, GetEffectiveDpi() can read the real DPI via
+            // GetDpiForWindow, so re-running ApplyDpiAwareSizing here corrects MinimumSize (and
+            // _host.MinimumSize) before any live resize message arrives that depends on it.
+            ApplyDpiAwareSizing(GetEffectiveDpi());
+
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                // Touching Handle forces WinForms to realize the ElementHost's native window now,
+                // while the per-monitor context is active, if it has not already been created by
+                // this point.
+                if (_host != null)
+                {
+                    _ = _host.Handle;
+                }
+            }
         }
 
         private void ADXExcelTaskPane1_ADXCloseButtonClick(object sender, ADXCloseButtonClickEventArgs e)
@@ -117,8 +179,13 @@ namespace XLEdge
 
         private void XLEdgeReportsPane_DpiChanged(object sender, DpiChangedEventArgs e)
         {
-            ApplyDpiAwareSizing(e.DeviceDpiNew);
-            _wpfControl?.RefreshWebViewHeight();
+            using (new LogUtility.LogScope("ADXExcelTaskPane1.DpiChanged"))
+            {
+                LogUtility.LogDebug($"DpiChanged: {e.DeviceDpiOld} -> {e.DeviceDpiNew}, pane size before: {this.Width}x{this.Height}");
+                ApplyDpiAwareSizing(e.DeviceDpiNew);
+                _wpfControl?.RefreshWebViewHeight();
+                LogUtility.LogDebug($"DpiChanged: pane size after: {this.Width}x{this.Height}");
+            }
         }
 
         private void ApplyDpiAwareSizing(float dpiX)
@@ -126,6 +193,8 @@ namespace XLEdge
             var scale = dpiX / 96f;
             int minWidthPx = (int)Math.Round(_minWidthDip * scale);
             int minHeightPx = (int)Math.Round(_minHeightDip * scale);
+
+            LogUtility.LogDebug($"ApplyDpiAwareSizing: dpi={dpiX}, scale={scale:F2}, minWidthPx={minWidthPx}, minHeightPx={minHeightPx}, pane size before: {this.Width}x{this.Height}");
 
             this.MinimumSize = new Size(minWidthPx, minHeightPx);
             if (_host != null)
@@ -137,40 +206,76 @@ namespace XLEdge
                 this.Width = minWidthPx;
             if (this.Height < minHeightPx)
                 this.Height = minHeightPx;
+
+            LogUtility.LogDebug($"ApplyDpiAwareSizing: pane size after: {this.Width}x{this.Height}, host size: {_host?.Width}x{_host?.Height}");
         }
 
         private void XLEdgeReportsPane_ResizeBegin(object sender, EventArgs e)
         {
-            // Handle resize begin if needed
+            LogUtility.LogDebug($"ResizeBegin: pane size={this.Width}x{this.Height}");
         }
 
         private void XLEdgeReportsPane_ResizeEnd(object sender, EventArgs e)
         {
+            LogUtility.LogDebug($"ResizeEnd: pane size={this.Width}x{this.Height}, host size={_host?.Width}x{_host?.Height}");
             _wpfControl?.RefreshWebViewHeight();
         }
 
+        // Guards against infinite Resize reentrancy: setting this.Width/_host.Width below
+        // synchronously re-raises this same Resize event before the setter returns. Confirmed via
+        // a real test log at >100% DPI - without this guard, the reentrant call re-ran the exact
+        // same clamp logic, which (for reasons not fully pinned down at the Win32-message level,
+        // but consistently reproduced) kept flipping the pane back to a too-narrow width right
+        // after each clamp, producing dozens of recursive Resize calls per second - visually
+        // indistinguishable from "distorted" while it churned, and it only ever visually settled
+        // once a later, non-reentrant interaction (e.g. clicking the pane's border) issued one
+        // more resize that didn't re-trigger the loop. With the guard, a reentrant call just
+        // returns immediately instead of re-clamping, so each real resize event settles in at
+        // most two steps (the user's/OS's resize, then this handler's one corrective clamp).
+        private bool _isEnforcingMinWidth;
+
         private void XLEdgeReportsPane_Resize(object sender, EventArgs e)
         {
-            try
+            if (_isEnforcingMinWidth)
             {
-                var dpi = GetEffectiveDpi();
-                var dipWidth = this.Width * DefaultDpi / (float)dpi;
-
-                if (dipWidth < _minWidthDip)
-                {
-                    int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
-                    this.Width = minWidthPx;
-                    if (_host != null)
-                    {
-                        _host.Width = minWidthPx;
-                    }
-                }
-
-                _wpfControl?.RefreshWebViewHeight();
+                return;
             }
-            catch (Exception ex)
+
+            using (new LogUtility.LogScope("ADXExcelTaskPane1.Resize"))
             {
-                LogUtility.LogDebug($"XLEdgeReportsPane_Resize error: {ex.Message}");
+                try
+                {
+                    var dpi = GetEffectiveDpi();
+                    var dipWidth = this.Width * DefaultDpi / (float)dpi;
+
+                    LogUtility.LogDebug($"Resize: dpi={dpi}, pane size={this.Width}x{this.Height}, dipWidth={dipWidth:F1} (min required={_minWidthDip}), host size={_host?.Width}x{_host?.Height}, WebCtrl actual size={_wpfControl?.GetWebCtrlActualSize()}");
+
+                    if (dipWidth < _minWidthDip)
+                    {
+                        int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+                        LogUtility.LogDebug($"Resize: dipWidth below minimum - clamping pane width to {minWidthPx}px");
+
+                        _isEnforcingMinWidth = true;
+                        try
+                        {
+                            this.Width = minWidthPx;
+                            if (_host != null)
+                            {
+                                _host.Width = minWidthPx;
+                            }
+                        }
+                        finally
+                        {
+                            _isEnforcingMinWidth = false;
+                        }
+                    }
+
+                    _wpfControl?.RefreshWebViewHeight();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"XLEdgeReportsPane_Resize error: {ex.Message}");
+                }
             }
         }
 
@@ -191,21 +296,27 @@ namespace XLEdge
 
         private void ADXExcelTaskPane1_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
         {
-            try
+            using (new LogUtility.LogScope("ADXExcelTaskPane1.AfterTaskPaneShow"))
             {
-                var dpi = GetEffectiveDpi();
-                int targetWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
-                if (this.Width < targetWidthPx)
+                try
                 {
-                    this.Width = targetWidthPx;
-                }
+                    var dpi = GetEffectiveDpi();
+                    int targetWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+                    LogUtility.LogDebug($"AfterTaskPaneShow: dpi={dpi}, targetWidthPx={targetWidthPx}, pane size before: {this.Width}x{this.Height}, WebCtrl actual size={_wpfControl?.GetWebCtrlActualSize()}");
 
-                XLEdgeAppState.Instance.EdgePaneShown = false;
-                _wpfControl?.RefreshWebViewHeight();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "Error in AfterTaskPaneShow");
+                    if (this.Width < targetWidthPx)
+                    {
+                        this.Width = targetWidthPx;
+                    }
+
+                    XLEdgeAppState.Instance.EdgePaneShown = false;
+                    _wpfControl?.RefreshWebViewHeight();
+                    LogUtility.LogDebug($"AfterTaskPaneShow: pane size after: {this.Width}x{this.Height}");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "Error in AfterTaskPaneShow");
+                }
             }
         }
 
@@ -218,6 +329,7 @@ namespace XLEdge
                 if (width < this.MinimumSize.Width)
                 {
                     int minWidth = this.MinimumSize.Width;
+                    LogUtility.LogDebug($"WndProc WM_SIZING: requested width={width} below MinimumSize.Width={minWidth} - clamping (wParam={(int)m.WParam})");
                     switch ((int)m.WParam)
                     {
                         case WMSZ_LEFT:
@@ -238,6 +350,7 @@ namespace XLEdge
                 var pos = (Windowspos)Marshal.PtrToStructure(m.LParam, typeof(Windowspos));
                 if (pos.cx < this.MinimumSize.Width)
                 {
+                    LogUtility.LogDebug($"WndProc WM_WINDOWPOSCHANGING: requested cx={pos.cx} below MinimumSize.Width={this.MinimumSize.Width} - clamping");
                     pos.cx = this.MinimumSize.Width;
                     Marshal.StructureToPtr(pos, m.LParam, true);
                 }
@@ -252,6 +365,9 @@ namespace XLEdge
             int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
             int minHeightPx = (int)Math.Round(_minHeightDip * dpi / (float)DefaultDpi);
 
+            int requestedWidth = width;
+            int requestedHeight = height;
+
             if ((specified & BoundsSpecified.Width) != 0 && width < minWidthPx)
             {
                 width = minWidthPx;
@@ -261,6 +377,8 @@ namespace XLEdge
             {
                 height = minHeightPx;
             }
+
+            LogUtility.LogDebug($"SetBoundsCore: requested=({x},{y},{requestedWidth}x{requestedHeight}), specified={specified}, minWidthPx={minWidthPx}, applied=({x},{y},{width}x{height})");
 
             base.SetBoundsCore(x, y, width, height, specified);
         }
