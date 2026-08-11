@@ -44,9 +44,9 @@ namespace XLEdge.Views
             _parentPane = parentPane;
             _ribbonHelper = XLEdgeRibbonHelper.Current;
 
-            if (MainScrollViewer != null)
+            if (ContentContainer != null)
             {
-                MainScrollViewer.MinWidth = MinimumConfiguratorWidth;
+                ContentContainer.MinWidth = MinimumConfiguratorWidth;
             }
 
             Loaded += OnLoaded;
@@ -206,18 +206,12 @@ namespace XLEdge.Views
                 {
                     EnsureMinimumWidth();
                     UpdateLayout();
-                    MainScrollViewer?.UpdateLayout();
+                    ContentContainer?.UpdateLayout();
 
                     if (WebCtrl != null)
                     {
                         WebCtrl.SizeChanged -= WebCtrl_SizeChanged;
                         WebCtrl.SizeChanged += WebCtrl_SizeChanged;
-                    }
-
-                    if (MainScrollViewer != null)
-                    {
-                        MainScrollViewer.ScrollChanged -= MainScrollViewer_ScrollChanged;
-                        MainScrollViewer.ScrollChanged += MainScrollViewer_ScrollChanged;
                     }
 
                     Dispatcher.BeginInvoke(new Action(() =>
@@ -265,7 +259,7 @@ namespace XLEdge.Views
                 {
                     EnsureMinimumWidth();
                     UpdateLayout();
-                    MainScrollViewer?.UpdateLayout();
+                    ContentContainer?.UpdateLayout();
 
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
@@ -281,7 +275,7 @@ namespace XLEdge.Views
             {
                 EnsureMinimumWidth();
                 UpdateLayout();
-                MainScrollViewer?.UpdateLayout();
+                ContentContainer?.UpdateLayout();
                 ScheduleHeightCheck();
             }), "Error in OnSizeChanged");
         }
@@ -294,7 +288,7 @@ namespace XLEdge.Views
                 {
                     EnsureMinimumWidth();
                     UpdateLayout();
-                    MainScrollViewer?.UpdateLayout();
+                    ContentContainer?.UpdateLayout();
 
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
@@ -313,9 +307,9 @@ namespace XLEdge.Views
                 return;
             }
 
-            if (MainScrollViewer != null)
+            if (ContentContainer != null)
             {
-                MainScrollViewer.MinWidth = MinimumConfiguratorWidth;
+                ContentContainer.MinWidth = MinimumConfiguratorWidth;
             }
 
             if (_parentPane != null && _parentPane.Width < MinimumConfiguratorWidth)
@@ -328,7 +322,7 @@ namespace XLEdge.Views
 
         private void WebCtrl_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            if (MainScrollViewer != null && WebCtrl != null && !_isHeightCheckScheduled)
+            if (WebCtrl != null && !_isHeightCheckScheduled)
             {
                 _isHeightCheckScheduled = true;
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -336,7 +330,7 @@ namespace XLEdge.Views
                     try
                     {
                         _isHeightCheckScheduled = false;
-                        MainScrollViewer.UpdateLayout();
+                        ContentContainer?.UpdateLayout();
                     }
                     catch (Exception ex)
                     {
@@ -346,27 +340,23 @@ namespace XLEdge.Views
             }
         }
 
-        private void MainScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
-        {
-            // Check if viewport height changed significantly
-            if (e.ViewportHeight > 0)
-            {
-                ScheduleHeightCheck();
-            }
-        }
+        // No more ScrollViewer to raise ScrollChanged (see the XAML comment on ContentContainer's
+        // container Grid for why) - available height is now read directly off this UserControl's
+        // own ActualHeight in EnsureWebViewFillsAvailableSpace below, which SizeChanged (this
+        // control's own) already covers via OnSizeChanged -> ScheduleHeightCheck.
 
         private void EnsureWebViewFillsAvailableSpace()
         {
-            if (WebCtrl == null || MainScrollViewer == null)
+            if (WebCtrl == null)
                 return;
 
             try
             {
-                double viewportHeight = MainScrollViewer.ViewportHeight;
+                double availableHeight = this.ActualHeight;
 
-                if (viewportHeight > 0)
+                if (availableHeight > 0)
                 {
-                    double desiredHeight = viewportHeight - 20;
+                    double desiredHeight = availableHeight - 20;
 
                     if (desiredHeight < 400)
                         desiredHeight = 400;
@@ -381,7 +371,7 @@ namespace XLEdge.Views
                             parent.UpdateLayout();
                         }
 
-                        LogUtility.LogDebug($"Adjusted WebCtrl height to {desiredHeight} (viewport: {viewportHeight})");
+                        LogUtility.LogDebug($"Adjusted WebCtrl height to {desiredHeight} (available: {availableHeight})");
                     }
                 }
             }
@@ -403,7 +393,7 @@ namespace XLEdge.Views
                 {
                     _isHeightCheckScheduled = false;
                     UpdateLayout();
-                    MainScrollViewer?.UpdateLayout();
+                    ContentContainer?.UpdateLayout();
                     EnsureWebViewFillsAvailableSpace();
                 }
                 catch (Exception ex)
@@ -1317,7 +1307,7 @@ namespace XLEdge.Views
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 UpdateLayout();
-                MainScrollViewer?.UpdateLayout();
+                ContentContainer?.UpdateLayout();
                 ScheduleHeightCheck();
             }), DispatcherPriority.Loaded);
         }
