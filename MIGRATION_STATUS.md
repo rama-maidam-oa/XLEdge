@@ -1,6 +1,42 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
+
+## Server Configuration: "Nothing to save" on a no-op Save, 10s auto-hiding status, fixed status wrapping — 2026-08-13
+
+Three follow-up requests on `XLEdgeServerConfiguration`, confirmed by the user that the previous
+Default-checkbox fix is working correctly:
+
+1. **Save with no changes**: `BtnSave_Click` now calls a new `HasUnsavedChanges()` first, which
+   compares the grid's current in-memory rows against `CachedConfiguration` (the last-persisted
+   snapshot, kept in sync by `UpdateCachedConfiguration` after every successful save/load) as an
+   order-independent set of `Name|Address|IsDefault` tuples, ignoring the empty add-row placeholder
+   the same way `SaveConfiguration`'s own `validInstances` filter already does. If nothing differs,
+   shows "Nothing to save." and skips `SaveConfiguration()` entirely instead of re-validating and
+   rewriting an unchanged file.
+
+2. **Status auto-hide**: the status text/border used to stay on screen indefinitely until the next
+   button click, even though it never reflects anything that happens after that. Added a single
+   10-second `DispatcherTimer` (`statusAutoHideTimer`), started/restarted at the end of `UpdateStatus`
+   itself (so every call site - load, save, delete, validation errors, everything - gets the same
+   behavior automatically) and stopped on the window's `Closed` event. On tick, collapses
+   `StatusBorder` (not just clearing the text - its Style sets a colored background/border box per
+   message type, which would otherwise linger as an empty colored rectangle) and clears `txtStatus`.
+   `UpdateStatus` itself sets `StatusBorder.Visibility = Visible` again on every new message. Restarts
+   (stop then start) rather than only starting when idle, so two quick status changes in a row each
+   get their own full 10 seconds rather than the second inheriting whatever was left of the first's
+   countdown.
+
+3. **Status text wrapping**: `txtStatus` already had `TextWrapping="Wrap"` set locally in XAML, but
+   all 4 status styles it dynamically switches between (`SuccessMessage`/`ErrorMessage`/
+   `WarningMessage`/`InfoMessage`, `Themes\GlobalStyles.xaml`) explicitly set
+   `TextWrapping="NoWrap"` - a direct contradiction. A local XAML value always wins over a Style
+   setter for the same property, so this never actually forced `NoWrap` in the running app, but it
+   was misleading and fragile (relying on precedence rules to save it from a declared-opposite
+   intent, easy to break by a future edit that moves the wrap setting). Removed the four `NoWrap`
+   setters - confirmed via `grep` that none of the 4 styles are used anywhere else in the app, so
+   this is safe. A long status message (e.g. a duplicate-name validation error listing several
+   names) now visibly wraps within its column instead of depending solely on that precedence quirk.
 
 ## Correction: reverted the IsDefault rebind below, fixed the real gap at the reload step instead — 2026-08-12
 

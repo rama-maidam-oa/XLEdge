@@ -958,12 +958,18 @@
 		<Setter Property="CornerRadius" Value="4"/>
 	</Style>
 
+	<!-- Bug fix: these 4 styles each set TextWrapping="NoWrap", contradicting the
+	     TextWrapping="Wrap" already set locally on XLEdgeServerConfiguration's txtStatus (a local
+	     XAML value always wins over a Style setter for the same property, so this never actually
+	     forced NoWrap in practice, but it directly contradicted the intended behavior and made the
+	     wrapping easy to break by accident). Removed - a long status message (e.g. a duplicate-name
+	     validation error listing several names) now visibly wraps within its column instead of
+	     relying solely on local-value precedence to save it from overlapping the buttons next to it. -->
 	<Style x:Key="SuccessMessage" TargetType="TextBlock">
 		<Setter Property="Foreground" Value="#155724"/>
 		<Setter Property="FontFamily" Value="Segoe UI"/>
 		<Setter Property="FontSize" Value="12"/>
 		<Setter Property="Padding" Value="12,8"/>
-        <Setter Property="TextWrapping" Value="NoWrap"/>
 	</Style>
 
 	<Style x:Key="ErrorMessage" TargetType="TextBlock">
@@ -971,7 +977,6 @@
 		<Setter Property="FontFamily" Value="Segoe UI"/>
 		<Setter Property="FontSize" Value="12"/>
 		<Setter Property="Padding" Value="12,8"/>
-        <Setter Property="TextWrapping" Value="NoWrap"/>
 	</Style>
 
 	<Style x:Key="WarningMessage" TargetType="TextBlock">
@@ -979,7 +984,6 @@
 		<Setter Property="FontFamily" Value="Segoe UI"/>
 		<Setter Property="FontSize" Value="12"/>
 		<Setter Property="Padding" Value="12,8"/>
-        <Setter Property="TextWrapping" Value="NoWrap"/>
 	</Style>
 
 	<Style x:Key="InfoMessage" TargetType="TextBlock">
@@ -987,7 +991,6 @@
 		<Setter Property="FontFamily" Value="Segoe UI"/>
 		<Setter Property="FontSize" Value="12"/>
 		<Setter Property="Padding" Value="12,8"/>
-        <Setter Property="TextWrapping" Value="NoWrap"/>
 	</Style>
 
 	<!-- ==================== DataGrid Styles ==================== -->

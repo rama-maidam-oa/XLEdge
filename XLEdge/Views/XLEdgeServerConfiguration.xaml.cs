@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using System.Xml.Linq;
 
 namespace XLEdge.Views
@@ -40,6 +41,11 @@ namespace XLEdge.Views
         private bool isInternalUpdate = false;
         private string persistedDefaultName;
 
+        // Auto-hides the status message/border 10 seconds after it's shown - previously it stayed
+        // on screen indefinitely until the next button click, which is confusing since it doesn't
+        // reflect anything changing after that.
+        private readonly DispatcherTimer statusAutoHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+
         public XLEdgeServerConfiguration()
         {
             InitializeComponent();
@@ -47,7 +53,18 @@ namespace XLEdge.Views
             urlInstances = new ObservableCollection<UrlInstance>();
             dgInstances.ItemsSource = urlInstances;
 
+            statusAutoHideTimer.Tick += StatusAutoHideTimer_Tick;
+            this.Closed += (s, e) => statusAutoHideTimer.Stop();
+
             LoadConfiguration();
+        }
+
+        private void StatusAutoHideTimer_Tick(object sender, EventArgs e)
+        {
+            statusAutoHideTimer.Stop();
+            StatusBorder.Visibility = Visibility.Collapsed;
+            txtStatus.Text = string.Empty;
+            AdjustWindowWidthToContent();
         }
 
         // Replaces EnhancedDragDropHelper.EnableWindowDrag(this) now that the window has a real
@@ -395,7 +412,44 @@ namespace XLEdge.Views
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
+            if (!HasUnsavedChanges())
+            {
+                UpdateStatus("Nothing to save.", StatusMessageType.Info);
+                return;
+            }
+
             SaveConfiguration();
+        }
+
+        /// <summary>
+        /// Compares the grid's current, in-memory rows against the last-persisted snapshot
+        /// (CachedConfiguration, kept in sync with disk by UpdateCachedConfiguration after every
+        /// successful save/load) to tell whether Save would actually write anything different.
+        /// Order-independent (grid rows can reorder via ReorderInstancesWithDefaultFirst without
+        /// that alone counting as a real change) and ignores the empty add-row placeholder, the
+        /// same way SaveConfiguration's own validInstances filter does.
+        /// </summary>
+        private bool HasUnsavedChanges()
+        {
+            List<UrlInstanceSnapshot> baseline;
+            lock (CachedConfigurationLock)
+            {
+                baseline = CachedConfiguration ?? new List<UrlInstanceSnapshot>();
+            }
+
+            var current = urlInstances
+                .Where(u => !string.IsNullOrWhiteSpace(u.Name))
+                .Select(u => $"{u.Name?.Trim().ToLowerInvariant()}|{u.Address?.Trim().TrimEnd('/')}|{u.IsDefault}")
+                .OrderBy(s => s, StringComparer.Ordinal)
+                .ToList();
+
+            var currentBaseline = baseline
+                .Where(s => !string.IsNullOrWhiteSpace(s.Name))
+                .Select(s => $"{s.Name?.Trim().ToLowerInvariant()}|{s.Address?.Trim().TrimEnd('/')}|{s.IsDefault}")
+                .OrderBy(s => s, StringComparer.Ordinal)
+                .ToList();
+
+            return !current.SequenceEqual(currentBaseline);
         }
 
         private void BtnDelete_Click(object sender, RoutedEventArgs e)
@@ -556,10 +610,17 @@ namespace XLEdge.Views
         {
             Dispatcher.BeginInvoke(new Action(() =>
             {
+                StatusBorder.Visibility = Visibility.Visible;
                 txtStatus.Text = message;
                 txtStatus.Style = (Style)FindResource(GetStatusStyleKey(messageType));
                 StatusBorder.Style = (Style)FindResource(GetStatusBorderStyleKey(messageType));
                 AdjustWindowWidthToContent();
+
+                // Restart rather than just start: a second status shown before the first one's 10
+                // seconds are up (e.g. two quick actions in a row) should get its own full 10
+                // seconds, not inherit whatever's left on the previous message's countdown.
+                statusAutoHideTimer.Stop();
+                statusAutoHideTimer.Start();
             }));
         }
 
