@@ -77,6 +77,29 @@ namespace XLEdge.Helpers
         }
 
         /// <summary>
+        /// Reduces a table ID (shape "ORB_{reportId}_{runId}_{E|P}") to the stable identity of "this
+        /// report, run live vs scheduled" - reportId plus the Edge/Process type suffix, excluding the
+        /// volatile per-execution runId segment. Two table IDs from different runs of the same report
+        /// (same reportId, same type) share an identity key; a live ("_E") and scheduled ("_P") run of
+        /// the same reportId do not - they must never be treated as the same report's data.
+        /// </summary>
+        public static string GetReportIdentityKey(string tableId)
+        {
+            if (string.IsNullOrWhiteSpace(tableId))
+            {
+                return tableId ?? string.Empty;
+            }
+
+            string[] parts = tableId.Split('_');
+            if (parts.Length < 4)
+            {
+                return tableId;
+            }
+
+            return $"{parts[0]}_{parts[1]}_{parts[parts.Length - 1]}";
+        }
+
+        /// <summary>
         /// Finds the worksheet whose "IT2" cell identifies a given TableID, first checking the
         /// supplied SheetName (honoring the "_E"/"_P" suffix pairing rule) before falling back
         /// to a full workbook scan. Returns null if no match is found.
@@ -105,9 +128,10 @@ namespace XLEdge.Helpers
                     bool matches;
                     if (tableId.EndsWith("_E", StringComparison.Ordinal) || tableId.EndsWith("_P", StringComparison.Ordinal))
                     {
-                        string[] parts1 = tableId.Split('_');
-                        string[] parts2 = tableBoundName.Split('_');
-                        matches = parts1.Length > 1 && parts2.Length > 1 && parts1[1] == parts2[1];
+                        // Match on reportId AND the Edge/Process type suffix - a companion sheet bound
+                        // to a live ("_E") run of a report must never be treated as belonging to a
+                        // scheduled ("_P") run of the same reportId, or vice versa.
+                        matches = string.Equals(GetReportIdentityKey(tableId), GetReportIdentityKey(tableBoundName), StringComparison.Ordinal);
                     }
                     else
                     {

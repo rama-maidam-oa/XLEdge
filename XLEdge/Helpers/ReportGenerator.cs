@@ -1846,6 +1846,25 @@ namespace XLEdge.Helpers
             }
             else
             {
+                // GetParameterSheet returned null - either no sheet named paramSheetName exists yet,
+                // or one does but it's stale (bound to a different reportId/type via its own IT2), a
+                // leftover from a previous, differently-keyed report generation. A stale sheet must be
+                // deleted before adding a fresh one, or Worksheets.Add + set_Name below throws
+                // COMException "That name is already taken" (Excel.Application.DisplayAlerts is
+                // already false for the whole generation via ExcelBulkOperationScope, so this deletes
+                // without a confirmation prompt).
+                if (ExcelSheetHelper.SheetExists(paramSheetName, workbook))
+                {
+                    try
+                    {
+                        ((Excel.Worksheet)workbook.Worksheets[paramSheetName]).Delete();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"{nameof(BuildCompanionParameterSheet)}: failed to delete stale companion parameter sheet '{paramSheetName}' before recreating it");
+                    }
+                }
+
                 try
                 {
                     paramSheet = (Excel.Worksheet)workbook.Worksheets.Add(Type.Missing, dataSheet, Type.Missing, Type.Missing);
@@ -3060,7 +3079,18 @@ namespace XLEdge.Helpers
             }
 
             string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-            return Path.Combine(downloadsFolder, fileName);
+            return Path.Combine(downloadsFolder, MakeUniqueFileName(fileName));
+        }
+
+        // Appends a millisecond-precision timestamp to a file name (before its extension) so two
+        // different rows whose image/attachment URLs happen to resolve to the same generic basename
+        // (or two overlapping report generations) never collide on the same local destination path.
+        private static string MakeUniqueFileName(string fileName)
+        {
+            string ext = Path.GetExtension(fileName);
+            string baseName = Path.GetFileNameWithoutExtension(fileName);
+            long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            return $"{baseName}_{timestampMs}{ext}";
         }
 
         // Extracted from AddImageColumn (EmbedImageForRow) - after a picture is embedded, grows the
@@ -3369,6 +3399,12 @@ namespace XLEdge.Helpers
             {
                 if (wb == null || string.IsNullOrWhiteSpace(xml)) return;
 
+                // The clear key is this report's identity (reportId + Edge/Process type), not the
+                // full, volatile tableId (which includes a fresh runId every download) - otherwise a
+                // re-download of the same report/process never finds its own prior CustomXMLPart to
+                // delete, and stale entries accumulate on every run indefinitely.
+                string newIdentityKey = ExcelSheetHelper.GetReportIdentityKey(listObjectName);
+
                 var parts = wb.CustomXMLParts;
                 try
                 {
@@ -3377,9 +3413,25 @@ namespace XLEdge.Helpers
                         var part = parts[i];
                         try
                         {
-                            if (!string.IsNullOrWhiteSpace(part.XML) &&
-                                (part.XML.Contains($"<ListObjectName>{listObjectName}</ListObjectName>") ||
-                                 part.XML.Contains($"<InfoID>{listObjectName}</InfoID>")))
+                            if (string.IsNullOrWhiteSpace(part.XML))
+                            {
+                                continue;
+                            }
+
+                            bool shouldDelete = part.XML.Contains($"<InfoID>{listObjectName}</InfoID>");
+
+                            if (!shouldDelete)
+                            {
+                                Match listObjectNameMatch = Regex.Match(part.XML, "<ListObjectName>([^<]*)</ListObjectName>");
+                                if (listObjectNameMatch.Success)
+                                {
+                                    string oldListObjectName = listObjectNameMatch.Groups[1].Value;
+                                    shouldDelete = string.Equals(oldListObjectName, listObjectName, StringComparison.Ordinal) ||
+                                        string.Equals(ExcelSheetHelper.GetReportIdentityKey(oldListObjectName), newIdentityKey, StringComparison.Ordinal);
+                                }
+                            }
+
+                            if (shouldDelete)
                             {
                                 part.Delete();
                             }

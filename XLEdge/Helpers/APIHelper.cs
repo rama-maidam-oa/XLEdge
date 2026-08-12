@@ -146,10 +146,10 @@ namespace XLEdge.Helpers
                             return null;
                         }
 
-                        string fileName = ExtractFileNameFromContentDisposition(response) ?? $"attachment_{DateTime.Now.Ticks}";
+                        string fileName = ExtractFileNameFromContentDisposition(response) ?? "attachment";
                         string downloadsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
                         Directory.CreateDirectory(downloadsFolder);
-                        string destinationPath = Path.Combine(downloadsFolder, fileName);
+                        string destinationPath = Path.Combine(downloadsFolder, MakeUniqueFileName(fileName));
 
                         using (Stream responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
                         using (var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -218,6 +218,17 @@ namespace XLEdge.Helpers
                 LogUtility.LogException(ex, nameof(ExtractFileNameFromContentDisposition));
                 return null;
             }
+        }
+
+        // Appends a millisecond-precision timestamp to a file name (before its extension) so two
+        // different attachments that happen to share the same server-provided or fallback name never
+        // collide on the same local destination path.
+        private static string MakeUniqueFileName(string fileName)
+        {
+            string ext = Path.GetExtension(fileName);
+            string baseName = Path.GetFileNameWithoutExtension(fileName);
+            long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            return $"{baseName}_{timestampMs}{ext}";
         }
 
         private static async Task<string> ExecuteApiCall(HttpClient client, string sendURL, string StrContentType, string PostData, string MethodType, CancellationToken cancellationToken)

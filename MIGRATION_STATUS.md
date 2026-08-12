@@ -2,6 +2,66 @@
 
 Last updated: 2026-08-12
 
+## Fixed: stale CustomXMLParts/companion-sheet crash on re-download, non-unique image/attachment file names — 2026-08-12
+
+Two defects found by the user testing the build from the fix batch below.
+
+### Stale CustomXMLParts and companion parameter sheet cause "That name is already taken" / "Reports parameters information worksheet missing"
+
+Confirmed via a real user log (`XLEdge_Logs_12-Aug-2026.log`): `BuildCompanionParameterSheet`
+(`Helpers\ReportGenerator.cs`) threw `COMException: That name is already taken. Try a different one.`
+at its `paramSheet.Name = paramSheetName` line, and the user separately saw "Reports parameters
+information worksheet missing. Please rerun the report to generate." when selecting a report's
+parameters sheet.
+
+Root cause, two compounding bugs on the same underlying issue - the tableId (`ORB_{reportId}_{runId}_
+{E|P}`) includes a fresh, volatile `runId` on every download, but the code cleaning up/matching a
+report's *prior* data used that full, volatile tableId as the key instead of the report's stable
+identity (reportId + Edge/Process type):
+
+1. `SaveCustomXmlPart` only deleted a previous `CustomXMLPart` whose `<ListObjectName>` **exactly**
+   matched the new tableId - which, containing a new runId every run, never matches any part from a
+   previous download of the same report. Every re-download left the prior run's `CustomXMLPart`
+   behind, accumulating indefinitely instead of being replaced.
+2. `ExcelSheetHelper.GetParameterSheet`'s "does this existing companion sheet belong to this table"
+   check compared only the reportId segment (`parts[1]`), ignoring the Edge/Process suffix entirely -
+   so a live and a scheduled run of the same reportId could be treated as the same report's data. More
+   immediately, when a companion sheet with the target name existed but genuinely didn't validate
+   (stale/orphaned - e.g. from a workbook with manually copied sheets, visible in the user's own repro:
+   tabs named "Copy of ..."), `BuildCompanionParameterSheet`'s create-new-sheet branch didn't know a
+   same-named sheet already existed and crashed trying to name the new one identically.
+
+Fixed: added `ExcelSheetHelper.GetReportIdentityKey(tableId)` - reduces a tableId to
+`{prefix}_{reportId}_{E|P}`, dropping the volatile runId - and used it in two places. (1)
+`GetParameterSheet`'s match now requires both reportId and the Edge/Process suffix to agree (a live
+run's companion sheet can never be mistaken for a scheduled run's, or vice versa). (2)
+`SaveCustomXmlPart` now deletes any prior `CustomXMLPart` whose `<ListObjectName>` shares the new
+tableId's identity key (via a regex extraction of the stored value), not just an exact string match -
+so a re-download of the same report/process now actually finds and clears its own prior entry instead
+of accumulating stale ones. (3) `BuildCompanionParameterSheet`'s create-branch now checks
+`ExcelSheetHelper.SheetExists(paramSheetName, workbook)` first and deletes a same-named stale sheet
+before adding the new one (`Application.DisplayAlerts` is already `false` for the whole generation via
+`ExcelBulkOperationScope`, so this doesn't prompt) - matching the same "delete old, write new" pattern
+already used for the main data table (`PrepareExistingReportSheet`) and now for CustomXMLParts.
+
+### Downloaded image/attachment file names could collide, corrupting the wrong row's embedded image or attachment
+
+`BuildImageDestinationPath` (image embedding, `AddImageColumn`/`EmbedImageForRow`) derived its local
+temp-file name purely from the image URL's last path segment, and `ApiHelper.DownloadFileAsync`
+(attachment downloads) derived its name from the server's Content-Disposition header (falling back to
+`attachment_{DateTime.Now.Ticks}` only when that header was missing) - in both cases, two different
+rows/reports whose URLs or server-provided names happen to share the same basename (a real risk with
+generic CDN/attachment file names, and unavoidable given there's still no concurrency guard around
+overlapping report generations - see the OISR-22045 fix above) download to the exact same local path,
+risking one download's write/delete stepping on another's read.
+
+Fixed by adding `MakeUniqueFileName` (duplicated in both `ReportGenerator.cs` and `APIHelper.cs`,
+matching this codebase's established convention of a small private per-file copy over a shared
+helper) - appends a millisecond-precision Unix timestamp (`DateTimeOffset.UtcNow.
+ToUnixTimeMilliseconds()`, a `long`) before the file extension, so every download gets its own unique
+local destination path regardless of the source name. Applied unconditionally in both places (not just
+as a missing-name fallback), including when a name was actually available.
+
 ## Fixed: four multi-workbook/formatting/parameter defects from OISR-21571, OISR-22045, OISR-22046, OISR-22047 — 2026-08-12
 
 Four user-reported defects, all confirmed working correctly in the VB.NET version, root-caused against
