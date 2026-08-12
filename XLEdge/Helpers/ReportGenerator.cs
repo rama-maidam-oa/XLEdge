@@ -371,7 +371,7 @@ namespace XLEdge.Helpers
                 return;
             }
 
-            if (!await TryBuildReportTableAsync(reportMeta, csvResponse, metaResponse, paramsResponse, title))
+            if (!await TryBuildReportTableAsync(reportMeta, csvResponse, metaResponse, paramsResponse, title, isDrilldownRequest))
             {
                 return;
             }
@@ -620,12 +620,12 @@ namespace XLEdge.Helpers
         }
 
         // Extracted from CreateReportFromTitleAsyncCore.
-        private static async Task<bool> TryBuildReportTableAsync(ReportMeta reportMeta, string csvResponse, string metaResponse, string paramsResponse, string title)
+        private static async Task<bool> TryBuildReportTableAsync(ReportMeta reportMeta, string csvResponse, string metaResponse, string paramsResponse, string title, bool isDrilldownRequest)
         {
             try
             {
                 await SetMessage("Building report in Excel...");
-                BuildReportTable(_edgeRequest, reportMeta, csvResponse, metaResponse, paramsResponse, title);
+                BuildReportTable(_edgeRequest, reportMeta, csvResponse, metaResponse, paramsResponse, title, isDrilldownRequest);
                 return true;
             }
             catch (Exception ex)
@@ -930,7 +930,7 @@ namespace XLEdge.Helpers
         // decomposed below into small, single-purpose private helpers. Every line of logic is
         // unchanged - this only changes how the logic is packaged into methods, not what it does or
         // the order in which it runs, to avoid introducing any behavioral regression.
-        private static void BuildReportTable(EdgeRequest request, ReportMeta reportMeta, string csvResponse, string metaJson, string paramsJson, string title)
+        private static void BuildReportTable(EdgeRequest request, ReportMeta reportMeta, string csvResponse, string metaJson, string paramsJson, string title, bool isDrilldownRequest)
         {
             Excel.Application excelApp = XLApp.App;
             if (excelApp == null)
@@ -961,7 +961,7 @@ namespace XLEdge.Helpers
 
             string reportTitleText = ComputeReportTitleText(reportMeta, request);
 
-            WriteReportParameterSection(workbook, sheet, sameSheet, reportTitleText, paramsJson, dataRowCount, tableId);
+            WriteReportParameterSection(workbook, sheet, sameSheet, reportTitleText, paramsJson, dataRowCount, tableId, isDrilldownRequest);
 
             AddDrilldownHyperlinks(sheet, listObject, reportMeta);
             AddAttachmentAndImageColumns(sheet, listObject, reportMeta);
@@ -1212,6 +1212,8 @@ namespace XLEdge.Helpers
             listObject.Name = tableId;
             listObject.TableStyle = "TableStyleLight9";
 
+            ApplyColumnNumberFormats(listObject, reportMeta, mappings);
+
             return listObject;
         }
 
@@ -1281,13 +1283,13 @@ namespace XLEdge.Helpers
 
         // Extracted from BuildReportTable - writes the report's parameter display, either as the
         // in-sheet banner (same-sheet mode) or the separate companion parameter sheet.
-        private static void WriteReportParameterSection(Excel.Workbook workbook, Excel.Worksheet sheet, bool sameSheet, string reportTitleText, string paramsJson, int dataRowCount, string tableId)
+        private static void WriteReportParameterSection(Excel.Workbook workbook, Excel.Worksheet sheet, bool sameSheet, string reportTitleText, string paramsJson, int dataRowCount, string tableId, bool isDrilldownRequest)
         {
             if (sameSheet)
             {
                 try
                 {
-                    WriteSameSheetBanner(sheet, reportTitleText, paramsJson, dataRowCount, tableId);
+                    WriteSameSheetBanner(sheet, reportTitleText, paramsJson, dataRowCount, tableId, isDrilldownRequest);
                 }
                 catch (Exception ex)
                 {
@@ -1298,7 +1300,7 @@ namespace XLEdge.Helpers
             {
                 try
                 {
-                    BuildCompanionParameterSheet(workbook, sheet, reportTitleText, paramsJson, tableId, dataRowCount);
+                    BuildCompanionParameterSheet(workbook, sheet, reportTitleText, paramsJson, tableId, dataRowCount, isDrilldownRequest);
                 }
                 catch (Exception ex)
                 {
@@ -1442,7 +1444,7 @@ namespace XLEdge.Helpers
             }
         }
 
-        private static void WriteSameSheetBanner(Excel.Worksheet sheet, string reportTitle, string paramsJson, int dataRowCount, string tableId)
+        private static void WriteSameSheetBanner(Excel.Worksheet sheet, string reportTitle, string paramsJson, int dataRowCount, string tableId, bool isDrilldownRequest)
         {
             try
             {
@@ -1504,7 +1506,7 @@ namespace XLEdge.Helpers
             sectionRange.Interior.Color = Rgb(241, 169, 131);
 
             // Writes the parameter label/value rows and bookkeeping cells; shared with the refresh path.
-            RewriteParameterSectionRows(sheet, paramsJson, tableId, sameSheetMode: true);
+            RewriteParameterSectionRows(sheet, paramsJson, tableId, sameSheetMode: true, isDrilldownRequest);
 
             try
             {
@@ -1526,7 +1528,7 @@ namespace XLEdge.Helpers
         // Cognitive-complexity refactor (SonarQube S3776, was 29): decomposed into single-purpose
         // helpers, one per parameter-sheet cell group. Every clear/write, comment, and error message
         // is unchanged.
-        private static void RewriteParameterSectionRows(Excel.Worksheet paramSheet, string paramsJson, string tableId, bool sameSheetMode)
+        private static void RewriteParameterSectionRows(Excel.Worksheet paramSheet, string paramsJson, string tableId, bool sameSheetMode, bool isDrilldownRequest)
         {
             List<(string Label, string ValueText)> paramRows = ParseParamDisplayRows(
                 paramsJson, out string oracleRespId, out string oracleRespValue, out string segmentValues, out string segmentDisplayValues);
@@ -1540,7 +1542,7 @@ namespace XLEdge.Helpers
                 WriteCompanionParamRows(paramSheet, paramRows, tableId);
             }
 
-            WriteParameterBookkeepingCells(paramSheet, tableId, sameSheetMode);
+            WriteParameterBookkeepingCells(paramSheet, tableId, sameSheetMode, isDrilldownRequest);
             WriteOracleResponsibilityCells(paramSheet, oracleRespId, oracleRespValue);
             WriteSegmentValueCell(paramSheet, segmentValues);
             WriteSegmentDisplayValueCell(paramSheet, segmentDisplayValues);
@@ -1620,11 +1622,11 @@ namespace XLEdge.Helpers
         }
 
         // Extracted from RewriteParameterSectionRows - writes the IT1/IT2/IT5 bookkeeping cells.
-        private static void WriteParameterBookkeepingCells(Excel.Worksheet paramSheet, string tableId, bool sameSheetMode)
+        private static void WriteParameterBookkeepingCells(Excel.Worksheet paramSheet, string tableId, bool sameSheetMode, bool isDrilldownRequest)
         {
             try
             {
-                paramSheet.Range["IT1"].Value2 = XLEdgeAppState.Instance.FollowDrilldown ? "Child Report" : string.Empty;
+                paramSheet.Range["IT1"].Value2 = isDrilldownRequest ? "Child Report" : string.Empty;
                 paramSheet.Range["IT5"].Value2 = XLEdgeValueFormatter.RemoveEquaSymbol(XLEdgeAppState.Instance.LoginUrl);
 
                 if (!sameSheetMode)
@@ -1829,7 +1831,7 @@ namespace XLEdge.Helpers
 
         private static int Rgb(int r, int g, int b) => r + (g << 8) + (b << 16);
 
-        private static void BuildCompanionParameterSheet(Excel.Workbook workbook, Excel.Worksheet dataSheet, string reportTitle, string paramsJson, string tableId, int dataRowCount)
+        private static void BuildCompanionParameterSheet(Excel.Workbook workbook, Excel.Worksheet dataSheet, string reportTitle, string paramsJson, string tableId, int dataRowCount, bool isDrilldownRequest)
         {
             string paramSheetName = $"P_{dataSheet.Name}";
             if (paramSheetName.Length >= 29)
@@ -1887,7 +1889,7 @@ namespace XLEdge.Helpers
             sectionRange.Interior.Color = Rgb(241, 169, 131);
 
             // Writes the parameter label/value rows and bookkeeping cells; shared with the refresh path.
-            RewriteParameterSectionRows(paramSheet, paramsJson, tableId, sameSheetMode: false);
+            RewriteParameterSectionRows(paramSheet, paramsJson, tableId, sameSheetMode: false, isDrilldownRequest);
 
             try
             {
@@ -3425,6 +3427,7 @@ namespace XLEdge.Helpers
             public string RunId;
             public string StoredMetaJson;
             public string StoredParamsJson;
+            public ReportMeta ParsedMeta;
             public List<(string Original, string Modified, int RawIndex)> Mappings;
             public string EeLoginUrl;
 
@@ -3986,9 +3989,71 @@ namespace XLEdge.Helpers
 
             if (ctx.NewDataCount > 0)
             {
+                if (ctx.ParsedMeta == null && !string.IsNullOrWhiteSpace(ctx.StoredMetaJson))
+                {
+                    try { ctx.ParsedMeta = JsonSerializer.Deserialize<ReportMeta>(ctx.StoredMetaJson, JsonGlobals.Options); }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for refreshed data write");
+                    }
+                }
+
                 for (int tc = 1; tc <= ctx.TableCols; tc++)
                 {
                     WriteRefreshedColumnData(ctx, tc);
+                }
+            }
+        }
+
+        // Looks up a column's server-declared DataType/NumberFormat by its original (unmodified)
+        // name. Mirrors the lookup BuildDataWriteArray already does at initial table build.
+        private static RptColumn ResolveReportColumn(ReportMeta reportMeta, string originalColumnName)
+        {
+            return reportMeta?.Columns?.FirstOrDefault(rc => string.Equals(rc.Name, originalColumnName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Resolves the Excel NumberFormat to apply for a column: the server-declared format
+        // (Properties.Fmt) if present, else "@" (text) for STRING columns, else "General" - matching
+        // VB.NET's DataTableToExcel (FormProcessBar.vb) column-format computation.
+        private static string ResolveColumnNumberFormat(RptColumn col)
+        {
+            if (col == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrEmpty(col.Properties?.Fmt))
+            {
+                return col.Properties.Fmt;
+            }
+
+            return string.Equals(col.DataType, "STRING", StringComparison.OrdinalIgnoreCase) ? "@" : "General";
+        }
+
+        // Stamps each table column's NumberFormat from the report metadata, matching VB.NET's
+        // DataTableToExcel column-format computation - runs once at initial table creation so a
+        // column's format is set explicitly instead of left to Excel's own autodetection.
+        private static void ApplyColumnNumberFormats(Excel.ListObject listObject, ReportMeta reportMeta, List<(string Original, string Modified, int RawIndex)> mappings)
+        {
+            for (int c = 0; c < mappings.Count; c++)
+            {
+                string fmt = ResolveColumnNumberFormat(ResolveReportColumn(reportMeta, mappings[c].Original));
+                if (string.IsNullOrEmpty(fmt))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var dataBodyRange = listObject.ListColumns[c + 1].DataBodyRange;
+                    if (dataBodyRange != null)
+                    {
+                        dataBodyRange.NumberFormat = fmt;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Failed to set NumberFormat for column '{mappings[c].Modified}'");
                 }
             }
         }
@@ -4026,13 +4091,35 @@ namespace XLEdge.Helpers
                 return;
             }
 
+            RptColumn reportColumn = ResolveReportColumn(ctx.ParsedMeta, map.Original);
+
             try
             {
-                object[,] colArr = BuildRefreshedColumnArray(ctx, colWriteStartRow, colRowCount, rawIndex);
+                object[,] colArr = BuildRefreshedColumnArray(ctx, colWriteStartRow, colRowCount, rawIndex, reportColumn?.DataType);
 
                 var colStartCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow, tc];
                 var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
-                ctx.Sheet.Range[colStartCell, colEndCell].Value2 = colArr;
+                var writeRange = ctx.Sheet.Range[colStartCell, colEndCell];
+
+                // Only re-stamp NumberFormat when the user has opted in via "Override cell format"
+                // (XLEdgeAppState.Instance.OverrideFormats) - otherwise leave whatever format is
+                // already on the cell (the server-declared format from initial build, or the user's
+                // own manual override) untouched, matching VB.NET's unconditional preserve-on-refresh
+                // behavior.
+                if (XLEdgeAppState.Instance.OverrideFormats)
+                {
+                    string fmt = ResolveColumnNumberFormat(reportColumn);
+                    if (!string.IsNullOrEmpty(fmt))
+                    {
+                        try { writeRange.NumberFormat = fmt; }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, $"Failed to reset NumberFormat for column {tc} ('{modifiedName}')");
+                        }
+                    }
+                }
+
+                writeRange.Value2 = colArr;
             }
             catch (Exception ex)
             {
@@ -4041,7 +4128,10 @@ namespace XLEdge.Helpers
         }
 
         // Extracted from WriteRefreshedColumnData - builds the single-column value array to write.
-        private static object[,] BuildRefreshedColumnArray(RefreshContext ctx, int colWriteStartRow, int colRowCount, int rawIndex)
+        // Applies the same XLEdgeValueFormatter.FormatValue transform BuildDataWriteArray uses at
+        // initial build, so a refreshed DATE/DATETIME value round-trips into the same clean,
+        // Excel-parseable shape as the original build instead of a raw, differently-shaped CSV string.
+        private static object[,] BuildRefreshedColumnArray(RefreshContext ctx, int colWriteStartRow, int colRowCount, int rawIndex, string colType)
         {
             object[,] colArr = new object[colRowCount, 1];
             for (int i = 0; i < colRowCount; i++)
@@ -4049,7 +4139,8 @@ namespace XLEdge.Helpers
                 int physicalRow = colWriteStartRow + i;
                 int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
                 var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
-                colArr[i, 0] = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+                object raw = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+                colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
             }
 
             return colArr;
@@ -4442,7 +4533,13 @@ namespace XLEdge.Helpers
                 // the shared writer sees the shape it already knows how to parse.
                 string displayRowsJson = AdaptRefreshPayloadToDisplayRowsJson(paramsJson);
 
-                RewriteParameterSectionRows(paramSheet, displayRowsJson, tableObj.Name, sameSheetMode);
+                // A refresh must never reclassify a sheet's child/parent status - only report
+                // generation (CreateReportFromTitleAsyncCore) knows whether THIS invocation is a
+                // drilldown. Refresh/Refresh All already skip sheets with IT1 == "Child Report"
+                // upstream, so this path is only ever reached for parent sheets; pass false rather
+                // than reading the shared, invocation-scoped XLEdgeAppState.Instance.FollowDrilldown
+                // flag here (which could be racing a concurrent, unrelated drilldown).
+                RewriteParameterSectionRows(paramSheet, displayRowsJson, tableObj.Name, sameSheetMode, isDrilldownRequest: false);
 
                 LogUtility.LogDebug($"{MethodName}|Successfully updated parameter sheet rows/cells");
             }

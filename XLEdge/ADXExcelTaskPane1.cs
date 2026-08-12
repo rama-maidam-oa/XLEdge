@@ -311,6 +311,7 @@ namespace XLEdge
 
                     XLEdgeAppState.Instance.EdgePaneShown = false;
                     _wpfControl?.RefreshWebViewHeight();
+                    _ = RefreshLoginNavigationAsync();
                     LogUtility.LogDebug($"AfterTaskPaneShow: pane size after: {this.Width}x{this.Height}");
                 }
                 catch (Exception ex)

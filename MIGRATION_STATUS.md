@@ -1,6 +1,124 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-07
+Last updated: 2026-08-12
+
+## Fixed: four multi-workbook/formatting/parameter defects from OISR-21571, OISR-22045, OISR-22046, OISR-22047 — 2026-08-12
+
+Four user-reported defects, all confirmed working correctly in the VB.NET version, root-caused against
+that reference and fixed. No Windows/MSBuild toolchain in this environment, same caveat as every other
+entry in this file - verified by brace-balance checks only, not yet confirmed by the user in a real build.
+
+### OISR-22046: task pane blank when multiple workbooks open
+
+Root cause: every `XLEdgeCTP` instance (one per open workbook's task pane) independently called
+`CoreWebView2Environment.CreateAsync` in `InitializeWebViewInternalAsync` (`Views\XLEdgeCTP.xaml.cs`),
+each building its own environment object but all pointed at the same fixed, shared
+`XLEdgeAppPaths.BrowserLogsFolder`. With multiple workbooks open, two or more of these calls can be in
+flight concurrently in the same `excel.exe` process - the identical WebView2 profile-folder contention
+class already root-caused for the "Logout hangs" bug (2026-07-31 entry below). If a pane's init call
+loses that race, `WebCtrl_Loaded`'s catch-all swallows the exception and the pane is left uninitialized
+- and `EnsureWebViewInitializedAsync` cached the failed `_webViewInitTask` forever (`if
+(_webViewInitTask == null)`, never reset on fault), so that pane could never self-heal without closing
+and reopening the workbook.
+
+Fixed by creating the `CoreWebView2Environment` exactly once per `excel.exe` process: added
+`GetOrCreateSharedEnvironmentAsync()`/`CreateSharedEnvironmentAsync()` (static, lock-guarded, caching a
+single `Task<CoreWebView2Environment>` and clearing it on failure so a later attempt can retry) and
+pointed `InitializeWebViewInternalAsync` at it instead of calling `CreateAsync` itself. Also made
+`EnsureWebViewInitializedAsync` clear `_webViewInitTask` when the awaited task faults, so a pane that
+hit a transient failure can retry on the next access instead of staying permanently blank.
+
+### OISR-22047: session not shared across workbooks - switching focus re-prompts login
+
+Root cause: `ADXExcelTaskPane1.Designer.cs` wires the real `ADXAfterTaskPaneShow` ADX event to
+`ADXExcelTaskPane1_ADXAfterTaskPaneShow` in `ADXExcelTaskPane1.cs` - which only does DPI-based width
+sizing and `RefreshWebViewHeight()`, never re-checks login state. `Views\XLEdgeCTP.xaml.cs` had a
+*second*, identically-named method that actually contained the "already logged in → auto-redirect"
+logic (via `NavigateToLoginUrlSafeAsync`) - but it was never subscribed to anything, so it was
+unreachable dead code, evidently lost during the VB→C# split of VB's single task-pane class into this
+port's separate WinForms host (`ADXExcelTaskPane1`) + WPF control (`XLEdgeCTP`). The only navigation
+that actually ran for a newly-shown pane was `WebCtrl_Loaded` → `NavigateToLoginUrlAsync`, which has no
+"already logged in" check at all and unconditionally lands on the raw login page. VB.NET's
+`ADXExcelTaskPane1.vb` has no such split - its own `ADXAfterTaskPaneShow` (wired via `Handles`) directly
+calls the equivalent of `NavigateToLoginUrlSafeAsync` every time any pane is shown, so a second/third
+workbook's pane always re-checks the shared session (`Edgeauthtoken`/`XLEdgeAppState.Instance.LoginToken`).
+
+Fixed by adding a call to the already-correct `RefreshLoginNavigationAsync()` (which re-checks the
+shared session via `NavigateToLoginUrlSafeAsync`) from the real, designer-wired
+`ADXExcelTaskPane1_ADXAfterTaskPaneShow` in `ADXExcelTaskPane1.cs`, and deleting the dead,
+never-subscribed duplicate method (and its now-unused `IsCoreWebViewReadyAsync` helper) from
+`XLEdgeCTP.xaml.cs`.
+
+### OISR-21571: "Override cell format" setting non-functional; formats lost on every refresh
+
+Confirmed and completed the 2026-07-30 tooltip-audit finding below: `OverrideFormats` was fully
+persisted (`XLEdgeUserPreferences`/`XLEdgePreferencesManager`, `XLEdgeOptions.xaml.cs`) but never read
+anywhere in the C# port. Root cause of the underlying format loss (independent of the flag): VB.NET's
+`DataTableToExcel` (`FormProcessBar.vb`) stamps each column's `NumberFormat` from the server metadata
+(`meta.properties.fmt`, falling back to `"@"` for STRING columns) once at initial table creation, and
+never touches it again on refresh - so a user's manual format is permanently, unconditionally preserved
+across refreshes with no toggle needed. The C# port's `WriteReportDataAndCreateTable`
+(`Helpers\ReportGenerator.cs`) never set `NumberFormat` at all (the parsed `RptColumn.Properties.Fmt`
+was read by nothing), so a column's displayed format depended entirely on Excel's autodetection off
+whatever string shape `BuildDataWriteArray`'s `XLEdgeValueFormatter.FormatValue` produced at build
+time - and the refresh path (`BuildRefreshedColumnArray`) wrote the raw, differently-shaped CSV value
+straight through with no `FormatValue` call at all, breaking that autodetected format on literally
+every refresh regardless of any setting.
+
+Fixed with three small, targeted changes: (1) added `ApplyColumnNumberFormats` (calling new
+`ResolveColumnNumberFormat`/`ResolveReportColumn` helpers), called once from
+`WriteReportDataAndCreateTable` right after the table is created, porting VB's format-stamp exactly.
+(2) `BuildRefreshedColumnArray` now applies `XLEdgeValueFormatter.FormatValue` the same way
+`BuildDataWriteArray` already does, so a refreshed value round-trips into the same clean,
+Excel-parseable shape as the original build. (3) `WriteRefreshedColumnData` now re-stamps
+`NumberFormat` on refresh only when `XLEdgeAppState.Instance.OverrideFormats` is `true` - the first
+real behavior wired to that setting - added a `ParsedMeta` field to `RefreshContext` (parsed once per
+refresh, not once per column) to resolve each column's format without re-parsing `StoredMetaJson`
+repeatedly.
+
+### OISR-22045: scheduled-output Parameters Control Sheet shows child drilldown params instead of parent
+
+Root cause: a genuine data race on the app-wide singleton `XLEdgeAppState.Instance.FollowDrilldown`.
+`CreateReportFromTitleAsyncCore` computes a per-invocation `isDrilldownRequest` local and immediately
+mirrors it into the shared singleton - correct for that invocation at that moment - but several real
+`await`s follow (CSV/meta/params fetches) before `WriteParameterBookkeepingCells` reads the same
+singleton again, much later, to write `IT1 = "Child Report"`. Nothing in `ReportGenerator.cs`
+serializes concurrent report generations (no `lock`/`SemaphoreSlim`), and two independent entry points
+- `XLEdgeCTP.xaml.cs`'s WebView2 title-change handler and `AddinModule.cs`'s drilldown-hyperlink click
+handler - both funnel into this same pipeline. If a drilldown click's `FollowDrilldown = true` lands
+while an unrelated scheduled ("Process") report generation is still awaiting network I/O, the parent
+report's own parameter sheet gets stamped `IT1 = "Child Report"` - the child's context literally
+overwriting the parent's, matching the ticket description. VB.NET's `FormProcessBar.vb` avoids this
+entirely by disabling `Excel.Application.EnableEvents` for the whole generation (so
+`SheetFollowHyperlink` physically cannot fire mid-generation) and guarding re-entrancy via
+`BGWorker.IsBusy` - the C# port's `ExcelBulkOperationScope` ports the `EnableEvents` idea but isn't
+reference-counted and never gates the WebView2 entry point at all.
+
+Fixed by threading the already-correct, invocation-scoped `isDrilldownRequest` local down the existing
+call chain instead of re-reading the shared singleton at write time:
+`TryBuildReportTableAsync` → `BuildReportTable` → `WriteReportParameterSection` →
+`WriteSameSheetBanner`/`BuildCompanionParameterSheet` → `RewriteParameterSectionRows` →
+`WriteParameterBookkeepingCells`, each gaining an `isDrilldownRequest` parameter, ending in
+`WriteParameterBookkeepingCells` reading its own parameter instead of
+`XLEdgeAppState.Instance.FollowDrilldown` for the `IT1` write. The refresh path
+(`UpdateParameterSheetCells` → `RewriteParameterSectionRows`) now passes `isDrilldownRequest: false`
+explicitly - a refresh must never reclassify a sheet's child/parent status from a value that could be
+racing an unrelated concurrent drilldown, and Refresh/Refresh All already skip real child sheets
+upstream (via the existing `IT1 == "Child Report"` check), so this path is only ever reached for parent
+sheets anyway.
+
+Not fixed, flagged for a separate follow-up: two other reads of the same `FollowDrilldown` singleton
+(`ComputeReportTitleText`, `BuildSheetName`) have the identical race, but are currently inert because
+the state they gate on (`ChildRptLabel`/`ChildShtName`) is never populated anywhere in this port - left
+alone to keep this fix minimal; worth threading the same way if those are ever wired up. Also: there is
+still no mutex-equivalent to VB's `BGWorker.IsBusy` guard around report generation as a whole, so two
+overlapping generations remain possible in principle and could still race other static fields
+(`_edgeRequest`, `_ctsHelper`, `_waitWindow`) - a larger change than these four tickets need. Separately
+(unrelated to any of the four tickets, not fixed): `ParamsControlSheetBuilder.cs`'s static
+`_extraParamDisplayValues` dictionary is populated per-report inside a workbook-wide loop but keyed only
+by a fixed parameter name, not by report/row - one report's Responsibility/GL-Accounts display value
+could overwrite another's. Has no VB.NET equivalent to regress from, so it isn't an OISR-22045 regression,
+but is real and worth its own ticket.
 
 ## Fixed: excel.exe stuck as a background process after running/downloading reports — 2026-08-07
 

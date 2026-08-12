@@ -35,6 +35,9 @@ namespace XLEdge.Views
         private bool _isDisposed;
         private bool _isHeightCheckScheduled = false;
 
+        private static readonly object _envLock = new object();
+        private static Task<CoreWebView2Environment> _sharedEnvironmentTask;
+
         private static XLEdgeAppState appState => XLEdgeAppState.Instance;
 
         public XLEdgeCTP(ADXExcelTaskPane1 parentPane = null)
@@ -477,29 +480,63 @@ namespace XLEdge.Views
                 _initLock.Release();
             }
 
-            await _webViewInitTask;
+            try
+            {
+                await _webViewInitTask;
+            }
+            catch
+            {
+                _webViewInitTask = null;
+                throw;
+            }
         }
 
-        private async Task InitializeWebViewInternalAsync()
+        private static Task<CoreWebView2Environment> GetOrCreateSharedEnvironmentAsync()
         {
-            await RunOnUIAsync(async () =>
+            lock (_envLock)
+            {
+                if (_sharedEnvironmentTask == null)
+                {
+                    _sharedEnvironmentTask = CreateSharedEnvironmentAsync();
+                }
+                return _sharedEnvironmentTask;
+            }
+        }
+
+        private static async Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
+        {
+            try
             {
                 string logDir = XLEdgeAppPaths.BrowserLogsFolder;
                 DirectoryInfo di = new DirectoryInfo(logDir);
                 if (!di.Exists)
                     di.Create();
 
-                string webViewLogsPath = di.FullName;
-
                 var envOptions = new CoreWebView2EnvironmentOptions
                 {
                     AllowSingleSignOnUsingOSPrimaryAccount = true
                 };
 
-                var env = await CoreWebView2Environment.CreateAsync(
+                return await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,
-                    userDataFolder: webViewLogsPath,
+                    userDataFolder: di.FullName,
                     options: envOptions);
+            }
+            catch
+            {
+                lock (_envLock)
+                {
+                    _sharedEnvironmentTask = null;
+                }
+                throw;
+            }
+        }
+
+        private async Task InitializeWebViewInternalAsync()
+        {
+            await RunOnUIAsync(async () =>
+            {
+                var env = await GetOrCreateSharedEnvironmentAsync();
 
                 if (WebCtrl == null)
                     throw new InvalidOperationException("WebCtrl is null.");
@@ -540,11 +577,6 @@ namespace XLEdge.Views
             WebCtrl.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
 
             _webViewEventsHooked = true;
-        }
-
-        private async Task<bool> IsCoreWebViewReadyAsync()
-        {
-            return await RunOnUIAsync(() => WebCtrl?.CoreWebView2 != null);
         }
 
         private async Task NavigateToLoginUrlAsync()
@@ -1166,47 +1198,6 @@ namespace XLEdge.Views
                 LogUtility.LogException(ex, "Error in FetchWorkbookRerunIdsAsync");
                 return null;
             }
-        }
-
-        private void ADXExcelTaskPane1_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
-        {
-            SafeFireAndForget(async () =>
-            {
-                try
-                {
-                    await RunOnUIAsync(() =>
-                    {
-                        if (Width != 600)
-                            Width = 600;
-
-                        appState.EdgePaneShown = false;
-
-                        if (!string.IsNullOrWhiteSpace(appState.LoginUrl))
-                            SetPaneCaption(appState.LoginUrl);
-                    });
-
-                    var timeout = TimeSpan.FromMinutes(1);
-                    var start = DateTime.UtcNow;
-
-                    while (DateTime.UtcNow - start < timeout)
-                    {
-                        bool ready = await IsCoreWebViewReadyAsync();
-                        if (ready)
-                        {
-                            await NavigateToLoginUrlSafeAsync();
-                            return;
-                        }
-
-                        await Task.Delay(500);
-                    }
-
-                    LogUtility.LogWarn("WebView2 initialization timed out after 1 minute.");
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Error in AfterTaskPaneShow");
-                }
-            }, "Unhandled error in ADXAfterTaskPaneShow");
         }
 
         internal async Task NavigateToLoginUrlSafeAsync()
