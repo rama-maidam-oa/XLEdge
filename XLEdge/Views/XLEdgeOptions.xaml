@@ -85,7 +85,41 @@
                               Content="Parameter values in same sheet"
                               IsChecked="{Binding ParameterValuesInSameSheet, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Parameter values in same sheet" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, a report's parameter values are written into rows above the data on the same sheet, instead of a separate companion parameter sheet."
@@ -102,7 +136,41 @@
                               Content="Download scheduled outputs to the existing sheets"
                               IsChecked="{Binding DownloadScheduledOutputsToExistingSheets, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Download scheduled outputs to the existing sheets" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, downloading a scheduled (submitted/Process) report reuses its existing sheet instead of creating a new sheet each time it runs."
@@ -119,7 +187,41 @@
                               Content="On refresh sync with the report definition"
                               IsChecked="{Binding SyncWithReportDefinition, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="On refresh sync with the report definition" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, refreshing a report removes any table columns that no longer exist in the report's current definition, keeping the sheet's columns in sync with the server."
@@ -136,7 +238,41 @@
                               Content="Override sheet name for the scheduled process outputs"
                               IsChecked="{Binding OverrideSheetNameForScheduledOutputs, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Override sheet name for the scheduled process outputs" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, the sheet tab for a scheduled (Process) report is renamed to match the report's current name each time it's downloaded."
@@ -152,7 +288,41 @@
                               Content="Show calendar control in control sheet."
                               IsChecked="{Binding ShowCalendarControl, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Show calendar control in control sheet" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, selecting a date parameter cell in the control sheet pops up a calendar picker for entering the value, instead of typing the date directly."
@@ -168,7 +338,41 @@
                               Content="Show segment selection window on selection."
                               IsChecked="{Binding ShowSegmentSelectionWindow, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Show segment selection window on selection" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, selecting an ORACLE_GL_SEGMENT_VALUES cell in the control sheet pops up the segment selection window automatically, instead of requiring a double-click."
@@ -184,7 +388,41 @@
                               Content="Override formats on sheet or book refresh."
                               IsChecked="{Binding OverrideFormats, Mode=TwoWay}">
                         <CheckBox.ToolTip>
-                            <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                            <!-- ChromeStyleToolTip's Style/Template inlined directly rather than referenced via
+                                 StaticResource: a ToolTip's own Style resolves lazily when the popup actually opens
+                                 on hover, not at load time, and that deferred lookup can intermittently fail to find
+                                 a named resource (see the implicit default ToolTip style in GlobalStyles.xaml for
+                                 the same issue - not an option here since this template must stay visually distinct
+                                 from the app-wide default). -->
+                            <ToolTip Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Padding="0" HasDropShadow="True">
+                                <ToolTip.Template>
+                                    <ControlTemplate TargetType="ToolTip">
+                                        <Border Background="{StaticResource TooltipBackgroundBrush}"
+                                                BorderBrush="{StaticResource TooltipBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                MaxWidth="400">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="8" ShadowDepth="2" Direction="315"/>
+                                            </Border.Effect>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="{StaticResource TooltipBorderBrush}" CornerRadius="4,4,0,0" Padding="10,6">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="TIP" FontWeight="Bold" FontSize="11" Foreground="Black" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Padding="12,10">
+                                                    <ContentPresenter ContentSource="Content"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToolTip.Template>
                                 <StackPanel MaxWidth="300">
                                     <TextBlock Text="Override formats on sheet or book refresh" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="When checked, refreshing a sheet or the whole book resets cell formatting to the report's defaults, overriding any manual formatting changes you've made."

@@ -143,7 +143,7 @@
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
-                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <ToolTip>
                                                 <StackPanel>
                                                     <TextBlock Text="Friendly name for the server instance" FontWeight="SemiBold" Margin="0,0,0,4"/>
                                                     <TextBlock Text="{Binding Name}"/>
@@ -168,7 +168,7 @@
                                 <Style TargetType="TextBox" BasedOn="{StaticResource EditableDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
-                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <ToolTip>
                                                 <TextBlock Text="Enter a friendly name for this server instance" TextWrapping="Wrap"/>
                                             </ToolTip>
                                         </Setter.Value>
@@ -181,7 +181,7 @@
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
-                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <ToolTip>
                                                 <StackPanel>
                                                     <TextBlock Text="Server connection URL" FontWeight="SemiBold" Margin="0,0,0,4"/>
                                                     <TextBlock Text="{Binding Address}" TextWrapping="Wrap"/>
@@ -206,7 +206,7 @@
                                 <Style TargetType="TextBox" BasedOn="{StaticResource EditableDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
-                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <ToolTip>
                                                 <StackPanel>
                                                     <TextBlock Text="Enter the complete server URL address" TextWrapping="Wrap"/>
                                                     <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
@@ -247,7 +247,7 @@
                                     </Setter>
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
-                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <ToolTip>
                                                 <StackPanel>
                                                     <TextBlock Text="Set as default server instance" FontWeight="SemiBold" Margin="0,0,0,4"/>
                                                     <TextBlock Text="Only one server can be set as default at a time." TextWrapping="Wrap"/>
@@ -300,7 +300,7 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="btnGo" Content="GO >>" Style="{StaticResource DynamicContentButton}" Click="BtnGo_Click" Margin="0,0,8,0">
                             <Button.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <ToolTip>
                                     <TextBlock Text="Connect to selected server" TextWrapping="Wrap"/>
                                 </ToolTip>
                             </Button.ToolTip>
@@ -308,7 +308,7 @@
 
                         <Button x:Name="btnSetDefault" Content="Set as Default" Style="{StaticResource DynamicContentButton}" Click="BtnSetDefault_Click" Margin="0,0,8,0">
                             <Button.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <ToolTip>
                                     <TextBlock Text="Set selected server as default" TextWrapping="Wrap"/>
                                 </ToolTip>
                             </Button.ToolTip>
@@ -316,7 +316,7 @@
 
                         <Button x:Name="btnSave" Content="Save" Style="{StaticResource DynamicContentButton}" Click="BtnSave_Click" Margin="0,0,8,0">
                             <Button.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <ToolTip>
                                     <TextBlock Text="Save configuration" TextWrapping="Wrap"/>
                                 </ToolTip>
                             </Button.ToolTip>
@@ -324,7 +324,7 @@
 
                         <Button x:Name="btnDelete" Content="Delete" Style="{StaticResource DynamicContentButton}" Click="BtnDelete_Click" Margin="0,0,8,0">
                             <Button.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <ToolTip>
                                     <TextBlock Text="Delete selected server configuration" TextWrapping="Wrap"/>
                                 </ToolTip>
                             </Button.ToolTip>
@@ -332,7 +332,7 @@
 
                         <Button x:Name="btnClose" Content="Close" Style="{StaticResource DynamicContentButton}" Click="BtnClose_Click" Margin="0,0,0,0">
                             <Button.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <ToolTip>
                                     <TextBlock Text="Close the configuration window" TextWrapping="Wrap"/>
                                 </ToolTip>
                             </Button.ToolTip>

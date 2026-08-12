@@ -97,7 +97,7 @@
                          d:Text =" "
                          Margin="0,0,0,12" >
                     <TextBox.ToolTip>
-                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                        <ToolTip>
                             <StackPanel>
                                 <TextBlock Text="User logged in:" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding LoginUserName, Source={x:Static data:XLEdgeAppState.Instance}}" 
@@ -135,7 +135,7 @@
                          d:Text=" "
                          IsReadOnly="True" >
                     <TextBox.ToolTip>
-                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                        <ToolTip>
                             <StackPanel>
                                 <TextBlock Text="Instance logged in:" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding LoginUrl, Source={x:Static data:XLEdgeAppState.Instance}}" 

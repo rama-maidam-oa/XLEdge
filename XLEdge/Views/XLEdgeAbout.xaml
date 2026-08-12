@@ -114,7 +114,7 @@
                             <!-- Version -->
                             <TextBlock x:Name="txtVersion" Text="{Binding Source={x:Static data:XLEdgeAppConstants.DefaultVersion}, StringFormat='Version : {0}'}" FontSize="12" FontFamily="Segoe UI" Foreground="#6C757D" Margin="0,0,0,8">
                                 <TextBlock.ToolTip>
-                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <ToolTip>
                                         <TextBlock Text="Current XLEdge version"/>
                                     </ToolTip>
                                 </TextBlock.ToolTip>
@@ -122,7 +122,7 @@
                             <!-- Description -->
                             <TextBlock Text="Financial Analytics and Reporting Tool" FontFamily="Segoe UI" FontSize="12" Foreground="#6C757D" Margin="0,0,0,8">
                                 <TextBlock.ToolTip>
-                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <ToolTip>
                                         <TextBlock Text="XLEdge: Advanced financial analytics platform"/>
                                     </ToolTip>
                                 </TextBlock.ToolTip>
@@ -130,7 +130,7 @@
                             <!-- Build Date -->
                             <TextBlock x:Name="txtBuildDate" FontFamily="Segoe UI" Text="{Binding Source={x:Static data:XLEdgeAppConstants.DefaultCommitDate}, StringFormat='Build Date : {0}'}" FontSize="11" Foreground="#6C757D" Margin="0,0,0,8">
                                 <TextBlock.ToolTip>
-                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <ToolTip>
                                         <TextBlock Text="Date when this version was built"/>
                                     </ToolTip>
                                 </TextBlock.ToolTip>
@@ -139,14 +139,14 @@
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <TextBlock Text="For Support please contact : " FontFamily="Segoe UI" FontSize="11" Foreground="#6C757D">
                                     <TextBlock.ToolTip>
-                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                        <ToolTip>
                                             <TextBlock Text="Get help and technical support"/>
                                         </ToolTip>
                                     </TextBlock.ToolTip>
                                     </TextBlock>
                                 <TextBlock x:Name="txtSupportLink" Text="https://www.orbitanalytics.com" FontFamily="Segoe UI" FontSize="11" Foreground="#149FDB" TextDecorations="Underline" Cursor="Hand" MouseLeftButtonDown="SupportLink_MouseLeftButtonDown">
                                     <TextBlock.ToolTip>
-                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                        <ToolTip>
                                             <TextBlock Text="Click to open support website"/>
                                         </ToolTip>
                                     </TextBlock.ToolTip>
@@ -159,7 +159,7 @@
                 <!-- ================= Instance Compatibility Section ================= -->
                 <Border Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4">
                     <Border.ToolTip>
-                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                        <ToolTip>
                             <TextBlock Text="Shows configured server instances and their compatibility status"/>
                         </ToolTip>
                     </Border.ToolTip>
@@ -249,7 +249,7 @@
                                         <Setter Property="TextWrapping" Value="NoWrap"/>
                                         <Setter Property="ToolTip">
                                             <Setter.Value>
-                                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <ToolTip>
                                                     <TextBlock Text="{Binding Instance}"/>
                                                 </ToolTip>
                                             </Setter.Value>
@@ -263,7 +263,7 @@
                                     <Grid>
                                         <TextBlock Text="Compatible" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock.ToolTip>
-                                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <ToolTip>
                                                     <TextBlock Text="Compatibility status with current system"/>
                                                 </ToolTip>
                                             </TextBlock.ToolTip>
