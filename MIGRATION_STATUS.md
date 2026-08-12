@@ -2,6 +2,53 @@
 
 Last updated: 2026-08-12
 
+## Correction + real chrome migration started: WindowStyle="None" → native WPF-UI title bar (proof-of-concept: XLEdgeAbout) — 2026-08-12
+
+The fix-parity entry directly below concluded XLEdge's MahApps.Metro → WPF-UI migration was already
+complete because `Utilities\DpiAwareWindow.cs` already extends `Wpf.Ui.Controls.FluentWindow`. That
+conclusion was incomplete - it checked the base *class*, not the actual chrome. The real gap, pointed
+out by the user directly: `DpiAwareWindow.cs`'s constructor explicitly forced
+`this.ExtendsContentIntoTitleBar = false` and overrode `OnExtendsContentIntoTitleBarChanged` as a
+no-op specifically to block it from ever being turned on, with no `WindowCaption`/`IconSymbol`
+properties at all. Every one of XLEdge's 9 windows used `WindowStyle="None"` + a hand-drawn
+`<Border Style="{StaticResource HeaderBar}">` header + a `CustomWindowCloseButtonStyle` close
+button - functionally and visually the same pre-migration shape GLSense had before its own
+`eaa1b94`/`f7fe334` commits, just built on top of a `FluentWindow` base class that was never actually
+exercising WPF-UI's native chrome.
+
+Ported GLSense's exact proof-of-concept pattern (commit `eaa1b94`, "Port GLAbout to the new WPF-UI
+BaseWindow") to XLEdge's `XLEdgeAbout.xaml`/`.xaml.cs` first, as this session's one-window POC before
+touching the other 8:
+
+- `DpiAwareWindow.cs`: removed the `ExtendsContentIntoTitleBar = false` line and the blocking
+  `OnExtendsContentIntoTitleBarChanged` override entirely; added `WindowCaption` (mirrors `Title`) and
+  `IconSymbol` (FontAwesome kind name, defaults to `"InfoCircleSolid"`) properties, matching GLSense's
+  `BaseWindow`.
+- `GlobalStyles.xaml`: added `WindowTitleBarBrush` (bound to this app's existing `PrimaryColor`,
+  `#149FDB`, rather than copying GLSense's own blue) and the `TitleBarButtonStyle`/
+  `TitleBarCloseButtonStyle`/`TitleBarGridStyle`/`TitleBarIconStyle`/`TitleBarTextStyle` set, ported
+  verbatim from GLSense's `GlobalStyles.xaml`. The old `HeaderBar`/`CustomWindowCloseButtonStyle`/
+  `TitleHeaderTextBlock`/`LargeIcon` styles are left in place for the 8 windows not yet migrated.
+- `XLEdgeAbout.xaml`: root element now `WindowStyle="SingleBorderWindow"`
+  `ExtendsContentIntoTitleBar="True"` with `WindowCaption`/`IconSymbol` set; the old hand-drawn header
+  `Border` replaced by a `Grid.Row="0"` title bar using the new shared styles; the outer manual
+  `<Border Background="White" BorderBrush="#D1D5DB" Padding="10">` wrapper (added during an earlier,
+  unrelated "make it simple like GLSense" card-style fix, back when `WindowStyle="None"` had no real
+  frame to simulate one with) is removed now that `SingleBorderWindow` provides a genuine native frame
+  - content that relied on that wrapper's 10px padding now gets it via `Margin` on the content
+    ScrollViewer/footer directly, so spacing is visually unchanged.
+- `XLEdgeAbout.xaml.cs`: `EnhancedDragDropHelper.EnableWindowDrag(this)` (whole-window drag, needed
+  when there was no native title bar) replaced by a `TitleBar_MouseLeftButtonDown` handler wired only
+  to the new title bar Grid, matching GLSense's per-window drag pattern exactly.
+
+Not yet done: the other 8 windows (`XLEdgeCalendar`, `XLEdgeDrilldownReports`,
+`XLEdgeGLAccountsWindow`, `XLEdgeLoginDetails`, `XLEdgeMessageWindow`, `XLEdgeOptions`,
+`XLEdgeServerConfiguration`, `XLEdgeWaitWindow`) still use the old `WindowStyle="None"` chrome -
+deliberately paused here (mirroring GLSense's own POC-then-bulk-port approach) for the user to
+build and test this one window's chrome in a real Excel session before the same conversion is
+applied to the rest. No build toolchain is available in this environment - verified only by parsing
+the edited XAML as well-formed XML.
+
 ## WPF-UI fix-parity audit against GLSense's MahApps.Metro migration, ToolTip fix applied — 2026-08-12
 
 Requested: migrate XLEdge's UI from MahApps.Metro to WPF-UI, the same work already done for the

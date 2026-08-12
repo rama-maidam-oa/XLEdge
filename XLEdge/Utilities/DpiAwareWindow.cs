@@ -16,9 +16,11 @@ using XLEdge.Helpers;
 
 namespace XLEdge.Utilities
 {
-    // Base window class for custom-chrome dialogs: handles per-monitor DPI awareness, scales window
-    // content to fit the available screen work area, and provides Escape-to-close plus dialog/owner
-    // positioning helpers for derived windows.
+    // Base window class for FluentWindow-chromed dialogs (WindowStyle="SingleBorderWindow" +
+    // ExtendsContentIntoTitleBar="True", each window declaring its own title-bar Grid via the
+    // shared TitleBar*Style resources - see GlobalStyles.xaml): handles per-monitor DPI
+    // awareness, scales window content to fit the available screen work area, and provides
+    // Escape-to-close plus dialog/owner positioning helpers for derived windows.
     public class DpiAwareWindow : FluentWindow
     {
         private HwndSource _hwndSource;
@@ -34,6 +36,29 @@ namespace XLEdge.Utilities
         public bool EnableAutoLayoutRefresh { get; set; } = true;
         public bool EnableExcelCentering { get; set; } = true;
         public bool EnableEscapeToClose { get; set; } = true;
+
+        /// <summary>
+        /// Mirrors DpiAwareWindow's plain Title property, bound by each window's title-bar
+        /// TextBlock (Style="{StaticResource TitleBarTextStyle}") via
+        /// {Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}
+        /// - named separately from Title so a window's root-element attribute reads as chrome
+        /// intent ("WindowCaption=...") rather than the native WPF Title property, matching the
+        /// GLSense BaseWindow this chrome pattern was ported from.
+        /// </summary>
+        public string WindowCaption
+        {
+            get => Title;
+            set => Title = value;
+        }
+
+        /// <summary>
+        /// FontAwesome PackIconFontAwesomeKind name (e.g. "CircleInfoSolid"), bound to each
+        /// window's title-bar iconPacks:PackIconFontAwesome via TitleBarIconStyle - kept as a
+        /// plain string (not the enum type) since WPF's binding engine coerces a string source
+        /// into an enum-typed target property automatically via the enum's default
+        /// TypeConverter.
+        /// </summary>
+        public string IconSymbol { get; set; } = "InfoCircleSolid";
 
         public double CurrentScaleFactor => _currentScaleFactor;
         public bool AutoClampToWorkArea { get; set; } = true;
@@ -61,12 +86,6 @@ namespace XLEdge.Utilities
                 {
                     WpfUiBootstrapper.Init(XLEdgeAppConstants.GLAccentHex, XLEdgeAppConstants.GLTheme);
                 }
-
-                // FluentWindow's ExtendsContentIntoTitleBar defaults to true, which is incompatible
-                // with this codebase's fully custom-chrome windows (WindowStyle="None" +
-                // AllowsTransparency="True"). Disabling it here centrally avoids that conflict for
-                // every derived window.
-                this.ExtendsContentIntoTitleBar = false;
 
                 AddHandler(UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(OnWindowPreviewMouseDown), true);
                 AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnWindowPreviewKeyDown), true);
@@ -102,15 +121,6 @@ namespace XLEdge.Utilities
             {
                 LogUtility.LogError($"Fatal error in DpiAwareWindow: {ex.Message}");
             }
-        }
-
-        /// <summary>
-        /// Prevents FluentWindow's base implementation from coercing WindowStyle, which would
-        /// conflict with this codebase's custom-drawn window chrome.
-        /// </summary>
-        protected override void OnExtendsContentIntoTitleBarChanged(bool oldValue, bool newValue)
-        {
-            // Intentionally does not call the base implementation - see summary above.
         }
 
         protected override void OnInitialized(EventArgs e)

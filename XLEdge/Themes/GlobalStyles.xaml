@@ -91,7 +91,7 @@
 	<!-- ==================== ToolTip Styles ====================
 	     No x:Key - implicit/default style for every ToolTip in any window that merges this
 	     dictionary. Previously had x:Key="SimpleBrowserToolTip" and every window referenced it
-	     explicitly via  - but a ToolTip's content
+	     explicitly via Style="{StaticResource SimpleBrowserToolTip}" - but a ToolTip's content
 	     (including its own Style property) is deferred and only resolved when the tooltip
 	     popup actually opens on hover, not when the page/window is loaded. In this app's VSTO
 	     hosting context that deferred StaticResource lookup can intermittently fail to find the
@@ -109,6 +109,97 @@
 		<Setter Property="FontSize" Value="12"/>
 		<Setter Property="FontFamily" Value="Segoe UI"/>
 		<Setter Property="HasDropShadow" Value="True"/>
+	</Style>
+
+	<!-- ==================== Title Bar Styles ====================
+	     WPF-UI FluentWindow chrome pattern (WindowStyle="SingleBorderWindow" +
+	     ExtendsContentIntoTitleBar="True"), ported from the sibling GLSense project's own
+	     MahApps.Metro -> WPF-UI migration (repo GLSense, branch 11.1.0_NewUI, commit eaa1b94):
+	     each window declares its own Grid.Row="0" title bar using these shared styles instead of
+	     the old WindowStyle="None" + hand-drawn HeaderBar/CustomWindowCloseButtonStyle pattern
+	     below (kept for any window not yet migrated). WindowTitleBarBrush reuses this app's own
+	     PrimaryColor rather than copying GLSense's specific blue, so the title bar matches
+	     XLEdge's existing brand color. -->
+	<SolidColorBrush x:Key="WindowTitleBarBrush" Color="{StaticResource PrimaryColor}"/>
+
+	<Style x:Key="TitleBarButtonStyle" TargetType="Button">
+		<Setter Property="Width" Value="46"/>
+		<Setter Property="Height" Value="32"/>
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Foreground" Value="White"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+		<Setter Property="FontSize" Value="10"/>
+		<Setter Property="HorizontalAlignment" Value="Center"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border Background="{TemplateBinding Background}" x:Name="border">
+						<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,2,0,0"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#FFFFFF30"/>
+						</Trigger>
+						<Trigger Property="IsPressed" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#FFFFFF20"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+		<Setter Property="Content" Value="Close"/>
+		<Setter Property="ToolTip">
+			<Setter.Value>
+				<ToolTip>
+					<TextBlock Text="Click to close this window!"/>
+				</ToolTip>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<Style x:Key="TitleBarCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonStyle}">
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border Background="{TemplateBinding Background}" x:Name="border">
+						<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,2,0,0"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#E81123"/>
+							<Setter Property="Foreground" Value="White"/>
+						</Trigger>
+						<Trigger Property="IsPressed" Value="True">
+							<Setter TargetName="border" Property="Background" Value="#BF0F1A"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<Style x:Key="TitleBarGridStyle" TargetType="Grid">
+		<Setter Property="Background" Value="{StaticResource WindowTitleBarBrush}"/>
+		<Setter Property="Height" Value="32"/>
+	</Style>
+
+	<Style x:Key="TitleBarIconStyle" TargetType="iconPacks:PackIconFontAwesome">
+		<Setter Property="Width" Value="20"/>
+		<Setter Property="Height" Value="20"/>
+		<Setter Property="Margin" Value="12,0,0,0"/>
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Foreground" Value="White"/>
+	</Style>
+
+	<Style x:Key="TitleBarTextStyle" TargetType="TextBlock">
+		<Setter Property="VerticalAlignment" Value="Center"/>
+		<Setter Property="Margin" Value="12,0,0,0"/>
+		<Setter Property="FontSize" Value="14"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="Foreground" Value="White"/>
 	</Style>
 
 	<!-- ==================== ToolTipService Default Timing ==================== -->

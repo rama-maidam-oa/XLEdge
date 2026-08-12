@@ -5,7 +5,10 @@
                       xmlns:local="clr-namespace:XLEdge.Views"
 					  xmlns:utils="clr-namespace:XLEdge.Utilities" 
 					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
-					  WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
+					  WindowCaption="About Orbit XLEdge"
+					  IconSymbol="CircleInfoSolid"
+					  WindowStartupLocation="CenterScreen" WindowStyle="SingleBorderWindow" ResizeMode="CanResize"
+					  ExtendsContentIntoTitleBar="True"
 					  SizeToContent="Manual" MinWidth="400" MaxWidth="650"
 					  MinHeight="450" MaxHeight="600"
 					  Background="White" ShowInTaskbar="False">
@@ -71,32 +74,31 @@
     <!-- Bug fix ("all windows: card style not looking good, make it simple like GLSense"): dropped
          the floating-card treatment (transparent window + bleed margin + DropShadowEffect + rounded
          inner card) in favor of a plain, flat, opaque, square-cornered window - see XLEdgeOptions.xaml
-         for the full rationale comment. -->
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
-    <Grid>
+         for the full rationale comment. The old header/close-button chrome below has since been
+         replaced by the native WPF-UI title bar (WindowStyle="SingleBorderWindow" +
+         ExtendsContentIntoTitleBar="True", ported from GLSense's own migration - see
+         GlobalStyles.xaml's Title Bar Styles section) - the outer manual Border that used to
+         simulate a flat window edge is gone too, since SingleBorderWindow now provides the real
+         native frame; content that needs the old 10px breathing room gets it via Margin instead. -->
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <!-- ================= Header ================= -->
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <!-- Left side with icon and title -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
-                    <TextBlock Text="About Orbit XLEdge" Style="{StaticResource TitleHeaderTextBlock}"/>
-                </StackPanel>
-                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
-            </Grid>
-        </Border>
+        <!-- ================= Title Bar ================= -->
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+        </Grid>
         <!-- ================= Combined Content Section ================= -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="10,10,10,0">
             <StackPanel>
                 <!-- ================= Company & Product Info Section ================= -->
                 <Border Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4">
@@ -323,7 +325,7 @@
         </ScrollViewer>
 
         <!-- ================= Footer with Close Button ================= -->
-        <Border Grid.Row="2" Background="Transparent">
+        <Border Grid.Row="2" Background="Transparent" Margin="10,0,10,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -343,5 +345,4 @@
         <!-- ================= App Overlay ================= -->
         <local:AppOverlay x:Name="AppOverlayControl" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" Panel.ZIndex="10"/>
     </Grid>
-    </Border>
 </utils:DpiAwareWindow>

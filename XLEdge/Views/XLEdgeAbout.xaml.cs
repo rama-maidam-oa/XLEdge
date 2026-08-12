@@ -27,7 +27,6 @@ namespace XLEdge.Views
         public XLEdgeAbout()
         {
             InitializeComponent();
-            EnhancedDragDropHelper.EnableWindowDrag(this);
 
             DataContext = this;
             // Initialize the collection correctly
@@ -36,6 +35,26 @@ namespace XLEdge.Views
 
             Loaded += AboutWindow_Loaded;
         }
+
+        // Replaces EnhancedDragDropHelper.EnableWindowDrag(this) now that the window has a real
+        // title bar (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True") instead
+        // of the old fully custom WindowStyle="None" chrome: only the title bar Grid should
+        // initiate a drag-move, not the whole window surface.
+        private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (e.LeftButton == MouseButtonState.Pressed)
+                {
+                    this.DragMove();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "XLEdgeAbout.TitleBar_MouseLeftButtonDown");
+            }
+        }
+
         private async void AboutWindow_Loaded(object sender, RoutedEventArgs e)
         {
             // Start compatibility checking
