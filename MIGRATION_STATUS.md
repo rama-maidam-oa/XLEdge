@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-13
 
+## Cleanup: removed the now-unused Microsoft.Xaml.Behaviors.Wpf package and EnhancedDragDropHelper — 2026-08-13
+
+Follow-up to the WPF-UI chrome migration: every window's whole-window drag used to go through
+`Helpers\EnhancedDragDropHelper.EnableWindowDrag(this)`, but that call was removed from all 9
+windows when each got its own title-bar-only `TitleBar_MouseLeftButtonDown` drag handler. Confirmed
+via `grep` that nothing calls into `EnhancedDragDropHelper` anymore (only stale comments referencing
+its old name for context) and that it never depended on `Microsoft.Xaml.Behaviors` itself (a plain
+event-handler implementation, no `Interaction`/`Behavior` types) - and separately confirmed zero use
+of `Microsoft.Xaml.Behaviors` (no `xmlns` import, no `i:Interaction`/`Behaviors:` tag) anywhere else
+in the project.
+
+Removed: `Helpers\EnhancedDragDropHelper.cs` (and its `<Compile Include>` entry), the
+`Microsoft.Xaml.Behaviors.Wpf` package reference (`packages.config`) and its `<Reference>`/HintPath
+(`XLEdge.csproj`). Also asked whether `MahApps.Metro.IconPacks.Core` is removable: no - it's a
+required dependency of `MahApps.Metro.IconPacks.FontAwesome` (the icon-set package provides the
+`PackIconFontAwesomeKind` enum and `PackIconFontAwesome` control, which is built on Core's shared
+base classes/infrastructure), both referenced as separate assemblies in the csproj; `FontAwesome` is
+used pervasively (`iconPacks:PackIconFontAwesome` throughout `Views\`), so `Core` stays.
+
+Note: editing `packages.config`/`XLEdge.csproj` also picked up unrelated NuGet patch-version bumps
+(`Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Web.WebView2`, `NLog`, `System.IO.Pipelines`,
+`System.Text.Encodings.Web`/`Json`) that were already sitting uncommitted in the working tree from
+an earlier external NuGet restore (flagged in an earlier session, left untouched at the time) - user
+confirmed including them in this same commit rather than isolating them further.
+
 ## Fixed: "Nothing to save" shown even after adding/editing a row — 2026-08-13
 
 Reported by the user: adding a new row (or editing an existing one) and clicking Save still showed
