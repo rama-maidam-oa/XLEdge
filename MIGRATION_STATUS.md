@@ -2,6 +2,27 @@
 
 Last updated: 2026-08-13
 
+## Fixed: "Nothing to save" shown even after adding/editing a row — 2026-08-13
+
+Reported by the user: adding a new row (or editing an existing one) and clicking Save still showed
+"Nothing to save.", added just above, instead of actually saving.
+
+Root cause: `HasUnsavedChanges()` compared the live grid against `CachedConfiguration` - but
+`CachedConfiguration` is not "what's on disk," it's "the current in-memory grid state," kept in
+sync by `AutoSaveConfiguration()` (a misleadingly-named method that only updates the cache, never
+writes to disk), which `DgInstances_CellEditEnding` calls after *every* Name/Address cell-edit
+commit - including on a brand new row, the moment its Name/Address is typed. By the time the user
+clicked Save, `CachedConfiguration` had already been silently updated to match the unsaved edit, so
+the comparison always saw "no difference," regardless of whether anything had actually been
+written to the XML file.
+
+Fixed by tracking persistence with a dedicated baseline, `lastSavedSnapshotKeys`, updated only at
+the two points that genuinely reflect disk state: the end of `LoadConfiguration` (what was just
+read) and the success path of `SaveConfiguration` (what was just written) - never touched by
+`AutoSaveConfiguration`. `HasUnsavedChanges` now compares the grid against this instead of
+`CachedConfiguration`, which continues to serve its original, unrelated purpose (an in-session
+working-state cache read by `GetConfigurationSnapshots`) unchanged.
+
 ## Server Configuration: dismiss the status message immediately on row selection — 2026-08-13
 
 Follow-up to the 10-second auto-hide added just below: selecting a different (non-empty) row means

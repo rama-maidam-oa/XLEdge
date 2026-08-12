@@ -41,6 +41,12 @@ namespace XLEdge.Views
         private bool isInternalUpdate = false;
         private string persistedDefaultName;
 
+        // What HasUnsavedChanges compares the live grid against - only ever updated at the two
+        // points that reflect actual disk state (LoadConfiguration/SaveConfiguration's success
+        // path), never by AutoSaveConfiguration's per-edit CachedConfiguration sync. See
+        // HasUnsavedChanges's doc comment for why that distinction matters.
+        private List<string> lastSavedSnapshotKeys = new List<string>();
+
         // Auto-hides the status message/border 10 seconds after it's shown - previously it stayed
         // on screen indefinitely until the next button click, which is confusing since it doesn't
         // reflect anything changing after that.
@@ -160,6 +166,11 @@ namespace XLEdge.Views
                 {
                     instance.IsSelected = instance.IsDefault;
                 }
+
+                // This just-loaded state is, by definition, what's currently on disk - nothing has
+                // been edited yet - so it's the baseline HasUnsavedChanges compares future edits
+                // against.
+                lastSavedSnapshotKeys = BuildCurrentSnapshotKeys();
 
                 UpdateStatus($"Configuration loaded successfully. {urlInstances.Count} instances found.", StatusMessageType.Success);
             }
@@ -310,6 +321,10 @@ namespace XLEdge.Views
                 UpdateCachedConfiguration();
                 persistedDefaultName = urlInstances.FirstOrDefault(u => u.IsDefault)?.Name;
 
+                // This is now what's actually on disk - update the HasUnsavedChanges baseline to
+                // match, so a subsequent Save with no further edits correctly reports nothing to do.
+                lastSavedSnapshotKeys = BuildCurrentSnapshotKeys();
+
                 UpdateStatus("Configuration saved successfully.", StatusMessageType.Success);
                 return true;
             }
@@ -432,34 +447,35 @@ namespace XLEdge.Views
         }
 
         /// <summary>
-        /// Compares the grid's current, in-memory rows against the last-persisted snapshot
-        /// (CachedConfiguration, kept in sync with disk by UpdateCachedConfiguration after every
-        /// successful save/load) to tell whether Save would actually write anything different.
+        /// Compares the grid's current, in-memory rows against lastSavedSnapshotKeys to tell
+        /// whether Save would actually write anything different.
+        ///
+        /// Bug fix: this originally compared against CachedConfiguration instead - but
+        /// CachedConfiguration is kept in sync with the CURRENT in-memory grid (not with what's
+        /// actually on disk) by AutoSaveConfiguration, which DgInstances_CellEditEnding calls after
+        /// every single Name/Address cell-edit commit, including on a brand new row. By the time
+        /// the user clicked Save, CachedConfiguration had already been silently updated to match
+        /// the unsaved edit, so the comparison always saw "no difference" and reported "Nothing to
+        /// save" even for a genuinely new/edited, never-yet-written-to-disk row.
+        /// lastSavedSnapshotKeys is a separate baseline, only ever updated at the two points that
+        /// actually reflect disk state: LoadConfiguration (what was just read) and
+        /// SaveConfiguration's success path (what was just written) - see BuildCurrentSnapshotKeys.
         /// Order-independent (grid rows can reorder via ReorderInstancesWithDefaultFirst without
         /// that alone counting as a real change) and ignores the empty add-row placeholder, the
         /// same way SaveConfiguration's own validInstances filter does.
         /// </summary>
         private bool HasUnsavedChanges()
         {
-            List<UrlInstanceSnapshot> baseline;
-            lock (CachedConfigurationLock)
-            {
-                baseline = CachedConfiguration ?? new List<UrlInstanceSnapshot>();
-            }
+            return !BuildCurrentSnapshotKeys().SequenceEqual(lastSavedSnapshotKeys);
+        }
 
-            var current = urlInstances
+        private List<string> BuildCurrentSnapshotKeys()
+        {
+            return urlInstances
                 .Where(u => !string.IsNullOrWhiteSpace(u.Name))
                 .Select(u => $"{u.Name?.Trim().ToLowerInvariant()}|{u.Address?.Trim().TrimEnd('/')}|{u.IsDefault}")
                 .OrderBy(s => s, StringComparer.Ordinal)
                 .ToList();
-
-            var currentBaseline = baseline
-                .Where(s => !string.IsNullOrWhiteSpace(s.Name))
-                .Select(s => $"{s.Name?.Trim().ToLowerInvariant()}|{s.Address?.Trim().TrimEnd('/')}|{s.IsDefault}")
-                .OrderBy(s => s, StringComparer.Ordinal)
-                .ToList();
-
-            return !current.SequenceEqual(currentBaseline);
         }
 
         private void BtnDelete_Click(object sender, RoutedEventArgs e)
