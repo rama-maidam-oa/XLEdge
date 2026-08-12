@@ -2,6 +2,39 @@
 
 Last updated: 2026-08-12
 
+## Fixed: report sheet naming could silently collide between unrelated reports (missing VB.NET disambiguation) — 2026-08-12
+
+Follow-up to the CustomXMLParts/companion-sheet fix above, per user hint pointing at VB.NET's
+`Edge_GenerateData` (`FormProcessBar.vb`): the C# port's `BuildSheetName`/`CreateOrReuseReportSheet`
+(`Helpers\ReportGenerator.cs`) computed a report's sheet name from its display name alone, with no
+awareness of whether it's a live ("Edge") or scheduled ("Process") run, and no check that an existing
+same-named sheet actually belongs to the same report before reusing it. VB.NET does both:
+
+1. For a **Process** (scheduled) report, `Edge_GenerateData` suffixes the computed name with the
+   reportId (`ReportName_{reportId}`, truncating the base name first to keep the combined name within
+   Excel's sheet-name limits) - a scheduled run's sheet is unique by construction, so it can never
+   collide with a live run of the same report definition.
+2. For an **Edge** (live) report, when a same-named sheet already exists, VB checks whether that
+   sheet's own table name contains this reportId (`wsht.ListObjects(1).Name.Contains(var(1))`). If it
+   doesn't - the collision is with a genuinely unrelated report, not a re-run of this one - it probes
+   `"{name}_1"`, `"{name}_2"`, ... until it finds either a free name or an existing numbered sheet that
+   already belongs to this reportId (reuse that one instead).
+
+The C# port had neither: `BuildSheetName` produced the identical name for a report regardless of Edge
+vs. Process, and `CreateOrReuseReportSheet` reused *any* existing same-named sheet unconditionally -
+silently clearing and overwriting an unrelated report's sheet (no crash, no error - matching the user's
+"it's failing silently" description) whenever two different reports happened to compute the same
+(possibly 22-char-truncated) display name, which a scheduled report almost guarantees since nothing
+distinguished it from a live run of the same definition.
+
+Fixed by porting both VB.NET behaviors directly: `BuildSheetName` now takes the `EdgeRequest` and
+appends the reportId suffix for `Process`-type reports (same truncate-then-append math as VB).
+`CreateOrReuseReportSheet` now takes the `EdgeRequest` too, and for live (non-Process, non-drilldown)
+reports, added `ExistingSheetBelongsToReport` (the `ListObjects[1].Name.Contains(reportId)` check) and
+`ResolveDisambiguatedSheetName` (the `"_1"`/`"_2"`/... probe) - both ported line-for-line from
+`Edge_GenerateData`'s equivalent logic. `ResolveOrCreateReportSheet` threads `EdgeRequest request`
+(already available in `BuildReportTable`'s scope) down to both.
+
 ## Fixed: stale CustomXMLParts/companion-sheet crash on re-download, non-unique image/attachment file names — 2026-08-12
 
 Two defects found by the user testing the build from the fix batch below.

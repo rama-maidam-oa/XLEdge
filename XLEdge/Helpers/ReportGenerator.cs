@@ -951,7 +951,7 @@ namespace XLEdge.Helpers
             int headerRow = sameSheet ? 8 : 1;
             int dataStartRow = headerRow + 1;
 
-            Excel.Worksheet sheet = ResolveOrCreateReportSheet(workbook, tableId, reportMeta, sameSheet, headerRow, out string companionSheetToDelete);
+            Excel.Worksheet sheet = ResolveOrCreateReportSheet(workbook, tableId, reportMeta, request, sameSheet, headerRow, out string companionSheetToDelete);
 
             ActivateAndUnfreezeSheet(excelApp, sheet);
 
@@ -1031,7 +1031,7 @@ namespace XLEdge.Helpers
         // Extracted from BuildReportTable - finds/prepares the worksheet to write this report's
         // table into, and tracks the name of any now-orphaned companion parameter sheet that should
         // be deleted once the new table/banner has been written.
-        private static Excel.Worksheet ResolveOrCreateReportSheet(Excel.Workbook workbook, string tableId, ReportMeta reportMeta, bool sameSheet, int headerRow, out string companionSheetToDelete)
+        private static Excel.Worksheet ResolveOrCreateReportSheet(Excel.Workbook workbook, string tableId, ReportMeta reportMeta, EdgeRequest request, bool sameSheet, int headerRow, out string companionSheetToDelete)
         {
             Excel.Worksheet sheet = FindSheetWithTable(workbook, tableId);
 
@@ -1041,7 +1041,7 @@ namespace XLEdge.Helpers
             }
             else
             {
-                sheet = CreateOrReuseReportSheet(workbook, reportMeta);
+                sheet = CreateOrReuseReportSheet(workbook, reportMeta, request);
                 companionSheetToDelete = null;
             }
 
@@ -1108,9 +1108,29 @@ namespace XLEdge.Helpers
         // Extracted from BuildReportTable - resolves the worksheet to use when no existing table
         // with this tableId was found: reuse the report's named sheet if it already exists (clearing
         // it first), otherwise create a brand-new sheet.
-        private static Excel.Worksheet CreateOrReuseReportSheet(Excel.Workbook workbook, ReportMeta reportMeta)
+        //
+        // Ported from VB.NET's Edge_GenerateData (FormProcessBar.vb): a live ("Edge") report's
+        // computed sheet name can coincide with an unrelated report's sheet (same/truncated display
+        // name, different reportId) - reusing it unconditionally would silently clear and overwrite
+        // that other report's data. VB guards this by checking whether the existing same-named
+        // sheet's table actually belongs to THIS reportId before reusing it, probing "_1", "_2", ...
+        // otherwise until it finds either a free name or an existing numbered variant that already IS
+        // this report's own sheet. Process (scheduled) reports never need this - BuildSheetName
+        // already made their name unique by construction (a reportId suffix) - and a drilldown/child
+        // sheet's name is likewise pre-resolved, so neither case runs the disambiguation probe.
+        private static Excel.Worksheet CreateOrReuseReportSheet(Excel.Workbook workbook, ReportMeta reportMeta, EdgeRequest request)
         {
-            string sheetName = BuildSheetName(reportMeta);
+            string sheetName = BuildSheetName(reportMeta, request);
+
+            bool isLiveReport = !string.Equals(request?.ReportType, "Process", StringComparison.OrdinalIgnoreCase);
+            bool isDrilldownSheet = XLEdgeAppState.Instance.FollowDrilldown && !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.ChildShtName);
+
+            if (isLiveReport && !isDrilldownSheet && ExcelSheetHelper.SheetExists(sheetName, workbook) &&
+                !ExistingSheetBelongsToReport(workbook, sheetName, reportMeta.ReportId))
+            {
+                sheetName = ResolveDisambiguatedSheetName(workbook, sheetName, reportMeta.ReportId);
+            }
+
             if (ExcelSheetHelper.SheetExists(sheetName, workbook))
             {
                 Excel.Worksheet existingSheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
@@ -1132,6 +1152,40 @@ namespace XLEdge.Helpers
 
             newSheet.Name = sheetName;
             return newSheet;
+        }
+
+        // Checks whether an existing sheet's ListObject table name contains the given reportId -
+        // mirrors VB.NET's "wsht.ListObjects(1).Name.Contains(var(1))" identity check.
+        private static bool ExistingSheetBelongsToReport(Excel.Workbook workbook, string sheetName, int reportId)
+        {
+            try
+            {
+                Excel.Worksheet sheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
+                return sheet.ListObjects.Count > 0 && sheet.ListObjects[1].Name.Contains(reportId.ToString());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(ExistingSheetBelongsToReport)}: failed to check whether '{sheetName}' belongs to report {reportId} - {ex.Message}");
+                return false;
+            }
+        }
+
+        // Probes "{baseName}_1", "{baseName}_2", ... until it finds either a free name or an existing
+        // numbered variant that already belongs to this reportId (reuse that one) - mirrors VB.NET's
+        // Edge_GenerateData counter loop (FormProcessBar.vb) exactly, including the truncation that
+        // keeps room for the "_N" suffix.
+        private static string ResolveDisambiguatedSheetName(Excel.Workbook workbook, string baseName, int reportId)
+        {
+            string truncatedBase = baseName.Length >= 23 ? baseName.Substring(0, 22) : baseName;
+
+            for (int counter = 1; ; counter++)
+            {
+                string candidate = $"{truncatedBase}_{counter}";
+                if (!ExcelSheetHelper.SheetExists(candidate, workbook) || ExistingSheetBelongsToReport(workbook, candidate, reportId))
+                {
+                    return candidate;
+                }
+            }
         }
 
         // Extracted from BuildReportTable - when writing into same-sheet mode, checks for a
@@ -2575,16 +2629,19 @@ namespace XLEdge.Helpers
             }
         }
 
-        private static string BuildSheetName(ReportMeta reportMeta)
+        private static string BuildSheetName(ReportMeta reportMeta, EdgeRequest request)
         {
             string name;
+            bool isDrilldownSheet = XLEdgeAppState.Instance.FollowDrilldown && !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.ChildShtName);
 
-            if (XLEdgeAppState.Instance.FollowDrilldown && !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.ChildShtName))
+            if (isDrilldownSheet)
             {
                 string childShtName = XLEdgeAppState.Instance.ChildShtName;
                 name = childShtName.Length >= 23 ? childShtName.Substring(childShtName.Length - 22, 22) : childShtName;
+                return SanitizeSheetName(name);
             }
-            else if (string.IsNullOrEmpty(reportMeta.Name))
+
+            if (string.IsNullOrEmpty(reportMeta.Name))
             {
                 name = "No-Name";
             }
@@ -2597,6 +2654,23 @@ namespace XLEdge.Helpers
             {
                 string insightRptName = reportMeta.Name;
                 name = insightRptName.Length >= 23 ? insightRptName.Substring(0, 22) : insightRptName;
+            }
+
+            // A scheduled ("Process") report's sheet must never share a name with a live ("Edge") run
+            // of the same report definition - VB.NET's Edge_GenerateData (FormProcessBar.vb) suffixes
+            // the report name with the reportId for exactly this reason. Ported directly: truncate
+            // the base name first to keep room for the suffix (matching VB's ProcessLen/LenToKeep
+            // math), rather than appending then truncating and risking cutting the reportId off.
+            if (string.Equals(request?.ReportType, "Process", StringComparison.OrdinalIgnoreCase))
+            {
+                string suffix = $"_{reportMeta.ReportId}";
+                int lenToKeep = Math.Max(0, 22 - suffix.Length);
+                if (name.Length > lenToKeep)
+                {
+                    name = name.Substring(0, lenToKeep);
+                }
+
+                name += suffix;
             }
 
             return SanitizeSheetName(name);
