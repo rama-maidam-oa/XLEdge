@@ -2,6 +2,43 @@
 
 Last updated: 2026-08-12
 
+## Fixed: "Default" checkbox unchecked after deleting a different server instance — 2026-08-12
+
+Reported by the user: in `XLEdgeServerConfiguration`, deleting any non-default configured URL left
+the real default row's "Default" checkbox unchecked, even though nothing about which server is
+actually default should have changed. Pre-existing bug, unrelated to the chrome migration above -
+confirmed via `git diff` that the chrome-migration commits touching this file only changed drag
+handling, nothing in the Load/Save/Delete/selection logic.
+
+Root cause: the "Default" `DataGridCheckBoxColumn` (`XLEdgeServerConfiguration.xaml`) was bound to
+`UrlInstance.IsSelected`, not `UrlInstance.IsDefault`. `IsSelected` is a separate property that
+`DgInstances_SelectionChanged` overwrites for every row on **any** grid selection change:
+```csharp
+foreach (var instance in urlInstances)
+    instance.IsSelected = instance == selectedInstance;
+```
+`BtnDelete_Click` removes the selected row from the bound `ObservableCollection`; WPF's `DataGrid`
+then auto-selects a different row (standard behavior when the selected item is removed), firing
+`SelectionChanged` - which resets `IsSelected` on every row to match whichever row got
+auto-selected, not the real default. The only place that correctly re-syncs `IsSelected` to match
+`IsDefault` is `SetDefaultInstance` (also called by `LoadConfiguration`), and `BtnDelete_Click` only
+calls that when the **deleted row itself was the default** - deleting any other row skips it
+entirely, leaving whatever the auto-reselect last set `IsSelected` to as the (wrong) final state.
+
+Confirmed via the checkbox's own tooltip copy ("Check this box to make this the default server...
+Only one server can be default at a time") and the pre-existing `UrlInstance_PropertyChanged`
+handler (listens for `IsDefault` changes specifically, calls `SetDefaultInstance`) that the column
+was always meant to bind to `IsDefault` - `IsSelected` was the wrong binding target from the start.
+This also explains a second, previously unnoticed symptom: manually clicking the checkbox did
+nothing at all, since it only ever touched the unrelated `IsSelected` property instead of triggering
+the already-correct `IsDefault`-driven enforcement logic.
+
+Fixed by rebinding the column directly to `IsDefault`. Confirmed safe: the checkbox is genuinely
+non-interactive by design regardless of which property it displays - its `ElementStyle` sets
+`IsHitTestVisible="False"`, and `DgInstances_BeginningEdit` unconditionally cancels any attempt to
+enter edit mode on the "Default" column, directing the user to the "Set as Default" button instead
+- so this is a pure display-binding fix, not a behavior change to how default-switching itself works.
+
 ## WPF-UI chrome migration completed: all 9 windows now use the native title bar — 2026-08-12
 
 Follow-up to the XLEdgeAbout proof-of-concept below, confirmed working by the user in a real

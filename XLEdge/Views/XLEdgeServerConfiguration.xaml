@@ -231,7 +231,19 @@
                             </DataGridTextColumn.EditingElementStyle>
                         </DataGridTextColumn>
                         <!-- Default Column with CheckBox -->
-                        <DataGridCheckBoxColumn Header="Default" Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.8*">
+                        <!-- Bug fix: was bound to IsSelected, a property DgInstances_SelectionChanged
+                             overwrites on every grid selection change (including WPF's automatic
+                             reselection after the currently-selected row is removed) - unrelated to
+                             which server is actually the default. That caused the checkbox on the
+                             real default row to visually uncheck after deleting a different
+                             (non-default) row, since only the "deleted row was itself the default"
+                             branch of BtnDelete_Click re-synced IsSelected to match IsDefault. Bound
+                             directly to IsDefault instead - the actual persisted flag, immune to
+                             unrelated selection-changed side effects, and already the property
+                             UrlInstance_PropertyChanged listens on to call SetDefaultInstance when
+                             the user checks this box (previously unreachable, since checking the box
+                             only ever touched IsSelected). -->
+                        <DataGridCheckBoxColumn Header="Default" Binding="{Binding IsDefault, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.8*">
                             <DataGridCheckBoxColumn.ElementStyle>
                                 <Style TargetType="CheckBox">
                                     <Setter Property="HorizontalAlignment" Value="Center"/>
