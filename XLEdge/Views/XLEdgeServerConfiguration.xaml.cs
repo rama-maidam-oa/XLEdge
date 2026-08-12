@@ -43,12 +43,28 @@ namespace XLEdge.Views
         public XLEdgeServerConfiguration()
         {
             InitializeComponent();
-            EnhancedDragDropHelper.EnableWindowDrag(this);
 
             urlInstances = new ObservableCollection<UrlInstance>();
             dgInstances.ItemsSource = urlInstances;
 
             LoadConfiguration();
+        }
+
+        // Replaces EnhancedDragDropHelper.EnableWindowDrag(this) now that the window has a real
+        // title bar (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True").
+        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+                {
+                    this.DragMove();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "XLEdgeServerConfiguration.TitleBar_MouseLeftButtonDown");
+            }
         }
 
         private void XLEdgeServerConfiguration_Loaded(object sender, RoutedEventArgs e)

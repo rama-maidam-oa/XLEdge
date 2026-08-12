@@ -2,6 +2,52 @@
 
 Last updated: 2026-08-12
 
+## WPF-UI chrome migration completed: all 9 windows now use the native title bar — 2026-08-12
+
+Follow-up to the XLEdgeAbout proof-of-concept below, confirmed working by the user in a real
+build/Excel session. Ported the identical conversion to the remaining 8 windows -
+`XLEdgeCalendar`, `XLEdgeDrilldownReports`, `XLEdgeGLAccountsWindow`, `XLEdgeLoginDetails`,
+`XLEdgeMessageWindow`, `XLEdgeOptions`, `XLEdgeServerConfiguration`, `XLEdgeWaitWindow` - so every
+window in the app now uses `WindowStyle="SingleBorderWindow"` + `ExtendsContentIntoTitleBar="True"`
+with the shared `TitleBar*Style` chrome instead of the old `WindowStyle="None"` + hand-drawn
+`HeaderBar`/`CustomWindowCloseButtonStyle` pattern. Per-window notes on anything non-mechanical:
+
+- **`XLEdgeDrilldownReports`**: this window computes its own height from content
+  (`AdjustWindowSize()`), and had a `HeaderHeight = 48` constant baked into that math for the old
+  Auto-measured header - updated to `32` to match the new fixed-height title bar so the size
+  computation stays accurate. Its existing `HeaderBar_MouseLeftButtonDown` drag handler (redundant
+  with a whole-window `EnhancedDragDropHelper.EnableWindowDrag(this)` also present) was renamed to
+  `TitleBar_MouseLeftButtonDown` and kept as the only drag mechanism.
+- **`XLEdgeGLAccountsWindow`**: had no drag support at all before (no `EnableWindowDrag` call) -
+  added `TitleBar_MouseLeftButtonDown` for consistency with every other window, a deliberate
+  improvement rather than a like-for-like port.
+- **`XLEdgeMessageWindow`**: uses `DockPanel`/`DisableAutoSizing="True"` with its own
+  `XLEdgeMessageWindow_AutoFitOnce` sizing pass, not the standard Grid-with-32px-row shape used
+  elsewhere - kept the `DockPanel` structure, just swapped the header `DockPanel` for a `Grid`
+  styled `TitleBarGridStyle` (`DockPanel.Dock="Top"` attached property works identically on either
+  element type). `DisableAutoSizing` is unrelated to `ExtendsContentIntoTitleBar` and needed no
+  change. The window's own stale comment claiming `DpiAwareWindow.cs` "explicitly disables
+  FluentWindow's native ExtendsContentIntoTitleBar chrome for every window" (true when written, no
+  longer true after the POC commit) has been corrected.
+- **`XLEdgeWaitWindow`**: `SizeToContent="Height"`, no close button in the title bar (unchanged -
+  this window is only ever dismissed via its Cancel button or programmatically, never a user
+  title-bar close). Its `titleIcon`/`titleText` elements are set at runtime per-operation via
+  `SetProcessTitle(string, PackIconFontAwesomeKind)`, so they keep their `x:Name`s and direct
+  Text/Kind assignment rather than switching to the `WindowCaption`/`IconSymbol` binding pattern
+  used by every other window (which only ever shows a static caption).
+- Every other window (`XLEdgeCalendar`, `XLEdgeLoginDetails`, `XLEdgeOptions`,
+  `XLEdgeServerConfiguration`) followed the POC's mechanical pattern exactly: root
+  `WindowStyle`/`ExtendsContentIntoTitleBar`/`WindowCaption`/`IconSymbol` attributes, header
+  `Border` → title-bar `Grid`, outer manual card `Border` removed with its 10px padding
+  redistributed as `Margin` on the content/footer rows, `EnhancedDragDropHelper.EnableWindowDrag`
+  replaced by a `TitleBar_MouseLeftButtonDown` handler wired to the title bar only.
+
+Verified by: parsing all 8 edited `.xaml` files as well-formed XML, and `grep` confirming zero
+remaining `WindowStyle="None"` / `HeaderBar` / `CustomWindowCloseButtonStyle` /
+`EnableWindowDrag` references anywhere under `Views\`. No build toolchain is available in this
+environment - not yet confirmed by the user in a real build for these 8 (the POC alone was
+build-tested).
+
 ## Correction + real chrome migration started: WindowStyle="None" → native WPF-UI title bar (proof-of-concept: XLEdgeAbout) — 2026-08-12
 
 The fix-parity entry directly below concluded XLEdge's MahApps.Metro → WPF-UI migration was already

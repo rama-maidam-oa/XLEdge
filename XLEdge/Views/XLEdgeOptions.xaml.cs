@@ -116,8 +116,24 @@ namespace XLEdge.Views
             InitializeComponent();
             DataContext = this;
 
-            EnhancedDragDropHelper.EnableWindowDrag(this);
             LoadFromAppState();
+        }
+
+        // Replaces EnhancedDragDropHelper.EnableWindowDrag(this) now that the window has a real
+        // title bar (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True").
+        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+                {
+                    this.DragMove();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "XLEdgeOptions.TitleBar_MouseLeftButtonDown");
+            }
         }
 
         private void LoadFromAppState()

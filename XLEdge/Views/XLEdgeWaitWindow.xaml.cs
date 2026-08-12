@@ -93,8 +93,6 @@ namespace XLEdge.Views
 
             _helper = helper ?? new CancellationHelper();
 
-            EnhancedDragDropHelper.EnableWindowDrag(this);
-
             BtnCancel.Click += BtnCancel_Click;
 
             _stopwatch = new Stopwatch();
@@ -111,6 +109,23 @@ namespace XLEdge.Views
             this.Closed += OnClosedCleanup;
 
             BtnCancel.IsEnabled = true;
+        }
+
+        // Replaces EnhancedDragDropHelper.EnableWindowDrag(this) now that the window has a real
+        // title bar (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True").
+        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+                {
+                    this.DragMove();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "XLEdgeWaitWindow.TitleBar_MouseLeftButtonDown");
+            }
         }
 
         private void OnClosingGate(object sender, CancelEventArgs e)

@@ -31,6 +31,24 @@ namespace XLEdge.Views
             LoadSegments(displayValuesJson);
         }
 
+        // Drag-move via the native title bar (WindowStyle="SingleBorderWindow" +
+        // ExtendsContentIntoTitleBar="True") - matches every other migrated window; this window
+        // had no drag support before the chrome migration.
+        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+                {
+                    this.DragMove();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "XLEdgeGLAccountsWindow.TitleBar_MouseLeftButtonDown");
+            }
+        }
+
         private void LoadSegments(string displayValuesJson)
         {
             _segments = new List<SegmentData>();

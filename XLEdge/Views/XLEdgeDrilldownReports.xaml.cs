@@ -24,7 +24,9 @@ namespace XLEdge.Views
         private const double WindowMaxHeight = 700;
         private const double HorizontalPadding = 50;
         private const double VerticalPadding = 24;
-        private const double HeaderHeight = 48;
+        // Matches the native title bar's fixed height (TitleBarGridStyle in GlobalStyles.xaml),
+        // not the old hand-drawn HeaderBar's Auto-measured height.
+        private const double HeaderHeight = 32;
         private const double FooterHeight = 58;
         private const double ItemHeight = 28;
 
@@ -55,7 +57,6 @@ namespace XLEdge.Views
         public XLEdgeDrilldownReports()
         {
             InitializeComponent();
-            EnhancedDragDropHelper.EnableWindowDrag(this);
             DataContext = this;
             Loaded += XLEdgeDrilldownReports_Loaded;
         }
@@ -277,7 +278,11 @@ namespace XLEdge.Views
             }
         }
 
-        private void HeaderBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        // Only the title bar Grid initiates drag-move now that the window has a real title bar
+        // (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True"), replacing the
+        // whole-window EnhancedDragDropHelper.EnableWindowDrag(this) call removed from the
+        // constructor above.
+        private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ButtonState == MouseButtonState.Pressed)
             {

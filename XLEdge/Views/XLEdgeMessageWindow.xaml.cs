@@ -22,9 +22,6 @@ namespace XLEdge.Views
         {
             InitializeComponent();
 
-            EnhancedDragDropHelper.EnableWindowDrag(this);
-
-
             MsgText.Text = message;
 
             SetMessageIcon(icon);
@@ -57,7 +54,9 @@ namespace XLEdge.Views
                 this.SizeToContent = SizeToContent.Manual;
             }
         }
-        private void HeaderPanel_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        // Replaces EnhancedDragDropHelper.EnableWindowDrag(this) now that the window has a real
+        // title bar (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True").
+        private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ButtonState == MouseButtonState.Pressed)
                 DragMove();

@@ -4,7 +4,8 @@
 					  xmlns:utils="clr-namespace:XLEdge.Utilities" 
 					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
 					  xmlns:local="clr-namespace:XLEdge.Views" WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
-					  SizeToContent="Height" Width="420" MinHeight="170" MaxHeight="350" WindowStyle="None"
+					  SizeToContent="Height" Width="420" MinHeight="170" MaxHeight="350"
+					  WindowStyle="SingleBorderWindow" ExtendsContentIntoTitleBar="True"
 					  Background="White" ShowInTaskbar="False">
     <utils:DpiAwareWindow.Resources>
         <ResourceDictionary>
@@ -19,12 +20,17 @@
          corners throughout. GLSense's own wait window is a plain, flat, square-cornered, opaque
          window (native chrome + a flat colored title bar, no rounded card/shadow illusion at all) -
          simplified to match: window is now a plain opaque Background="White" (no AllowsTransparency),
-         with a single flat 1px border and square corners (no CornerRadius) throughout. -->
-    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1" Padding="0">
-            <Grid>
+         with a single flat 1px border and square corners (no CornerRadius) throughout. The header
+         below is now the real native WPF-UI title bar (WindowStyle="SingleBorderWindow" +
+         ExtendsContentIntoTitleBar="True", see GlobalStyles.xaml's Title Bar Styles section) instead
+         of a hand-drawn colored Border, and the outer manual card Border above this comment is gone
+         too, since SingleBorderWindow now provides a real native frame. No close button in the title
+         bar - unchanged from before, this window is only ever dismissed via the Cancel button or
+         programmatically (RequestClose/Dispose), never by the user clicking a title-bar close. -->
+            <Grid x:Name="RootGrid">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <!-- Header -->
+                    <RowDefinition Height="32"/>
+                    <!-- Title Bar -->
                     <RowDefinition Height="Auto"/>
                     <!-- Content - deliberately Auto, not "*": with SizeToContent="Height" WPF
                          measures this row with infinite available height, and a bare "*" row
@@ -33,20 +39,15 @@
                          the sibling GLSense project's own wait-window sizing saga). Auto sizes
                          correctly to the actual content in every measurement pass. -->
                 </Grid.RowDefinitions>
-                <!-- Header -->
-                <Border Grid.Row="0" Background="{StaticResource PrimaryBrush}" Padding="16,12">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <!-- Left side with icon and title -->
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <iconPacks:PackIconFontAwesome x:Name="titleIcon" Kind="RotateSolid" Style="{StaticResource LargeIcon}"/>
-                            <TextBlock x:Name="titleText" Text="Refreshing Data" Style="{StaticResource TitleHeaderTextBlock}"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                <!-- Title Bar -->
+                <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <iconPacks:PackIconFontAwesome x:Name="titleIcon" Grid.Column="0" Kind="RotateSolid" Style="{StaticResource TitleBarIconStyle}"/>
+                    <TextBlock x:Name="titleText" Grid.Column="1" Text="Refreshing Data" Style="{StaticResource TitleBarTextStyle}" TextTrimming="CharacterEllipsis"/>
+                </Grid>
                 <!-- Content -->
                 <!-- Bug fix (WaitWindow "not looking great" - large dead vertical gap above/below the
                      progress bar): this used to wrap the progress bar in a ScrollViewer around a Grid
@@ -107,5 +108,4 @@
                 <!-- Overlay -->
                 <local:AppOverlay x:Name="AppOverlayControl" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed"/>
             </Grid>
-    </Border>
 </utils:DpiAwareWindow>

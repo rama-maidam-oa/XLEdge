@@ -7,10 +7,13 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        WindowStyle="None"
+        WindowCaption="XLEdge Login Details"
+        IconSymbol="CircleInfoSolid"
+        WindowStyle="SingleBorderWindow"
+        ExtendsContentIntoTitleBar="True"
         WindowStartupLocation="CenterScreen"
-        SizeToContent="Manual" 
-        MinHeight="260" MaxHeight="400" 
+        SizeToContent="Manual"
+        MinHeight="260" MaxHeight="400"
         MinWidth="460" MaxWidth="580"
         ResizeMode="CanResize"
         Background="White" ShowInTaskbar="False">
@@ -26,45 +29,34 @@
     <!-- Bug fix ("all windows: card style not looking good, make it simple like GLSense"): dropped
          the floating-card treatment (transparent window + bleed margin + DropShadowEffect + rounded
          inner card) in favor of a plain, flat, opaque, square-cornered window - see XLEdgeOptions.xaml
-         for the full rationale comment. -->
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
-    <Grid>
+         for the full rationale comment. The old header/close-button chrome below has since been
+         replaced by the native WPF-UI title bar (WindowStyle="SingleBorderWindow" +
+         ExtendsContentIntoTitleBar="True", see GlobalStyles.xaml's Title Bar Styles section); the
+         outer manual card Border is gone too, since SingleBorderWindow now provides a real native frame. -->
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <!-- Header -->
+            <RowDefinition Height="32"/>
+            <!-- Title Bar -->
             <RowDefinition Height="Auto"/>
             <!-- Content -->
             <RowDefinition Height="Auto"/>
             <!-- Buttons -->
         </Grid.RowDefinitions>
 
-        <!-- ================= Header ================= -->
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Left side with icon and title -->
-                <StackPanel Grid.Column="0" 
-           Orientation="Horizontal" 
-           VerticalAlignment="Center">
-                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" 
-                 Style="{StaticResource LargeIcon}" />
-                    <TextBlock Text="XLEdge Login Details" 
-                 Style="{StaticResource TitleHeaderTextBlock}"/>
-                </StackPanel>
-
-                <Button Grid.Column="2" 
-             Style="{StaticResource CustomWindowCloseButtonStyle}" 
-             Click="BtnClose_Click" />
-            </Grid>
-        </Border>
+        <!-- ================= Title Bar ================= -->
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+        </Grid>
 
         <!-- ================= Content Section ================= -->
-        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Padding="20" Margin="0,0,0,15">
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Padding="20" Margin="10,10,10,15">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -155,7 +147,7 @@
         </Border>
 
         <!-- ================= Buttons Section ================= -->
-        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Padding="10,4" Margin="0">
+        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Padding="10,4" Margin="10,0,10,10">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <!-- Close Button -->
                 <Button x:Name="CmdClose" Style="{StaticResource CloseButtonStyle}"
@@ -163,5 +155,4 @@
             </StackPanel>
         </Border>
     </Grid>
-    </Border>
 </utils:DpiAwareWindow>

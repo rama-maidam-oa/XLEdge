@@ -4,14 +4,17 @@
                       xmlns:utils="clr-namespace:XLEdge.Utilities"
                       xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                       xmlns:local="clr-namespace:XLEdge.Views"
-                      WindowStyle="None"
+                      WindowCaption="Select Date"
+                      IconSymbol="CalendarDaysSolid"
+                      WindowStyle="SingleBorderWindow"
+                      ExtendsContentIntoTitleBar="True"
                       WindowStartupLocation="Manual"
                       SizeToContent="Manual"
                       MinWidth="320"
                       MinHeight="340"
                       ResizeMode="CanResize"
                       Background="White" ShowInTaskbar="False"
-                      Title="Select Date" Height="324">
+                      Height="324">
     <utils:DpiAwareWindow.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -26,33 +29,29 @@
     <!-- Bug fix ("all windows: card style not looking good, make it simple like GLSense"): dropped
          the floating-card treatment (transparent window + bleed margin + DropShadowEffect + rounded
          inner card) in favor of a plain, flat, opaque, square-cornered window - see XLEdgeOptions.xaml
-         for the full rationale comment. -->
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
-    <Grid>
+         for the full rationale comment. The old header/close-button chrome below has since been
+         replaced by the native WPF-UI title bar (WindowStyle="SingleBorderWindow" +
+         ExtendsContentIntoTitleBar="True", see GlobalStyles.xaml's Title Bar Styles section); the
+         outer manual card Border is gone too, since SingleBorderWindow provides a real native frame. -->
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+        </Grid>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <iconPacks:PackIconFontAwesome Kind="CalendarDaysSolid" Style="{StaticResource LargeIcon}"/>
-                    <TextBlock Text="Select Date" Style="{StaticResource TitleHeaderTextBlock}"/>
-                </StackPanel>
-
-                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4" Padding="0">
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="10,10,10,4" Padding="0">
             <Viewbox Stretch="Fill" StretchDirection="Both">
                 <Calendar x:Name="CalendarControl"
                           HorizontalAlignment="Stretch"
@@ -67,7 +66,7 @@
             </Viewbox>
         </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Margin="0">
+        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Margin="10,0,10,10">
             <Grid>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="OK" Style="{StaticResource DynamicContentButton}" Click="BtnOk_Click" Margin="0,0,8,0"/>
@@ -76,5 +75,4 @@
             </Grid>
         </Border>
     </Grid>
-    </Border>
 </utils:DpiAwareWindow>

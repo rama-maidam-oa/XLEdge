@@ -4,7 +4,10 @@
 					  xmlns:utils="clr-namespace:XLEdge.Utilities"
                       xmlns:conv="clr-namespace:XLEdge.Converters"
 					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
-					  xmlns:local="clr-namespace:XLEdge.Views" WindowStyle="None" WindowStartupLocation="CenterScreen"
+					  xmlns:local="clr-namespace:XLEdge.Views"
+					  WindowCaption="Server Configuration"
+					  IconSymbol="DatabaseSolid"
+					  WindowStyle="SingleBorderWindow" ExtendsContentIntoTitleBar="True" WindowStartupLocation="CenterScreen"
 					  SizeToContent="Manual" MinWidth="850" MaxWidth="900" MinHeight="500" MaxHeight="650" ResizeMode="CanResize"
 					  Background="White" ShowInTaskbar="False"
                       Loaded="XLEdgeServerConfiguration_Loaded">
@@ -36,32 +39,31 @@
             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
         </ResourceDictionary>
     </utils:DpiAwareWindow.Resources>
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
-        <Grid>
+    <!-- The old header/close-button chrome below has been replaced by the native WPF-UI title
+         bar (WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True", see
+         GlobalStyles.xaml's Title Bar Styles section); the outer manual card Border is gone too,
+         since SingleBorderWindow now provides a real native frame. -->
+    <Grid x:Name="RootGrid">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="32"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- ================= Header ================= -->
-            <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <iconPacks:PackIconFontAwesome Kind="DatabaseSolid" Style="{StaticResource LargeIcon}"/>
-                        <TextBlock Text="Server Configuration" Style="{StaticResource TitleHeaderTextBlock}"/>
-                    </StackPanel>
-                    <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
-                </Grid>
-            </Border>
+            <!-- ================= Title Bar ================= -->
+            <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+                <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+            </Grid>
 
             <!-- ================= Data Grid Section ================= -->
-            <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4" Background="White">
+            <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="10,10,10,4" Background="White">
                 <DataGrid x:Name="dgInstances" Background="White"
                           AutoGenerateColumns="False"
                           CanUserAddRows="True"
@@ -286,7 +288,7 @@
             </Border>
 
             <!-- ================= Action Buttons Section ================= -->
-            <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}">
+            <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Margin="10,0,10,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -342,6 +344,5 @@
             </Border>
 
             <local:AppOverlay x:Name="AppOverlayControl" Margin="0" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
-        </Grid>
-    </Border>
+    </Grid>
 </utils:DpiAwareWindow>

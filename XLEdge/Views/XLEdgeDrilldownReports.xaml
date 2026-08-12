@@ -4,10 +4,14 @@
                       xmlns:utils="clr-namespace:XLEdge.Utilities" 
                       xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
                       x:Class="XLEdge.Views.XLEdgeDrilldownReports" 
-                      mc:Ignorable="d" WindowStyle="None" WindowStartupLocation="Manual"
+                      mc:Ignorable="d"
+                      WindowCaption="Drill Down Reports"
+                      IconSymbol="CircleInfoSolid"
+                      WindowStyle="SingleBorderWindow" ExtendsContentIntoTitleBar="True"
+                      WindowStartupLocation="Manual"
                       ResizeMode="CanResize" SizeToContent="Manual"
                       MinWidth="300" MinHeight="230" MaxWidth="700" MaxHeight="700"
-                      Background="White" ShowInTaskbar="False" Title="Drill Down Reports"
+                      Background="White" ShowInTaskbar="False"
                       DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <utils:DpiAwareWindow.Resources>
         <ResourceDictionary>
@@ -20,33 +24,29 @@
     <!-- Bug fix ("all windows: card style not looking good, make it simple like GLSense"): dropped
          the floating-card treatment (transparent window + bleed margin + DropShadowEffect + rounded
          inner card) in favor of a plain, flat, opaque, square-cornered window - see XLEdgeOptions.xaml
-         for the full rationale comment. -->
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
-    <Grid>
+         for the full rationale comment. The old header/close-button chrome below has since been
+         replaced by the native WPF-UI title bar (WindowStyle="SingleBorderWindow" +
+         ExtendsContentIntoTitleBar="True", see GlobalStyles.xaml's Title Bar Styles section); the
+         outer manual card Border is gone too, since SingleBorderWindow provides a real native frame. -->
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="HeaderBar_MouseLeftButtonDown">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="CmdClose_Click"/>
+        </Grid>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
-                    <TextBlock Text="Drill Down Reports" Style="{StaticResource TitleHeaderTextBlock}"/>
-                </StackPanel>
-
-                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="CmdClose_Click"/>
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,2,0,10" Padding="0" VerticalAlignment="Stretch">
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="10,2,10,10" Padding="0" VerticalAlignment="Stretch">
             <ListBox x:Name="DrillListCtrl"
                      ItemsSource="{Binding Reports}"
                      BorderThickness="0"
@@ -79,7 +79,7 @@
             </ListBox>
         </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}">
+        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Margin="10,0,10,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -100,5 +100,4 @@
             </Grid>
         </Border>
     </Grid>
-    </Border>
 </utils:DpiAwareWindow>

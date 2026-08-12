@@ -4,8 +4,11 @@
                       xmlns:utils="clr-namespace:XLEdge.Utilities"
                       xmlns:local="clr-namespace:XLEdge.Views"
                       xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                      WindowCaption="User Preferences"
+                      IconSymbol="CircleInfoSolid"
                       WindowStartupLocation="CenterScreen"
-                      WindowStyle="None"
+                      WindowStyle="SingleBorderWindow"
+                      ExtendsContentIntoTitleBar="True"
                       ResizeMode="CanResize"
                       SizeToContent="Manual"
                       MinWidth="640"
@@ -34,40 +37,36 @@
          windows are plain, flat, opaque, square-cornered (native chrome, no floating-card illusion) -
          simplified to match: the Window itself is now a plain opaque Background="White" (set above,
          no AllowsTransparency), with a single flat 1px border directly around the content and no
-         rounded corners/shadow. -->
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Padding="10">
-    <Grid>
+         rounded corners/shadow. The old header/close-button chrome below has since been replaced by
+         the native WPF-UI title bar (WindowStyle="SingleBorderWindow" +
+         ExtendsContentIntoTitleBar="True", see GlobalStyles.xaml's Title Bar Styles section); the
+         outer manual card Border is gone too, since SingleBorderWindow now provides a real native frame. -->
+    <Grid x:Name="RootGrid">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="139*"/>
             <ColumnDefinition Width="161*"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" Grid.ColumnSpan="2">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
-                    <TextBlock Text="User Preferences" Style="{StaticResource TitleHeaderTextBlock}"/>
-                </StackPanel>
-
-                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
-            </Grid>
-        </Border>
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" Grid.ColumnSpan="2" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+        </Grid>
 
         <!-- Bug fix: the local Background="#F8F9FA" here overrode ContentBorderStyle's own
              Background="White" setter, so this card rendered off-white/gray instead of matching
              every other ContentBorderStyle card in the app (a plain white rounded card). Removed. -->
-        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,10" Padding="0" Grid.ColumnSpan="2">
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="10,10,10,10" Padding="0" Grid.ColumnSpan="2">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -435,7 +434,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Grid.ColumnSpan="2">
+        <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Grid.ColumnSpan="2" Margin="10,0,10,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -461,5 +460,4 @@
              it can cover the whole window regardless of which row triggered it. -->
         <local:AppOverlay x:Name="AppOverlayControl" Grid.RowSpan="3" Grid.ColumnSpan="2" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="100"/>
     </Grid>
-    </Border>
 </utils:DpiAwareWindow>

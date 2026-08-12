@@ -3,13 +3,15 @@
                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
                       xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
                       xmlns:utils="clr-namespace:XLEdge.Utilities" 
+                      WindowCaption="Orbit XLEdge"
+                      IconSymbol="MessageSolid"
                       WindowStartupLocation="CenterScreen"
                       ResizeMode="CanResize"
                       SizeToContent="Manual"
                       Width="340" Height="200"
                       MinHeight="160" MaxHeight="600"
                       MinWidth="280" MaxWidth="450"
-                      WindowStyle="None" Background="White"
+                      WindowStyle="SingleBorderWindow" ExtendsContentIntoTitleBar="True" Background="White"
                       ShowInTaskbar="False" Topmost="False" ShowActivated="True"
                       DisableAutoSizing="True">
     <utils:DpiAwareWindow.Resources>
@@ -37,13 +39,13 @@
          underneath - a look GLSense's own message window (GLMessageWindow.xaml, a native-chrome
          BaseWindow with a plain, flat, square-cornered content area) does not use at all. Simplified
          to a plain, flat, opaque window (Background="White" on the Window itself, no
-         AllowsTransparency) with a single thin flat border and no rounded corners/shadow - the
-         closest match to GLSense's own look achievable while keeping this codebase's established
-         WindowStyle="None" + custom-drawn title bar pattern (this class's own DpiAwareWindow.cs
-         explicitly disables FluentWindow's native "ExtendsContentIntoTitleBar" chrome for every
-         window here, so GLSense's exact native-chrome mechanism isn't available - see that file's
-         own comments). Separately, the actual root cause of "not showing completely": this window's
-         own XLEdgeMessageWindow_AutoFitOnce (below) already implements its own complete, purpose-built
+         AllowsTransparency) with a single thin flat border and no rounded corners/shadow. The old
+         header has since been replaced by the real native WPF-UI title bar (WindowStyle=
+         "SingleBorderWindow" + ExtendsContentIntoTitleBar="True", DpiAwareWindow.cs no longer blocks
+         it - see GlobalStyles.xaml's Title Bar Styles section), and the outer manual Border above this
+         comment is gone too, since SingleBorderWindow now provides a real native frame. Separately,
+         the actual root cause of "not showing completely": this window's own
+         XLEdgeMessageWindow_AutoFitOnce (below) already implements its own complete, purpose-built
          sizing pass (temporarily SizeToContent="WidthAndHeight" to measure, then locks back to
          "Manual" with the clamped result) - but DpiAwareWindow's OWN auto-sizing machinery
          (CaptureInitialWindowConstraints/FitToAvailableWorkArea's LayoutTransform-based scale-to-fit,
@@ -51,33 +53,21 @@
          since DisableAutoSizing was never set here even though DpiAwareWindow.cs's own doc comment
          says "Use this for message boxes and dialogs that should respect user resizing." Added
          DisableAutoSizing="True" above so this window's own AutoFitOnce sizing is the only sizing
-         logic that ever runs, with nothing to override its result afterward. -->
-    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1">
+         logic that ever runs, with nothing to override its result afterward - this still applies
+         unchanged, since DisableAutoSizing governs a separate code path from
+         ExtendsContentIntoTitleBar. -->
         <DockPanel LastChildFill="True">
-            <!-- Header -->
-            <DockPanel x:Name="HeaderPanel" DockPanel.Dock="Top" Background="#149FDB" Height="40" LastChildFill="True" MouseLeftButtonDown="HeaderPanel_MouseLeftButtonDown">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Left side with icon and title -->
-                    <StackPanel Grid.Column="0" 
-           Orientation="Horizontal" 
-           VerticalAlignment="Center">
-                        <iconPacks:PackIconFontAwesome Kind="MessageSolid" 
-                 Style="{StaticResource MediumIcon}" Margin="6,4,0,0" />
-                        <TextBlock Text="Orbit XLEdge" 
-                 Style="{StaticResource TitleHeaderTextBlock}"/>
-                    </StackPanel>
-
-                    <Button Grid.Column="2" 
-             Style="{StaticResource CustomWindowCloseButtonStyle}" 
-             Click="BtnClose_Click" Margin="0,0,10,0"/>
-                </Grid>
-            </DockPanel>
+            <!-- Title Bar -->
+            <Grid x:Name="HeaderPanel" DockPanel.Dock="Top" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}"/>
+                <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=utils:DpiAwareWindow}}" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="2" x:Name="TitleCloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+            </Grid>
             <!-- Content -->
             <Grid Margin="15" HorizontalAlignment="Stretch">
                 <Grid.RowDefinitions>
@@ -140,5 +130,4 @@
                 </Grid>
             </Grid>
         </DockPanel>
-    </Border>
 </utils:DpiAwareWindow>
