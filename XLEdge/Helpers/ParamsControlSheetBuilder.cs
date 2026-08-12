@@ -416,6 +416,14 @@ namespace XLEdge.Helpers
                                 continue;
                             }
 
+                            if (IsChildReportSheet(ws, tableObj, tableObj.Name))
+                            {
+                                // A drilldown-generated ("Child Report") sheet's own parameters are
+                                // the child's, not the parent scheduled report's - it must not be
+                                // aggregated into the control sheet at all.
+                                continue;
+                            }
+
                             string[] strList = tableObj.Name.Split('_');
                             string reportId = strList.Length > 1 ? strList[1] : string.Empty;
 
@@ -458,6 +466,53 @@ namespace XLEdge.Helpers
             {
                 LogUtility.LogException(ex, nameof(CollectParameterData));
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Read-only check for whether <paramref name="sheet"/>'s report table is a drilldown-generated
+        /// "Child Report" - mirrors the sheet-resolution and IT1 read in AddinModule's
+        /// TryResolveInstanceAndChildFlag / XLEdgeRibbonHelper's IsChildReportSheet.
+        /// </summary>
+        private static bool IsChildReportSheet(Excel.Worksheet sheet, Excel.ListObject tableObj, string tableName)
+        {
+            Excel.Worksheet sourceSheet = sheet;
+            bool releaseSourceSheet = false;
+
+            try
+            {
+                if (tableObj.HeaderRowRange != null && tableObj.HeaderRowRange.Offset[1, 0].Row == 2)
+                {
+                    string paramSheetName = $"P_{sheet.Name}";
+                    Excel.Worksheet paramSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, tableName);
+                    if (paramSheet == null)
+                    {
+                        return false;
+                    }
+
+                    sourceSheet = paramSheet;
+                    releaseSourceSheet = true;
+                }
+
+                try
+                {
+                    object it1 = sourceSheet.Range["IT1"]?.Value;
+                    return it1 != null && string.Equals(Convert.ToString(it1), "Child Report", StringComparison.OrdinalIgnoreCase);
+                }
+                catch (Exception ex)
+                {
+                    // Safe to ignore/expected: IT1 cell may not exist on older/differently-shaped
+                    // sheets; treated the same as "not a child report".
+                    LogUtility.LogDebug($"{nameof(IsChildReportSheet)}: failed to read IT1 cell - {ex.Message}");
+                    return false;
+                }
+            }
+            finally
+            {
+                if (releaseSourceSheet && sourceSheet != null)
+                {
+                    Marshal.ReleaseComObject(sourceSheet);
+                }
             }
         }
 

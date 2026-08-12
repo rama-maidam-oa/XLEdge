@@ -78,7 +78,31 @@ repeatedly.
 
 ### OISR-22045: scheduled-output Parameters Control Sheet shows child drilldown params instead of parent
 
-Root cause: a genuine data race on the app-wide singleton `XLEdgeAppState.Instance.FollowDrilldown`.
+**Correction (2026-08-12, same day, after user clarification):** the ticket's actual intent is
+narrower than first read - a drilldown "Child Report" sheet correctly gets `IT1 = "Child Report"`
+stamped on it (that part already works); the bug is that the workbook-wide "Parameters Control Sheet"
+builder never checks that marker at all, so a child sheet's own row still gets pulled into the control
+sheet next to (or instead of) its parent's. Fixed directly below in `ParamsControlSheetBuilder.cs`. The
+race-condition writeup and fix further down remain accurate for a real, related bug they found (a child
+drilldown's `IT1` write racing and clobbering a concurrently-generating parent's own `IT1`), but that
+alone doesn't address the ticket - keeping both fixes, since both are real defects on this same `IT1`
+marker.
+
+**Fixed:** `ParamsControlSheetBuilder.CollectParameterData`'s workbook-wide loop (which walks every
+worksheet to aggregate report parameters into the control sheet) filtered on `ListObjects.Count`, the
+table name's `"_E"` suffix, stored report XML presence, and non-empty params/report name - but never
+read `IT1` at all, so any drilldown-generated child sheet (also `"_E"`-suffixed, since drilldowns are
+always live-run shape regardless of the parent's type) passed every filter and got aggregated in
+alongside genuine parent reports. Added `IsChildReportSheet` (a fourth copy of the same
+sheet-resolution + `IT1` read pattern already duplicated in `AddinModule.TryResolveInstanceAndChildFlag`
+and `XLEdgeRibbonHelper.IsChildReportSheet` - matching this codebase's own established convention of a
+small private copy per class rather than a shared helper) and a `continue` in the loop right after the
+existing `"_E"` suffix check, so a child sheet is now skipped before its parameters are ever collected.
+
+---
+
+Root cause (of the race-condition bug found alongside the above, real but not what this ticket was
+about): a genuine data race on the app-wide singleton `XLEdgeAppState.Instance.FollowDrilldown`.
 `CreateReportFromTitleAsyncCore` computes a per-invocation `isDrilldownRequest` local and immediately
 mirrors it into the shared singleton - correct for that invocation at that moment - but several real
 `await`s follow (CSV/meta/params fetches) before `WriteParameterBookkeepingCells` reads the same
