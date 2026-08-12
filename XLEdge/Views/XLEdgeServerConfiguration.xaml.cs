@@ -428,10 +428,23 @@ namespace XLEdge.Views
                         // Delete now persists immediately instead of requiring a separate Save click -
                         // if SaveConfiguration fails validation (e.g. another row still has bad/missing
                         // data), it already shows the real error via UpdateStatus, so don't overwrite
-                        // that with a falsely reassuring message. The instance is still removed from
-                        // this session's grid either way; only the on-disk persistence is affected.
+                        // that with a falsely reassuring message, and don't reload either (the removal
+                        // above still stands in-memory even on a failed save; reloading here would
+                        // instead re-fetch the stale pre-delete snapshot, since UpdateCachedConfiguration
+                        // is only reached on a successful save - see GetConfigurationSnapshots).
                         if (SaveConfiguration())
                         {
+                            // Bug fix: deleting a NON-default row left the "Default" checkbox
+                            // (bound to IsSelected, which DgInstances_SelectionChanged had just
+                            // overwritten via WPF's automatic reselection of another row after the
+                            // deleted one) out of sync with the real default - it only got
+                            // re-synced above when the deleted row itself was the default. Reload
+                            // from the just-persisted configuration instead of trusting this
+                            // session's in-memory selection state - the same full refresh already
+                            // done when the window is first opened - so the checkbox and row order
+                            // (default first, else alphabetical - see ReorderInstancesWithDefaultFirst)
+                            // always reflect what's actually in the XML, whichever row was deleted.
+                            LoadConfiguration();
                             UpdateStatus($"Instance {instanceName} deleted and saved.", StatusMessageType.Info);
                         }
                         ResetRibbonIfLoggedOut();

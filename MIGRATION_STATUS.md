@@ -2,6 +2,32 @@
 
 Last updated: 2026-08-12
 
+## Correction: reverted the IsDefault rebind below, fixed the real gap at the reload step instead — 2026-08-12
+
+The entry directly below rebound the "Default" checkbox column from `IsSelected` to `IsDefault`,
+reasoning that `IsSelected` was simply the wrong property. That broke a real, deliberate piece of
+behavior the user relies on: the checkbox is meant to double as a "currently selected row" indicator
+while browsing the grid (`DgInstances_SelectionChanged` sets `IsSelected` on whichever row is
+clicked) - it's expected to show checked on whatever row you just clicked, not only on the true
+persisted default, and only resets to reflect the real default after a full reload (window
+open/reopen). Rebinding to `IsDefault` made every row's checkbox permanently reflect only the true
+default, killing the selection-indicator behavior entirely.
+
+Reverted the binding back to `IsSelected`. The actual bug - deleting a *non*-default row left the
+checkbox showing stale/wrong state instead of correctly falling back to the real default - needed a
+different fix: `BtnDelete_Click` never re-fetched from the persisted configuration after a delete,
+unlike opening the window fresh (`LoadConfiguration`, called from the constructor, does re-sync
+`IsSelected = IsDefault` for every row and reorder default-first, or alphabetically if no default -
+see `ReorderInstancesWithDefaultFirst`). Added a `LoadConfiguration()` call right after a
+*successful* `SaveConfiguration()` in `BtnDelete_Click`, so the grid always re-derives its display
+from the actual saved XML after a delete, the same way it already does on open - fixing the checkbox
+regardless of which row was deleted, without touching the intentional selection-indicator behavior.
+Deliberately gated on `SaveConfiguration()` returning `true`: on a validation failure, the in-memory
+removal still stands (matching this method's existing documented behavior) but nothing is reloaded,
+since `GetConfigurationSnapshots()`'s cache is only updated on a successful save - reloading on
+failure would instead re-fetch the stale pre-delete snapshot and silently undo the removal the user
+just confirmed.
+
 ## Fixed: "Default" checkbox unchecked after deleting a different server instance — 2026-08-12
 
 Reported by the user: in `XLEdgeServerConfiguration`, deleting any non-default configured URL left
