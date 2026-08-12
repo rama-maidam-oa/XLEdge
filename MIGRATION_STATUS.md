@@ -2,6 +2,62 @@
 
 Last updated: 2026-08-12
 
+## WPF-UI fix-parity audit against GLSense's MahApps.Metro migration, ToolTip fix applied — 2026-08-12
+
+Requested: migrate XLEdge's UI from MahApps.Metro to WPF-UI, the same work already done for the
+sibling GLSense project (repo `GLSense`, branch `11.1.0_NewUI`). Investigation found this branch
+(`11.1.0_NewUI`, branched from `11.1.0` for this task) doesn't need that migration: `Utilities\
+DpiAwareWindow.cs` - the base class every one of XLEdge's 9 windows derives from - already extends
+`Wpf.Ui.Controls.FluentWindow`, and a full-history pickaxe search (`git log -p -G'"MahApps\.Metro"'`
+over `packages.config`) returns zero hits - the real `MahApps.Metro` window/theme package has never
+existed in this repo at any point in its history. Only the icon-only `MahApps.Metro.IconPacks.Core`/
+`.FontAwesome` packages remain (`iconPacks:PackIconFontAwesome` glyphs), matching GLSense's own final,
+post-migration state exactly.
+
+What GLSense's migration also needed were fix-up commits for regressions the base-class swap caused
+(commits `65f4dee`, `eaa1b94`, `f7fe334`, `de39e31`, `b43938a`, `2cc7d65`). Audited each against
+XLEdge's actual code:
+
+- **ToolTip `ResourceReferenceKeyNotFoundException` on hover** - present and fixed (see below).
+- **DataGrid trailing-empty-column on resize** - not present. GLSense's bug required
+  `SizeToContent="WidthAndHeight"` measuring a genuine `Width="*"` column against `Infinity`. Every
+  XLEdge window uses `SizeToContent="Manual"` instead (`XLEdgeMessageWindow.xaml` even has an inline
+  comment recording that `WidthAndHeight` was deliberately rejected for this exact self-fighting-layout
+  reason), and both of XLEdge's two DataGrids (`XLEdgeAbout.xaml`/`XLEdgeServerConfiguration.xaml`,
+  both `dgInstances`) already use genuine `Width="*"`/star-ratio fill columns, never `Auto`. No code
+  change needed.
+- **Message-window row collapsing to 0 height under `SizeToContent`** - not present, same reason:
+  `XLEdgeMessageWindow.xaml` already uses `Auto`+`Auto` rows under `SizeToContent="Manual"`.
+- **Bulk-write Excel freeze (`O(n²)` recalculation storm) from a re-entrant submit click** - not
+  present. XLEdge's closest analog to GLSense's `GLSegmentDiscovery.BtnSubmit_Click`,
+  `XLEdgeGLAccountsWindow.xaml.cs BtnOk_Click`, writes at most 2 cells (no loop). The real bulk-write
+  path, report generation (`Helpers\ReportGenerator.cs`), is already wrapped in
+  `ExcelBulkOperationScope`, which sets `Calculation = xlCalculationManual` for the whole operation and
+  restores it on `Dispose()`.
+
+**Fixed:** `Themes\GlobalStyles.xaml` declared `SimpleBrowserToolTip` and `ChromeStyleToolTip` as
+**named** (`x:Key`) `ToolTip` styles, referenced via `Style="{StaticResource ...}"` at ~40 call sites
+across `GlobalStyles.xaml` itself, `XLEdgeAbout.xaml`, `XLEdgeLoginDetails.xaml`,
+`XLEdgeOptions.xaml`, and `XLEdgeServerConfiguration.xaml`. A `ToolTip`'s own `Style` property is
+resolved lazily at popup-open time, not load time - GLSense hit an intermittent
+`ResourceReferenceKeyNotFoundException` on hover from exactly this pattern in the same kind of VSTO
+host (fixed in commit `f7fe334`), and nothing about XLEdge's hosting context is different, so this was
+a live, unfixed risk here too, not yet observed only because no one had hit the unlucky timing.
+
+Ported GLSense's fix directly: `SimpleBrowserToolTip` became the implicit (no `x:Key`) default
+`ToolTip` style, so a failed lookup falls back silently to default appearance instead of throwing -
+every plain `<ToolTip>` at its former call sites now picks it up automatically. `ChromeStyleToolTip`
+(the "TIP"-banner-styled tooltip, 7 uses in `XLEdgeOptions.xaml`) can't also be implicit - WPF allows
+only one implicit style per `TargetType` per merged-dictionary scope - so its `Background`/
+`BorderBrush`/`Padding`/`Template` were inlined directly at each of its 7 call sites instead, and the
+now-dead named style was deleted. `WarningToolTipStyle` (defined but confirmed via grep to have zero
+call sites anywhere) was left untouched - unused and non-colliding, no bug to fix.
+
+No build toolchain is available in this environment (as with every other fix in this file) - verified
+by `grep -rn` confirming zero remaining source references to either removed style name, and by parsing
+all 5 edited files as XML (`[xml](Get-Content $f -Raw)`) to confirm no tag was left unbalanced. Not yet
+confirmed by the user in a real build/Excel session.
+
 ## Fixed: report sheet naming could silently collide between unrelated reports (missing VB.NET disambiguation) — 2026-08-12
 
 Follow-up to the CustomXMLParts/companion-sheet fix above, per user hint pointing at VB.NET's
