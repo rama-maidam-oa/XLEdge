@@ -2,6 +2,15 @@
 
 Last updated: 2026-08-13
 
+## Server Configuration: dismiss the status message immediately on row selection — 2026-08-13
+
+Follow-up to the 10-second auto-hide added just below: selecting a different (non-empty) row means
+the user has moved on from whatever the previous status message was about, so it shouldn't linger
+for the rest of its countdown. Extracted the hide logic from `StatusAutoHideTimer_Tick` into a
+shared `HideStatus()` (stops the timer, collapses `StatusBorder`, clears `txtStatus`) and call it
+from `DgInstances_SelectionChanged` too, right after the existing empty-placeholder-row guard so it
+only fires for real rows, not the grid's add-new-item row.
+
 ## Server Configuration: "Nothing to save" on a no-op Save, 10s auto-hiding status, fixed status wrapping — 2026-08-13
 
 Three follow-up requests on `XLEdgeServerConfiguration`, confirmed by the user that the previous

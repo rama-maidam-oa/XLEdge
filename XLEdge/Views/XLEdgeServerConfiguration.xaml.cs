@@ -61,6 +61,11 @@ namespace XLEdge.Views
 
         private void StatusAutoHideTimer_Tick(object sender, EventArgs e)
         {
+            HideStatus();
+        }
+
+        private void HideStatus()
+        {
             statusAutoHideTimer.Stop();
             StatusBorder.Visibility = Visibility.Collapsed;
             txtStatus.Text = string.Empty;
@@ -345,6 +350,11 @@ namespace XLEdge.Views
                 {
                     return;
                 }
+
+                // Clicking a real row means the user has moved on from whatever the last status
+                // message was about - dismiss it immediately rather than leaving it up for the
+                // rest of its 10-second auto-hide window.
+                HideStatus();
 
                 // Mark the selected row for UI only
                 foreach (var instance in urlInstances)
