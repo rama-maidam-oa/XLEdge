@@ -40,6 +40,12 @@ namespace XLEdge.Views
         private bool isInternalUpdate = false;
         private string persistedDefaultName;
 
+        // What HasUnsavedChanges compares the live grid against - only ever updated at the two
+        // points that reflect actual disk state (LoadConfiguration/SaveConfiguration's success
+        // path), never by AutoSaveConfiguration's per-edit CachedConfiguration sync. See
+        // HasUnsavedChanges's doc comment for why that distinction matters.
+        private List<string> lastSavedSnapshotKeys = new List<string>();
+
         public XLEdgeServerConfiguration()
         {
             InitializeComponent();
@@ -122,6 +128,11 @@ namespace XLEdge.Views
                 {
                     instance.IsSelected = instance.IsDefault;
                 }
+
+                // This just-loaded state is, by definition, what's currently on disk - nothing has
+                // been edited yet - so it's the baseline HasUnsavedChanges compares future edits
+                // against.
+                lastSavedSnapshotKeys = BuildCurrentSnapshotKeys();
 
                 UpdateStatus($"Configuration loaded successfully. {urlInstances.Count} instances found.", StatusMessageType.Success);
             }
@@ -272,6 +283,10 @@ namespace XLEdge.Views
                 UpdateCachedConfiguration();
                 persistedDefaultName = urlInstances.FirstOrDefault(u => u.IsDefault)?.Name;
 
+                // This is now what's actually on disk - update the HasUnsavedChanges baseline to
+                // match, so a subsequent Save with no further edits correctly reports nothing to do.
+                lastSavedSnapshotKeys = BuildCurrentSnapshotKeys();
+
                 UpdateStatus("Configuration saved successfully.", StatusMessageType.Success);
                 return true;
             }
@@ -379,7 +394,44 @@ namespace XLEdge.Views
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
+            if (!HasUnsavedChanges())
+            {
+                UpdateStatus("Nothing to save.", StatusMessageType.Info);
+                return;
+            }
+
             SaveConfiguration();
+        }
+
+        /// <summary>
+        /// Compares the grid's current, in-memory rows against lastSavedSnapshotKeys to tell
+        /// whether Save would actually write anything different.
+        ///
+        /// This deliberately does NOT compare against CachedConfiguration - that field is kept in
+        /// sync with the CURRENT in-memory grid (not with what's actually on disk) by
+        /// AutoSaveConfiguration, which DgInstances_CellEditEnding calls after every single
+        /// Name/Address cell-edit commit, including on a brand new row. Comparing against it would
+        /// always see "no difference" and report "Nothing to save" even for a genuinely new/edited,
+        /// never-yet-written-to-disk row. lastSavedSnapshotKeys is a separate baseline, only ever
+        /// updated at the two points that actually reflect disk state: LoadConfiguration (what was
+        /// just read) and SaveConfiguration's success path (what was just written) - see
+        /// BuildCurrentSnapshotKeys.
+        /// Order-independent (grid rows can reorder via ReorderInstancesWithDefaultFirst without
+        /// that alone counting as a real change) and ignores the empty add-row placeholder, the
+        /// same way SaveConfiguration's own validInstances filter does.
+        /// </summary>
+        private bool HasUnsavedChanges()
+        {
+            return !BuildCurrentSnapshotKeys().SequenceEqual(lastSavedSnapshotKeys);
+        }
+
+        private List<string> BuildCurrentSnapshotKeys()
+        {
+            return urlInstances
+                .Where(u => !string.IsNullOrWhiteSpace(u.Name))
+                .Select(u => $"{u.Name?.Trim().ToLowerInvariant()}|{u.Address?.Trim().TrimEnd('/')}|{u.IsDefault}")
+                .OrderBy(s => s, StringComparer.Ordinal)
+                .ToList();
         }
 
         private void BtnDelete_Click(object sender, RoutedEventArgs e)
@@ -412,10 +464,23 @@ namespace XLEdge.Views
                         // Delete now persists immediately instead of requiring a separate Save click -
                         // if SaveConfiguration fails validation (e.g. another row still has bad/missing
                         // data), it already shows the real error via UpdateStatus, so don't overwrite
-                        // that with a falsely reassuring message. The instance is still removed from
-                        // this session's grid either way; only the on-disk persistence is affected.
+                        // that with a falsely reassuring message, and don't reload either (the removal
+                        // above still stands in-memory even on a failed save; reloading here would
+                        // instead re-fetch the stale pre-delete snapshot, since UpdateCachedConfiguration
+                        // is only reached on a successful save - see GetConfigurationSnapshots).
                         if (SaveConfiguration())
                         {
+                            // Bug fix: deleting a NON-default row left the "Default" checkbox
+                            // (bound to IsSelected, which DgInstances_SelectionChanged had just
+                            // overwritten via WPF's automatic reselection of another row after the
+                            // deleted one) out of sync with the real default - it only got
+                            // re-synced above when the deleted row itself was the default. Reload
+                            // from the just-persisted configuration instead of trusting this
+                            // session's in-memory selection state - the same full refresh already
+                            // done when the window is first opened - so the checkbox and row order
+                            // (default first, else alphabetical - see ReorderInstancesWithDefaultFirst)
+                            // always reflect what's actually in the XML, whichever row was deleted.
+                            LoadConfiguration();
                             UpdateStatus($"Instance {instanceName} deleted and saved.", StatusMessageType.Info);
                         }
                         ResetRibbonIfLoggedOut();
