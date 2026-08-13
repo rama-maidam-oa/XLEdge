@@ -2,7 +2,6 @@
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
-using System.Windows.Forms;
 using XLEdge.Utilities;
 using Excel = Microsoft.Office.Interop.Excel;
 

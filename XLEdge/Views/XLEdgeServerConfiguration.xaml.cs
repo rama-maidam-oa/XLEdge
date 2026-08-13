@@ -1,5 +1,4 @@
-﻿using XLEdge.Helpers;
-using XLEdge.Utilities;
+﻿using XLEdge.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;

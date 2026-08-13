@@ -5,7 +5,6 @@ using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Media;
-using XLEdge.Helpers;
 using XLEdge.Utilities;
 
 namespace XLEdge.Views

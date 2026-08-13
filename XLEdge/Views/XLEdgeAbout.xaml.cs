@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Xml.Linq;
-using XLEdge.Helpers;
 using XLEdge.Utilities;
 
 namespace XLEdge.Views

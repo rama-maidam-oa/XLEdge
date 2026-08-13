@@ -2,10 +2,7 @@
 using NLog.Config;
 using NLog.Targets;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace XLEdge.Helpers
@@ -90,7 +87,7 @@ namespace XLEdge.Helpers
 
             var sb = new StringBuilder();
 
-            string header = $"Orbit XLEdge(version : {XLEdgeAppConstants.DefaultVersion} Released on : {XLEdgeAppConstants.DefaultCommitDate}). Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
+            string header = $"Orbit XLEdge  - Log Generated: {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
             sb.AppendLine(header);
 
             // Add underline that exactly matches the header length in characters

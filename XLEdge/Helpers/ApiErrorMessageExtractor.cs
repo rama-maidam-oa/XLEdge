@@ -18,13 +18,13 @@ namespace XLEdge.Helpers
 
         private static readonly string[] JsonObjectMessageKeys =
         {
-            "message", "msg", "error", "errorMessage", "error_description", "detail",
-            "Message", "Msg", "status", "statusMessage", "fault", "reason"
+            "message", "msg", "msg1","error", "errorMessage", "error_description", "detail",
+            "Message", "Msg","Msg1", "status", "statusMessage", "fault", "reason"
         };
 
         private static readonly string[] JsonArrayItemMessageKeys =
         {
-            "message", "msg", "error", "description"
+            "message", "msg", "msg1", "error", "description"
         };
 
         /// <summary>Ported from ExtractErrorMessage.</summary>
