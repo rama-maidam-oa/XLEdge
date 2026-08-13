@@ -495,9 +495,24 @@ namespace XLEdge.Helpers
 
                 if (outputParam.TryGetProperty("value", out JsonElement valueEl) && valueEl.ValueKind != JsonValueKind.Null)
                 {
-                    updatedParam["value"] = valueEl.ValueKind == JsonValueKind.Number
+                    string newValue = valueEl.ValueKind == JsonValueKind.Number
                         ? valueEl.ToString()
                         : valueEl.GetString();
+                    updatedParam["value"] = newValue;
+
+                    // Bug fix: the Reports Parameters section on the sheet (ReportGenerator.
+                    // ComputeRawParamDisplayValue) reads ONLY "displayValue"/"displayValues" - never
+                    // "value"/"values" - to build what's shown. Before this fix, only "value"/
+                    // "values" were updated here, so the copied-through original "displayValue"/
+                    // "displayValues" (line ~473's full-property copy, above) stayed stale forever
+                    // after a control-sheet edit: the posted payload and the saved CustomXMLPart both
+                    // had the new value, but the visible Parameters Section kept showing whatever was
+                    // there at report-creation time. Mirror the new value into "displayValue" too, and
+                    // drop any stale "displayValues" array left over from the original entry so
+                    // ComputeRawParamDisplayValue's displayValue-first check can't pick up a
+                    // mismatched leftover.
+                    updatedParam["displayValue"] = newValue;
+                    updatedParam.Remove("displayValues");
                 }
                 else if (outputParam.TryGetProperty("values", out JsonElement valuesEl) && valuesEl.ValueKind == JsonValueKind.Array)
                 {
@@ -507,6 +522,10 @@ namespace XLEdge.Helpers
                         values.Add(v.ValueKind == JsonValueKind.Number ? v.ToString() : v.GetString());
                     }
                     updatedParam["values"] = values;
+
+                    // Same fix as above, for the array-valued (BETWEEN/IN) shape.
+                    updatedParam["displayValues"] = values;
+                    updatedParam.Remove("displayValue");
                 }
 
                 updatedParams.Add(updatedParam);
