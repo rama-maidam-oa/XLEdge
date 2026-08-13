@@ -1,6 +1,43 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
+
+## XLEdgeCalendar: browser-style redesign (sharp rendering + easier month/year navigation) — 2026-08-13
+
+Requested: make the date picker look sharp and consistent with a browser's own date-input popup,
+and make month/year navigation easier.
+
+Root cause of the "not sharp" look: `CalendarControl` was wrapped in `<Viewbox Stretch="Fill"
+StretchDirection="Both">`, which non-uniformly scales the whole control to fill whatever size the
+Border around it ended up being - WPF renders the Calendar at that arbitrary scale factor instead of
+its natural, DPI-crisp size, which is what produced the soft/blurry, disproportionate look. Removed
+the Viewbox entirely; the window is now a fixed size (`Width`/`Height`/`MinWidth`/`MinHeight` all
+`360x460`, `ResizeMode="NoResize"` - matches how browser date-input popups are fixed-size, not
+user-resizable) sized to the Calendar's own natural rendered size instead of forcing the Calendar to
+fit an arbitrary window size.
+
+Restyled three template layers (window-local resources, `XLEdgeCalendar.xaml` - Calendar is only
+used here, so nothing else is affected):
+- `BrowserCalendarDayButtonStyle` (`CalendarDayButton`) - flat circular day cells: transparent by
+  default, light-blue circle on hover, `PrimaryBrush`-filled circle + white text when selected, a
+  `PrimaryBrush` ring around today, muted gray for adjacent-month/blacked-out/disabled days.
+- `BrowserCalendarButtonStyle` (`CalendarButton`) - same flat "chip" treatment for the Year view
+  (pick a month) and Decade view (pick a year) grids.
+- An implicit `CalendarItem` style/`ControlTemplate` - the chrome around the day grid: left/right
+  chevron (Segoe MDL2 Assets `&#xE76B;`/`&#xE76C;`) navigation buttons instead of WPF's default
+  up/down triangles (matches the left/right convention every browser date picker uses), and a bold,
+  hover-highlighted header button. The header's click-to-jump-to-Year-then-Decade-view navigation is
+  Calendar's own built-in behavior, unchanged - it was just easy to miss as plain static text before;
+  now it visibly looks clickable, which is what "easy to navigate to month and years" actually needed
+  (no custom navigation logic was written). Preserved the exact required template part names
+  (`PART_HeaderButton`, `PART_PreviousButton`, `PART_NextButton`, `PART_MonthView`, `PART_YearView`,
+  `PART_DisabledVisual`) and left `PART_MonthView`/`PART_YearView` as plain, unpopulated `Grid`s -
+  Calendar fills their rows/columns and content itself at runtime.
+
+No build toolchain is available in this environment - verified only by parsing the edited XAML as
+well-formed XML and cross-checking the `CalendarDayButton`/`CalendarButton`/`CalendarItem` property
+and required-part names against WPF's documented Calendar template contract. Not yet confirmed by the
+user in a real Excel session.
 
 ## Fixed: report sheet naming could silently collide between unrelated reports (missing VB.NET disambiguation) — 2026-08-12
 

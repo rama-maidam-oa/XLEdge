@@ -7,11 +7,11 @@
                       WindowStyle="None"
                       WindowStartupLocation="Manual"
                       SizeToContent="Manual"
-                      MinWidth="320"
-                      MinHeight="340"
-                      ResizeMode="CanResize"
+                      MinWidth="360"
+                      MinHeight="460"
+                      ResizeMode="NoResize"
                       Background="White" ShowInTaskbar="False"
-                      Title="Select Date" Height="324">
+                      Title="Select Date" Width="360" Height="460">
     <utils:DpiAwareWindow.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -20,6 +20,178 @@
             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E6F3FF"/>
             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#F0F8FF"/>
             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+
+            <!-- Browser-style calendar redesign ("sharp look consistent like browser ones, easy to
+                 pick or navigate to month and years"): previously this Calendar was wrapped in a
+                 Viewbox Stretch="Fill" to fit the window, which non-uniformly scales the whole
+                 control - the source of the soft/blurry look and squished proportions, since WPF
+                 renders the Calendar at an arbitrary scale factor instead of its natural, DPI-crisp
+                 size. Removed (see the content Border below) in favor of sizing the window to the
+                 Calendar's own natural size. These three styles restyle its chrome (flat circular day
+                 cells, flat month/year "chip" buttons, left/right chevron navigation instead of
+                 WPF's default up/down triangles) to match a typical browser date-input popup, while
+                 keeping Calendar's own built-in click-the-header-to-jump-to-Year-then-Decade-view
+                 navigation intact - that's not new functionality, just no longer easy to miss now
+                 that the header renders bold with a hover highlight instead of plain static text. -->
+            <Style x:Key="BrowserCalendarDayButtonStyle" TargetType="CalendarDayButton">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Foreground" Value="#212529"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Margin" Value="2"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CalendarDayButton">
+                            <Grid>
+                                <Ellipse x:Name="DayCircle" Width="30" Height="30" Fill="Transparent" Stroke="Transparent" StrokeThickness="1.5"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="DayCircle" Property="Fill" Value="#E6F3FF"/>
+                                </Trigger>
+                                <Trigger Property="IsToday" Value="True">
+                                    <Setter TargetName="DayCircle" Property="Stroke" Value="{StaticResource PrimaryBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="DayCircle" Property="Fill" Value="{StaticResource PrimaryBrush}"/>
+                                    <Setter TargetName="DayCircle" Property="Stroke" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                                <Trigger Property="IsInactive" Value="True">
+                                    <Setter Property="Foreground" Value="#ADB5BD"/>
+                                </Trigger>
+                                <Trigger Property="IsBlackedOut" Value="True">
+                                    <Setter Property="Foreground" Value="#CED4DA"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Foreground" Value="#CED4DA"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Used for the Year view (pick a month) and Decade view (pick a year) grids Calendar
+                 switches to when the header button is clicked. -->
+            <Style x:Key="BrowserCalendarButtonStyle" TargetType="CalendarButton">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Foreground" Value="#212529"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Margin" Value="3"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CalendarButton">
+                            <Border x:Name="Chip" CornerRadius="6" Padding="10,8" Background="Transparent">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chip" Property="Background" Value="#E6F3FF"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Chip" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                                <Trigger Property="IsInactive" Value="True">
+                                    <Setter Property="Foreground" Value="#ADB5BD"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- CalendarItem is the chrome around the day/year/decade grid (header + prev/next
+                 buttons + the two grids Calendar itself populates, PART_MonthView/PART_YearView).
+                 Implicit (no x:Key) so it applies to every CalendarItem this Calendar creates. -->
+            <Style TargetType="CalendarItem">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CalendarItem">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="2,2,2,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button x:Name="PART_PreviousButton" Grid.Column="0" Width="30" Height="30">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Bg" CornerRadius="15" Background="Transparent">
+                                                    <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#495057" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bg" Property="Background" Value="#E9ECEF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Opacity" Value="0.35"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
+                                    <Button x:Name="PART_HeaderButton" Grid.Column="1" HorizontalAlignment="Center"
+                                            FontFamily="Segoe UI" FontSize="15" FontWeight="SemiBold" Foreground="#212529">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Bg" CornerRadius="6" Padding="10,4" Background="Transparent">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bg" Property="Background" Value="#E9ECEF"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
+                                    <Button x:Name="PART_NextButton" Grid.Column="2" Width="30" Height="30">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Bg" CornerRadius="15" Background="Transparent">
+                                                    <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#495057" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bg" Property="Background" Value="#E9ECEF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Opacity" Value="0.35"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Grid.Row="1" x:Name="PART_MonthView" Margin="2,0,2,2"/>
+                                <Grid Grid.Row="1" x:Name="PART_YearView" Margin="2,0,2,2" Visibility="Collapsed"/>
+
+                                <Rectangle x:Name="PART_DisabledVisual" Grid.RowSpan="2" Fill="#A5FFFFFF" Visibility="Collapsed" IsHitTestVisible="False"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </utils:DpiAwareWindow.Resources>
 
@@ -52,19 +224,19 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4" Padding="0">
-            <Viewbox Stretch="Fill" StretchDirection="Both">
-                <Calendar x:Name="CalendarControl"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch"
-                          FontFamily="Segoe UI"
-                          Margin="0"
-                          HorizontalContentAlignment="Stretch"
-                          VerticalContentAlignment="Stretch"
-                          SelectionMode="SingleDate"
-                          DisplayDateStart="01/01/1900"
-                          DisplayDateEnd="12/31/2100"/>
-            </Viewbox>
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4" Padding="8">
+            <Calendar x:Name="CalendarControl"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Top"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      FontFamily="Segoe UI"
+                      Margin="0"
+                      CalendarDayButtonStyle="{StaticResource BrowserCalendarDayButtonStyle}"
+                      CalendarButtonStyle="{StaticResource BrowserCalendarButtonStyle}"
+                      SelectionMode="SingleDate"
+                      DisplayDateStart="01/01/1900"
+                      DisplayDateEnd="12/31/2100"/>
         </Border>
 
         <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}" Margin="0">
