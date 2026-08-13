@@ -174,7 +174,12 @@ namespace XLEdge.Utilities
             WriteImmediate(logMessage, NLog.LogLevel.Warn);
             FlushCurrentBuffer("warning logged");
         }
-
+        public static void LogInfo(string message)
+        {
+            var logMessage = $"{Indent()}INFO  | {DateTime.Now:HH:mm:ss} | {message}";
+            WriteImmediate(logMessage, NLog.LogLevel.Info);
+            FlushCurrentBuffer("info logged");
+        }
         public static void LogError(string message)
         {
             var logMessage = $"{Indent()}ERROR | {DateTime.Now:HH:mm:ss} | {message}";

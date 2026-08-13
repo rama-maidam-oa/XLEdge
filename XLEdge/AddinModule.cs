@@ -93,21 +93,21 @@ namespace XLEdge
             {
                 string excelVersion = "unknown";
                 try { excelVersion = (this.HostApplication as Excel.Application)?.Version ?? "unknown"; }
-                catch (Exception ex) { LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}"); }
+                catch (Exception ex) { LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}"); }
 
                 double dpi = 96d;
                 try { using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero)) { dpi = g.DpiX; } }
-                catch (Exception ex) { LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}"); }
+                catch (Exception ex) { LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}"); }
 
-                LogUtility.LogWarn("===== Environment Snapshot =====");
-                LogUtility.LogWarn($"XLEdge version: {XLEdgeAppConstants.DefaultVersion} (released {XLEdgeAppConstants.DefaultCommitDate})");
-                LogUtility.LogWarn($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
-                LogUtility.LogWarn($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
-                LogUtility.LogWarn($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-                LogUtility.LogWarn($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
-                LogUtility.LogWarn($"Culture: {System.Globalization.CultureInfo.CurrentCulture.Name} (UI: {System.Globalization.CultureInfo.CurrentUICulture.Name})");
-                LogUtility.LogWarn($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
-                LogUtility.LogWarn("=================================");
+                LogUtility.LogInfo("===== Environment Snapshot =====");
+                LogUtility.LogInfo($"XLEdge version: {XLEdgeAppConstants.DefaultVersion} (released {XLEdgeAppConstants.DefaultCommitDate})");
+                LogUtility.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+                LogUtility.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
+                LogUtility.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+                LogUtility.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
+                LogUtility.LogInfo($"Culture: {System.Globalization.CultureInfo.CurrentCulture.Name} (UI: {System.Globalization.CultureInfo.CurrentUICulture.Name})");
+                LogUtility.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
+                LogUtility.LogInfo("=================================");
             }
             catch (Exception ex)
             {
