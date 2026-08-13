@@ -94,12 +94,12 @@
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
+                                <!-- Bug fix (MC4109 build error): CalendarButton (used for the
+                                     Year/Decade picker grids) has no "IsSelected" property - that's
+                                     specific to CalendarDayButton (the day grid). Only IsMouseOver/
+                                     IsInactive are real trigger targets here. -->
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="Chip" Property="Background" Value="#E6F3FF"/>
-                                </Trigger>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter TargetName="Chip" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                                    <Setter Property="Foreground" Value="White"/>
                                 </Trigger>
                                 <Trigger Property="IsInactive" Value="True">
                                     <Setter Property="Foreground" Value="#ADB5BD"/>
