@@ -73,7 +73,14 @@ namespace XLEdge.Helpers
                     return;
 
                 case string stringValue:
-                    WriteStringAsNumericIfPossible(writer, stringValue);
+                    // Do NOT numeric-sniff here: by the time a value reaches this converter,
+                    // XLEdgeParamsBuilder.FormatValue has already decided its CLR type from the
+                    // control-sheet column's declared "Data Type" (matching the VB reference's
+                    // NumericConverter, which only ever intercepts actual Integer/Double values
+                    // and never re-derives type from a string's content). A plain string here
+                    // means the column type was TEXT/STRING (or a non-numeric fallback), so it
+                    // must stay a quoted JSON string even if it happens to look numeric (e.g. "1234").
+                    writer.WriteStringValue(stringValue);
                     return;
 
                 case Dictionary<string, object> dict:

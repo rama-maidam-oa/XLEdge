@@ -663,11 +663,18 @@ namespace XLEdge.Helpers
                 {
                     return intVal;
                 }
-                else if ((columnType == "DECIMAL" || columnType == "NUMERIC") && strVal.Contains("."))
+                else if (columnType == "DECIMAL" || columnType == "NUMERIC")
                 {
-                    if (decimal.TryParse(strVal, out decimal decVal))
+                    if (strVal.Contains("."))
                     {
-                        return decVal;
+                        if (decimal.TryParse(strVal, out decimal decVal))
+                        {
+                            return decVal;
+                        }
+                    }
+                    else if (System.Numerics.BigInteger.TryParse(strVal, out System.Numerics.BigInteger bigVal))
+                    {
+                        return bigVal;
                     }
                 }
             }

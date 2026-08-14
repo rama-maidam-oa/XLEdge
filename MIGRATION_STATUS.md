@@ -2404,3 +2404,44 @@ best-guess names following ADX's naming convention... Confirm in Visual Studio" 
 verbatim, and the wiring (`AddinModule.Designer.cs:130`, `ADXRibbonPropertyChanging_EventHandler`/
 `ADXRibbonPropertyChangingEventArgs`) hasn't changed. This is now the only remaining
 unconfirmed-delegate risk from the original pair.
+
+## 2026-08-14: Control-sheet TEXT/STRING parameter values sent as unquoted numbers on refresh
+
+**Bug report**: on Sheet/Book refresh with a control-sheet parameter whose column "Data Type" is
+TEXT or STRING, a numeric-looking value (e.g. `1234`) was sent in the refresh POST payload as a
+bare JSON number (`"value":1234`) instead of a quoted string (`"value":"1234"`), causing the
+server to error. Confirmed working correctly in the VB.NET reference.
+
+**Root cause**: `Helpers/NumericJsonConverter.cs`'s `Write` method, attached via
+`[JsonConverter(typeof(NumericJsonConverter))]` on `ReportParameterValue.Value`/`ReportId` and
+also registered globally in `JsonGlobals.Options` (so it covers the attribute-less
+`ReportParameterValue.Values` list too), ran *every* string value it was given through
+`WriteStringAsNumericIfPossible` - which re-parses the string's content and silently promotes any
+numeric-looking string to a bare JSON number, regardless of where that string came from. This
+discarded the type decision `XLEdgeParamsBuilder.FormatValue` had already made from the control
+sheet's actual "Data Type" column: a STRING/TEXT column intentionally returns the raw string
+unchanged from `FormatValue`, but the converter then re-guessed "looks like a number" from the
+string alone and unquoted it anyway. The VB.NET reference's equivalent (`NumericConverter.
+CanConvert` in `NumericConverter.vb`) only returns `True` for values whose actual CLR type is
+already `Integer`/`Double` - it never inspects a `String`'s content - so a TEXT column's
+numeric-looking value passed through untouched as a normal quoted JSON string. Confirmed via a
+standalone repro (outside Excel, since `NumericJsonConverter` has no COM/Excel dependency):
+serializing a `FormatValue("1234", "STRING")` result reproduced `"value":1234` before the fix.
+Side-effect of the same bug: a STRING value like `"007"` was being corrupted to `7` (leading zero
+silently dropped) since `int.TryParse` doesn't know it came from a non-numeric column.
+
+**Fix**: `NumericJsonConverter.Write`'s `case string` branch now always writes the string as a
+JSON string (`writer.WriteStringValue`) instead of guessing - matching the VB reference's
+"never touch a string's content" behavior. Numeric-vs-string is now decided exactly once, upstream,
+by `FormatValue`, based on the column's declared Data Type - not re-derived from the string's shape
+at serialization time. This closed a related gap: C#'s `FormatValue` (unlike VB's) had no
+`BigInteger` fallback for a DECIMAL/NUMERIC column value with no decimal point (e.g. a large
+whole-number ID stored as NUMERIC), which the removed string-sniffing had been accidentally
+covering for; added the same `BigInteger.TryParse` fallback VB already has
+(`XLEdgeParamsData.vb:498-502`) so that case still round-trips as a real JSON number. The
+`extraParameters` dictionary write path (`WriteDictionary`, used for `ORACLE_RESP_ID` etc.) was
+left untouched - it has no VB.NET equivalent to compare against, and the reported bug is specific
+to the regular `parameters` array, not `extraParameters`. Verified with a standalone dotnet
+console repro (STRING/TEXT values now stay quoted, `"007"` stays `"007"`, INTEGER/DECIMAL/NUMERIC
+values still serialize as real JSON numbers, NUMERIC-without-decimal-point now correctly promotes
+to `BigInteger`) and a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
