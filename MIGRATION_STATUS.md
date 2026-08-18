@@ -1,6 +1,6 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-13
+Last updated: 2026-08-18
 
 ## XLEdgeCalendar: browser-style redesign (sharp rendering + easier month/year navigation) — 2026-08-13
 
@@ -2445,3 +2445,36 @@ to the regular `parameters` array, not `extraParameters`. Verified with a standa
 console repro (STRING/TEXT values now stay quoted, `"007"` stays `"007"`, INTEGER/DECIMAL/NUMERIC
 values still serialize as real JSON numbers, NUMERIC-without-decimal-point now correctly promotes
 to `BigInteger`) and a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-08-18: `adxExcelAppEvents1_SheetSelectionChange` crashes with COMException on "Select All"
+
+**Bug report** (Rahul, no OISR ticket number given yet): after a report downloaded successfully, he
+switched to another workbook and clicked the sheet's top-left corner (the "Select All" button that
+also fires on Ctrl+A) to select every cell. Excel immediately showed an Orbit XLEdge error dialog:
+`AddinExpress.MSO.ADXExternalException ---> System.Runtime.InteropServices.COMException: Out of
+present range. (Exception from HRESULT: 0x8002000A (DISP_E_OVERFLOW))`, with the inner stack trace
+pointing at `Microsoft.Office.Interop.Excel.Range.get_Count()` called from
+`XLEdge.AddinModule.adxExcelAppEvents1_SheetSelectionChange`. Reproduced from the day's evidence in
+`Excel_Logs\XLEdge_Logs\Logs` (`Error.png`, `ErrorMessage.gif`) - the app's own `.log` file only
+captured unrelated background TLS/network errors from the About-tab URL check, not this exception
+(it's shown via Add-in Express's own unhandled-exception dialog, not routed through `LogUtility`).
+
+**Root cause**: `AddinModule.cs:657` guarded the handler with `if (selectedRange.Cells.Count != 1)
+return;`. `Range.Count` (`Cells.Count`) is typed `Int32`, and equals `Rows.Count * Columns.Count`.
+Selecting the entire worksheet - exactly what the corner "Select All" button (and Ctrl+A) does -
+yields 1,048,576 rows × 16,384 columns = 17,179,869,184 cells, which overflows `Int32.MaxValue`
+when Excel's COM layer tries to marshal it back, raising `DISP_E_OVERFLOW`. The VB.NET reference
+(`AddinModule.vb:3143`) never hits this because its entire handler body is dead code behind an
+unconditional `Return` on the very first line - this handler was intentionally re-enabled in the C#
+port (to drive the calendar popup and GL segment picker) without anticipating a whole-sheet
+selection reaching the `.Count` check. Audited the rest of the project for the same overflow shape
+(`Range`/`Selection` `.Count`/`.Cells.Count`) - this was the only call site in `XLEdge/` where a
+`.Count` could be taken on a range that might span the full worksheet; every other `.Count` in the
+codebase is on a bounded COM collection (`ListObjects`, `Rows`, `Columns`, `Names`, `Hyperlinks`,
+`Shapes`, `Worksheets`, `ListColumns`, `ListRows`) or a plain .NET list, none of which can approach
+`Int32.MaxValue`.
+
+**Fix**: swapped the Int32 `Cells.Count` for the overflow-safe COM property `Cells.CountLarge`
+(returns a `double`, added in Excel 2007 for exactly this "range larger than 2^31 cells" case),
+wrapped in `Convert.ToDouble(...)` since the interop property surfaces as `object`/late-bound.
+Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).

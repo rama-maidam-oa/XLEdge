@@ -654,7 +654,11 @@ namespace XLEdge
             if (range is not Excel.Range selectedRange)
                 return;
 
-            if (selectedRange.Cells.Count != 1)
+            // Range.Cells.Count is Int32 and throws COMException (DISP_E_OVERFLOW) when the
+            // selection is the entire worksheet (e.g. clicking the sheet's top-left "Select All"
+            // corner) - that's 17+ billion cells, well past Int32.MaxValue. CountLarge is the
+            // overflow-safe COM property (double) meant for exactly this case.
+            if (Convert.ToDouble(selectedRange.Cells.CountLarge) != 1)
                 return;
 
             // Each of these is independently gated by its own Options checkbox, so both can run off
