@@ -87,34 +87,11 @@ namespace XLEdge
         /// behind Debug mode) since it's cheap, one-shot, and exactly the kind of thing that's
         /// useful to have upfront in every log file.
         /// </summary>
-        private void LogEnvironmentSnapshot()
-        {
-            try
-            {
-                string excelVersion = "unknown";
-                try { excelVersion = (this.HostApplication as Excel.Application)?.Version ?? "unknown"; }
-                catch (Exception ex) { LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}"); }
+        // Environment snapshot (XLEdge/Excel/OS/DPI/culture/machine info) now lives in
+        // LogHelper.BuildLogHeader, written once per log FILE (per day) via NLog's own
+        // Header mechanism, instead of once per Excel session here - see that method's
+        // header comment for why.
 
-                double dpi = 96d;
-                try { using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero)) { dpi = g.DpiX; } }
-                catch (Exception ex) { LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}"); }
-
-                LogUtility.LogInfo("===== Environment Snapshot =====");
-                LogUtility.LogInfo($"XLEdge version: {XLEdgeAppConstants.DefaultVersion} (released {XLEdgeAppConstants.DefaultCommitDate})");
-                LogUtility.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
-                LogUtility.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
-                LogUtility.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-                LogUtility.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
-                LogUtility.LogInfo($"Culture: {System.Globalization.CultureInfo.CurrentCulture.Name} (UI: {System.Globalization.CultureInfo.CurrentUICulture.Name})");
-                LogUtility.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
-                LogUtility.LogInfo("=================================");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "LogEnvironmentSnapshot");
-            }
-        }
- 
         #region Add-in Express automatic code
  
         // Required by Add-in Express - do not modify
@@ -581,7 +558,13 @@ namespace XLEdge
             try
             {
                 LogHelper.InitializeLogger();
-                LogEnvironmentSnapshot();
+                // NLog's FileTarget only creates the physical file (and writes Header) on its
+                // first actual log write - InitializeLogger only builds the configuration, it
+                // never writes anything itself. This line guarantees that first write happens
+                // on every Excel open, so the file (and, once per day, the header - see
+                // LogHelper.BuildLogHeader/AppendEnvironmentSnapshot) always gets created even
+                // if nothing else logs during the session.
+                LogUtility.LogInfo("XLEdge session started.");
 
                 XLApp.Initialize(this.HostApplication as Excel.Application);
 
