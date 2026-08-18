@@ -2446,9 +2446,9 @@ console repro (STRING/TEXT values now stay quoted, `"007"` stays `"007"`, INTEGE
 values still serialize as real JSON numbers, NUMERIC-without-decimal-point now correctly promotes
 to `BigInteger`) and a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
 
-## 2026-08-18: `adxExcelAppEvents1_SheetSelectionChange` crashes with COMException on "Select All"
+## 2026-08-18: `adxExcelAppEvents1_SheetSelectionChange` crashes with COMException on "Select All" (OISR-22117)
 
-**Bug report** (Rahul, no OISR ticket number given yet): after a report downloaded successfully, he
+**Bug report** (OISR-22117, Rahul): after a report downloaded successfully, he
 switched to another workbook and clicked the sheet's top-left corner (the "Select All" button that
 also fires on Ctrl+A) to select every cell. Excel immediately showed an Orbit XLEdge error dialog:
 `AddinExpress.MSO.ADXExternalException ---> System.Runtime.InteropServices.COMException: Out of
