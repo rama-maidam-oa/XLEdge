@@ -4113,21 +4113,26 @@ namespace XLEdge.Helpers
         {
             await SetRefreshMessage("Writing data to Excel...", ctx.WaitWindow, ctx.AppOverlay, ctx.UseWaitWindow);
 
-            if (ctx.NewDataCount > 0)
+            // Must run even when NewDataCount is 0: WriteRefreshedColumnData is also what clears a
+            // non-formula column's stale row-1 constant (writes an empty value, since
+            // BuildRefreshedColumnArray falls back to string.Empty once csvRecordIndex exceeds
+            // NewDataCount) while leaving a preserved first-row formula column untouched - matching
+            // VB.NET's unconditional DataBodyRange.Rows(1).SpecialCells(xlCellTypeConstants).ClearContents
+            // (FormProcessBar.vb), which runs regardless of the new record count. Gating this whole
+            // step on NewDataCount > 0 previously left row 1's old constants on screen whenever a
+            // refresh returned zero records.
+            if (ctx.ParsedMeta == null && !string.IsNullOrWhiteSpace(ctx.StoredMetaJson))
             {
-                if (ctx.ParsedMeta == null && !string.IsNullOrWhiteSpace(ctx.StoredMetaJson))
+                try { ctx.ParsedMeta = JsonSerializer.Deserialize<ReportMeta>(ctx.StoredMetaJson, JsonGlobals.Options); }
+                catch (Exception ex)
                 {
-                    try { ctx.ParsedMeta = JsonSerializer.Deserialize<ReportMeta>(ctx.StoredMetaJson, JsonGlobals.Options); }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for refreshed data write");
-                    }
+                    LogUtility.LogException(ex, "RefreshListObjectAsync: failed to parse stored report metadata for refreshed data write");
                 }
+            }
 
-                for (int tc = 1; tc <= ctx.TableCols; tc++)
-                {
-                    WriteRefreshedColumnData(ctx, tc);
-                }
+            for (int tc = 1; tc <= ctx.TableCols; tc++)
+            {
+                WriteRefreshedColumnData(ctx, tc);
             }
         }
 

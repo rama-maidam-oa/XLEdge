@@ -2,6 +2,52 @@
 
 Last updated: 2026-08-18
 
+## Fixed: refresh with zero returned records left stale constants in the table's first data row — 2026-08-18
+
+Reported by the user: refreshing a sheet/book clears the table's *bottom* rows correctly when the
+server returns fewer records than before, but when a refresh returns **zero** records, row 1's old
+data was left on screen untouched instead of being cleared.
+
+Root cause, found by comparing against VB.NET's `Edge_GenerateData`/`Edge_GenerateData_Multisheet`
+(`FormProcessBar.vb:1477-1521` and its duplicate at `:3416-3459`): VB unconditionally clears row 1's
+*constants only* (leaving any user-entered formula intact) via
+`DataBodyRange.Rows(1).SpecialCells(xlCellTypeConstants).ClearContents`, every refresh, regardless of
+how many new records came back - separately from the later grow/shrink-row-count logic keyed off the
+new record count.
+
+The C# port's `WriteRefreshedDataToTableAsync` (`Helpers/ReportGenerator.cs`, STEP 10 of
+`RefreshListObjectAsync`) folded both concerns into one: it only entered the per-column write loop
+(`WriteRefreshedColumnData`, which is what actually clears a non-formula column's row-1 constant by
+overwriting it with an empty value while skipping any column with a preserved first-row formula) when
+`ctx.NewDataCount > 0`. With zero new records that whole loop - and thus the row-1 clear - was skipped
+entirely, even though `AdjustTableRowCount` still correctly trimmed the *bottom* rows down to the
+forced-minimum of 1 row beforehand. Net effect: bottom rows disappeared (correct), but the single
+remaining row 1 kept its stale pre-refresh values (wrong).
+
+Fixed by removing the `ctx.NewDataCount > 0` guard around `WriteRefreshedDataToTableAsync`'s body -
+the metadata parse and column-write loop now always run. `WriteRefreshedColumnData` /
+`BuildRefreshedColumnArray` already handled the zero-new-rows case correctly on their own (a
+non-formula column's single remaining row writes `string.Empty` since `csvRecordIndex` exceeds
+`NewDataCount`; a formula column's `colRowCount` computes to 0 and is skipped) - the bug was purely
+the outer gate never letting them run.
+
+Verified by an MSBuild compile (`RegisterForComInterop=false` - see
+[[feedback-xledge-debugging-gotchas]]); not yet confirmed by the user in a real Excel session.
+
+Separately investigated the user's other report - "Include Output Data" debug logging only writing 65
+chars of the API response - using today's log
+(`XLEdge_Logs_18-Aug-2026.log`, refresh at 19:39:00-19:39:02). `APIHelper.cs`'s
+`LogResponseDetails`/`ReadResponseStreamAsStringAsync` do not truncate the logged response at all (an
+explicit comment there says "No trimming"); the 65-char line
+(`"Customer Name","Profit","Region","Order Date","State","Sal cal"`) is exactly and only the CSV
+header row, with zero data rows after it - i.e. it's already the *complete* raw response, not a
+truncated one. That matches the same refresh's `NewDataCount: 0` that triggered the row-1-clear bug
+above: the server genuinely returned no records for that request (the logged outbound payload had
+`BETWEEN` parameters with no accompanying value fields, which is a likely reason but wasn't chased
+further since it's outside what was reported as a bug). No logging-code defect found for this one from
+the available evidence - would need a fresh debug log captured against a report that actually returns
+data rows to confirm or refute a truncation bug in the logging path itself.
+
 ## XLEdgeCalendar: browser-style redesign (sharp rendering + easier month/year navigation) — 2026-08-13
 
 Requested: make the date picker look sharp and consistent with a browser's own date-input popup,
