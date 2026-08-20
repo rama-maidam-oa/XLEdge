@@ -11,7 +11,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
-using Wpf.Ui.Controls;
 using XLEdge.Helpers;
 
 namespace XLEdge.Utilities
@@ -19,7 +18,7 @@ namespace XLEdge.Utilities
     // Base window class for custom-chrome dialogs: handles per-monitor DPI awareness, scales window
     // content to fit the available screen work area, and provides Escape-to-close plus dialog/owner
     // positioning helpers for derived windows.
-    public class DpiAwareWindow : FluentWindow
+    public class DpiAwareWindow : Window
     {
         private HwndSource _hwndSource;
         private double _currentScaleFactor = 1.0;
@@ -55,19 +54,6 @@ namespace XLEdge.Utilities
             {
                 _windowName = GetType().Name;
 
-                // Defensive fallback: ensures Wpf.Ui's theme/resources are initialized before this
-                // window's own resources are resolved, in case bootstrap hasn't run yet.
-                if (!WpfUiBootstrapper.IsInitialized)
-                {
-                    WpfUiBootstrapper.Init(XLEdgeAppConstants.GLAccentHex, XLEdgeAppConstants.GLTheme);
-                }
-
-                // FluentWindow's ExtendsContentIntoTitleBar defaults to true, which is incompatible
-                // with this codebase's fully custom-chrome windows (WindowStyle="None" +
-                // AllowsTransparency="True"). Disabling it here centrally avoids that conflict for
-                // every derived window.
-                this.ExtendsContentIntoTitleBar = false;
-
                 AddHandler(UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(OnWindowPreviewMouseDown), true);
                 AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnWindowPreviewKeyDown), true);
                 AddHandler(UIElement.PreviewTextInputEvent, new TextCompositionEventHandler(OnWindowPreviewTextInput), true);
@@ -102,15 +88,6 @@ namespace XLEdge.Utilities
             {
                 LogUtility.LogError($"Fatal error in DpiAwareWindow: {ex.Message}");
             }
-        }
-
-        /// <summary>
-        /// Prevents FluentWindow's base implementation from coercing WindowStyle, which would
-        /// conflict with this codebase's custom-drawn window chrome.
-        /// </summary>
-        protected override void OnExtendsContentIntoTitleBarChanged(bool oldValue, bool newValue)
-        {
-            // Intentionally does not call the base implementation - see summary above.
         }
 
         protected override void OnInitialized(EventArgs e)

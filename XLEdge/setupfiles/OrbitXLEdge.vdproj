@@ -962,37 +962,6 @@
             "IsDependency" = "11:TRUE"
             "IsolateTo" = "8:"
             }
-            "{9F6F8455-1EF1-4B85-886A-4223BCC8E7F7}:_5DDA20194E6B71B6E0FFF4EDA24FC10E"
-            {
-            "AssemblyRegister" = "3:1"
-            "AssemblyIsInGAC" = "11:FALSE"
-            "AssemblyAsmDisplayName" = "8:Wpf.Ui.Abstractions, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL"
-                "ScatterAssemblies"
-                {
-                    "_5DDA20194E6B71B6E0FFF4EDA24FC10E"
-                    {
-                    "Name" = "8:Wpf.Ui.Abstractions.dll"
-                    "Attributes" = "3:512"
-                    }
-                }
-            "SourcePath" = "8:Wpf.Ui.Abstractions.dll"
-            "TargetName" = "8:"
-            "Tag" = "8:"
-            "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:FALSE"
-            "IsDependency" = "11:TRUE"
-            "IsolateTo" = "8:"
-            }
             "{9F6F8455-1EF1-4B85-886A-4223BCC8E7F7}:_60C89BE67E131246B8A109BBA2D0FA29"
             {
             "AssemblyRegister" = "3:1"
@@ -1069,37 +1038,6 @@
                     }
                 }
             "SourcePath" = "8:AddinExpress.XL.2005.dll"
-            "TargetName" = "8:"
-            "Tag" = "8:"
-            "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:FALSE"
-            "IsDependency" = "11:TRUE"
-            "IsolateTo" = "8:"
-            }
-            "{9F6F8455-1EF1-4B85-886A-4223BCC8E7F7}:_7616B11AB001F91EE1C7056303171C02"
-            {
-            "AssemblyRegister" = "3:1"
-            "AssemblyIsInGAC" = "11:FALSE"
-            "AssemblyAsmDisplayName" = "8:Wpf.Ui, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL"
-                "ScatterAssemblies"
-                {
-                    "_7616B11AB001F91EE1C7056303171C02"
-                    {
-                    "Name" = "8:Wpf.Ui.dll"
-                    "Attributes" = "3:512"
-                    }
-                }
-            "SourcePath" = "8:Wpf.Ui.dll"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"

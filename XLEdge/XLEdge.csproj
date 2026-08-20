@@ -54,17 +54,13 @@
          before removal that no XAML in this project used any real "mah:"-prefixed control (the two
          xmlns:mah declarations that existed were dead/unused), and that ControlzEx.Standard/.Theming
          were only ever imported via unused `using`s (ReportGenerator.cs, MessageFunctions.cs) or by
-         MahAppsBootstrapper.cs's own ThemeManager calls (also removed - see WpfUiBootstrapper.cs).
+         MahAppsBootstrapper.cs's own ThemeManager calls (also removed).
+         Wpf.Ui/Wpf.Ui.Abstractions (window chrome/theme) were later removed too - 11.1.0_UI branch,
+         reverting DpiAwareWindow to a plain WPF Window to match GLSense FinalWorkingCode's own
+         base class exactly, since this codebase's windows already used a fully custom-drawn
+         WindowStyle="None" chrome and never relied on FluentWindow's built-in title bar.
          MahApps.Metro.IconPacks.Core/FontAwesome above are a SEPARATE, independent icon-only NuGet
-         package (no dependency on MahApps.Metro itself) and are kept exactly as-is, matching GLSense's
-         own side-by-side use of Wpf.Ui (window chrome/theme) + MahApps.Metro.IconPacks.FontAwesome
-         (icons only). -->
-    <Reference Include="Wpf.Ui, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
-      <HintPath>..\packages\WPF-UI.4.3.0\lib\net481\Wpf.Ui.dll</HintPath>
-    </Reference>
-    <Reference Include="Wpf.Ui.Abstractions, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
-      <HintPath>..\packages\WPF-UI.Abstractions.4.3.0\lib\net481\Wpf.Ui.Abstractions.dll</HintPath>
-    </Reference>
+         package (no dependency on MahApps.Metro or Wpf.Ui) and are kept exactly as-is. -->
     <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.10.0.9\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
     </Reference>
@@ -216,7 +212,6 @@
     <Compile Include="Utilities\DpiAwarenessHelper.cs" />
     <Compile Include="Utilities\DpiAwareWindow.cs" />
     <Compile Include="Utilities\LogUtility.cs" />
-    <Compile Include="Utilities\WpfUiBootstrapper.cs" />
     <Compile Include="Utilities\MessageFunctions.cs" />
     <Compile Include="Utilities\StrictCertificateValidator.cs" />
     <Compile Include="Utilities\UiDispatcher.cs" />

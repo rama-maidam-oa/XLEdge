@@ -597,9 +597,6 @@ namespace XLEdge
                 {
                     _ribbonHelper.ApplyState("LoggedIn");
                 }
-
-                WpfUiBootstrapper.Init(XLEdgeAppConstants.GLAccentHex, XLEdgeAppConstants.GLTheme);
-                WpfUiBootstrapper.PreloadResources();
             }
             catch (Exception ex)
             {
