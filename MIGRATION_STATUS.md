@@ -2,6 +2,172 @@
 
 Last updated: 2026-08-20
 
+## Cleanup: ADXExcelTaskPane1.cs nullable-warning fixes, and a real multi-workbook gap found & fixed — 2026-08-20
+
+Rama confirmed the parameter-display fix above worked, then asked for two things: (1) fix the build
+warnings left over from the task pane rewrite, (2) verify multi-workbook/window-activate event sync
+against VB.NET as a safety check on that same rewrite.
+
+**Warnings:** all in `ADXExcelTaskPane1.cs`, all pre-existing-pattern (fields/returns that are
+legitimately sometimes null but weren't annotated `?`). Fixed properly rather than suppressed broadly:
+`_webViewInitTask`/`_sharedEnvironmentTask` fields declared nullable (`Task?`/`Task<CoreWebView2Environment>?`
+- both are genuinely reset to `null` in catch blocks); `FetchWorkbookRerunIdsAsync` and its local/caller
+changed to `string?` throughout (it genuinely returns null in several branches); the two generic
+`RunOnUIAsync<T>` disposed-short-circuit returns use `default(T)!` (the returned default is never
+actually observed - every caller already checks disposal/short-circuits itself too); one remaining
+`result!.Trim('"')` where Roslyn's flow analysis doesn't narrow through a compound `||` null-check even
+though the guard above it already proves non-null. Zero warnings on rebuild.
+
+**Multi-workbook check, via a fork comparing `AddinModule.vb`/`.cs` directly:** confirmed the ADX
+framework creates one task pane instance per workbook window in both versions unchanged (this session's
+`ADXExcelTaskPane1.cs` rewrite doesn't affect that), and `SheetActivate` is equivalent in both. Found one
+real, pre-existing gap (not introduced by this session - just never ported): VB.NET's
+`AdxExcelAppEvents1_WorkbookActivate` (`AddinModule.vb:2423-2438`) has a pane re-sync block the C# port
+never had. With multiple workbooks open, each gets its own pane; if the user logs in via one workbook's
+pane, a *different* already-open workbook's own pane can still be sitting on the login form (created
+before the shared login token existed). VB re-navigates that pane straight to Home via the token-based
+redirect (`.../web/public/excel-auth-redirect`) on every workbook activation, so switching to that window
+self-corrects it. C#'s `adxExcelAppEvents1_WorkbookActivate` only ever did the ribbon-state refresh.
+
+Fixed by porting the missing block into `AddinModule.cs`'s `adxExcelAppEvents1_WorkbookActivate`, in its
+own try/catch exactly like VB (runs unconditionally, not gated on `IsLoginCompleted` like the existing
+ribbon-state block below it, since a valid `LoginToken` can exist independently of that flag's timing).
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`, clean, zero warnings); the
+`WorkbookActivate` fix needs a real multi-workbook Excel test to confirm (log in via one workbook, switch
+to another already-open workbook whose pane was never navigated past login, confirm it self-corrects).
+
+## Confirmed: task pane resize/trim bug is fixed. New bug: Parameters Section shows stale value after a control-sheet edit clears it back to null/empty — 2026-08-20
+
+Rama confirmed the take-2 task pane rewrite (native WinForms WebView2, VB-matching, no DPI/resize code)
+fixed the original trim bug.
+
+New bug reported: run a report with a parameter (DEPTNO) left null/empty - correct, all data returned.
+Add a Control Sheet, set DEPTNO=13 - refresh - correct, zero records (13 has no data). Clear the
+control-sheet cell back to blank - refresh - report data is correct again (matches the original
+null/empty result), but the on-sheet Parameters Section still shows "13" instead of updating to reflect
+the now-null/empty value.
+
+Root cause, confirmed by reading the code directly: `Helpers/XLEdgeParamsBuilder.cs`'s `BuildJsonPayload`
+correctly computes `Value = null` for this parameter when the control-sheet value cell is empty (not an
+empty string - a genuine JSON `null`) - this is exactly why the report *data* refresh is correct, since
+that null correctly reaches the API request. The bug is one step later, in the same file's
+`ProcessOutputParameter` (builds the merged JSON that drives the on-sheet display): it first
+full-property-copies the *original* (stale) parameter entry - including its old `"value"`/`"displayValue"`
+("13") - then only overwrites those fields in two cases: a new non-null `"value"` present, or a new
+`"values"` array present. Neither matches when the new value is null, so that branch of the `if/else if`
+was simply never taken - no `else` existed to clear the stale fields, so the copied-through "13" survived
+untouched forever. `ReportGenerator.cs`'s `ComputeRawParamDisplayValue` reads `"displayValue"` directly for
+the Parameters Section text, which is why the stale "13" specifically is what showed up.
+
+Fixed by adding the missing `else` branch to `ProcessOutputParameter`: explicitly clears `"value"`/`"values"`
+to null and removes `"displayValue"`/`"displayValues"` whenever the new value is genuinely null, so
+`ComputeRawParamDisplayValue` has nothing stale left to read and renders the parameter as empty -
+regardless of whether the *original* entry had been a single value or an array (BETWEEN/IN) shape.
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`, Excel was open during this build so only
+the optional COM-registration step failed as expected - the DLL itself compiled and copied cleanly); not
+yet confirmed by the user in a real Excel session.
+
+## Task pane rewrite, take 2: full DPI/resize-code removal, Designer-built WebCtrl — 2026-08-20
+
+Rama confirmed the native-WinForms-WebView2 hosting change above still didn't fix the trim - it was
+retested and reported "still not fixed." Rather than guess at a third hypothesis blind, Rama built the
+task pane's Designer layout by hand in Visual Studio (a `TableLayoutPanel` with `WebCtrl` - a
+`Microsoft.Web.WebView2.WinForms.WebView2`, `Dock=Fill` - added declaratively, matching VB.NET's own
+Designer output exactly), and asked for the code-behind to be rewired to it.
+
+Also removed, to match VB.NET exactly (confirmed VB.NET has none of this at all): `ApplyDpiAwareSizing`/
+`GetEffectiveDpi`/`_minWidthDip`/`_minHeightDip`, the `WndProc`/`SetBoundsCore` min-width-clamp
+overrides, `XLEdgeReportsPane_Resize`/`ResizeBegin`/`ResizeEnd`, and `XLEdgeReportsPane_DpiChanged`.
+`ADXExcelTaskPane1_ADXAfterTaskPaneShow` now just does VB's exact one-time
+`if (this.Width < TargetWidthPx) this.Width = TargetWidthPx;` on first show, no DPI scaling involved -
+at 530px instead of VB's 500px (Rama's explicit request). `ADXExcelTaskPane1.cs`'s constructor no
+longer constructs `WebCtrl` manually (that was this session's own addition, now superseded by the
+Designer-declared field) - it only wires the `HandleCreated` hook that kicks off WebView2
+initialization, plus the ported business logic from the previous entry, now referencing `WebCtrl`
+(the Designer's field name) throughout instead of `_webView`.
+
+Still needs a real Excel test - this is the second attempt at the same underlying bug, and per the
+project's own debugging convention (3+ failed fixes → question the architecture, not just try another
+patch), if this *still* doesn't resolve it, the persistent trim likely isn't about the task pane's
+control-hosting model at all - worth checking ADX/Excel's own task-pane docking/redraw path next rather
+than any more WebView2-hosting changes.
+
+## Architecture change: task pane hosts WebView2 as a native WinForms control, not WPF — 2026-08-20
+
+Follow-up to the "task pane content trimmed" bug above. `ForceFrameRedraw` (added earlier the same day)
+targeted a real but *transient* one-frame tearing glitch during live drag - it did not, and could not,
+fix the *persistent* trim Rama then reported (present from login onward, unaffected by resizing).
+Rama asked whether VB.NET's own resize behavior was worth checking first, since VB.NET adds WebView2
+directly to the task pane (not via WPF) and never exhibits this bug.
+
+Confirmed by reading the VB.NET source directly: `ADXExcelTaskPane1.Designer.vb` adds
+`Microsoft.Web.WebView2.WinForms.WebView2` straight into a `TableLayoutPanel` (`Dock=Fill`) on the task
+pane itself - no WPF, no `ElementHost`, no `XLEdgeCTP`-equivalent anywhere. There is no
+Resize/ResizeBegin/SizeChanged handler in VB.NET at all - it relies entirely on WinForms' own native
+`Dock=Fill` cascade, which stays correctly in sync on every native resize message with zero manual
+code. Busy/message feedback in VB.NET is always a separate top-level window (`FormProcessBar`,
+`CenterScreen`) or a plain `MessageBox` - never drawn on top of `WebCtrl` in the same control tree.
+
+This makes the C# port's WinForms→`ElementHost`→WPF (`XLEdgeCTP`)→`WebView2.Wpf` chain the far more
+likely root cause than the exact one-frame repaint issue `ForceFrameRedraw` targeted: WebView2 is
+always a native HWND child that paints outside WPF's own composition pipeline ("airspace" - see the
+2026-08-03 "Task pane WebView2 rendering glitch" entry above for the original diagnosis of this same
+limitation), and the extra `ElementHost`/WPF boundary gives that native surface's actual on-screen
+bounds more room to desync from what WPF's layout computed, independent of any resize event. It also
+explains a second, previously-separate-looking problem in the same area:
+`AppOverlay.xaml.cs`'s `HideWebView2Descendants`/`RestoreHiddenWebView2Descendants`/`ForceNativeRepaint`
+machinery (with its own "[FocusDiag]" comment noting *"VB.NET never had this problem because it hosts
+WebView2 natively... so it never had to hide/show the control at all"*) exists solely to work around
+WebView2 painting on top of the WPF-drawn toast/busy overlay that used to share its window - a second
+symptom of the exact same architectural choice, not a separate bug.
+
+**Change made:** `ADXExcelTaskPane1.cs` now creates a `Microsoft.Web.WebView2.WinForms.WebView2` field
+directly (`Dock = DockStyle.Fill`, added straight to `this.Controls`) instead of the previous
+`ElementHost` + `XLEdgeCTP` (WPF `UserControl`) + `WebView2.Wpf` chain. `XLEdgeCTP.xaml`/`.xaml.cs` are
+deleted - their real business logic (WebView2 init/navigation, login/logout, cookie processing,
+broadcast messages, GLSense sync, tab-label sync, all the `CoreWebView2.*` event handlers) is ported
+directly into `ADXExcelTaskPane1.cs`, largely unchanged since `CoreWebView2` itself is the same object
+regardless of which control hosts it - only the WPF-specific plumbing needed rework (`Dispatcher`-based
+`RunOnUIAsync` → a WinForms `InvokeRequired`/`BeginInvoke`-based equivalent; `Visibility`/`RoutedEventArgs`
+→ `Visible`/plain `EventArgs`). All of `XLEdgeCTP`'s manual sizing/height-management machinery
+(`OnSizeChanged`, `OnParentPaneResize`, `EnsureMinimumWidth`, `WebCtrl_SizeChanged`,
+`EnsureWebViewFillsAvailableSpace`, `ScheduleHeightCheck`, `GetWebCtrlActualSize`) is gone entirely -
+matching VB.NET, a native `Dock=Fill` WinForms child needs none of it. `ADXExcelTaskPane1`'s existing
+DPI-aware min-width clamp (`ApplyDpiAwareSizing`/`WndProc`/`SetBoundsCore`) is kept as-is (it's plain
+WinForms geometry, orthogonal to the WPF-hosting bug); `ForceFrameRedraw`/its `SetWindowPos`/
+`RedrawWindow` P/Invoke are removed as no longer needed. `RefreshWebViewHeight()` stays as a public
+no-op so every existing external call site keeps compiling unchanged.
+
+Considered and rejected: migrating to `WebView2CompositionControl` (a DirectComposition-based WPF
+control that also avoids the airspace limitation, confirmed available in this project's referenced SDK,
+1.0.4022.49) instead of dropping WPF entirely. Rejected because it would keep the WinForms→`ElementHost`→
+WPF boundary in place - the more likely actual culprit - in favor of the project's own established
+"port what VB.NET actually does" rule, backed by a live, proven-correct reference implementation instead
+of an untested (in this app) alternative.
+
+**Overlay relocation - no new window class needed.** The pane-embedded `AppOverlay` (busy/toast/confirm
+UI drawn on top of `WebCtrl`) had no `XLEdgeCTP` left to live in. Rather than build a new standalone
+overlay window, redirected its two call sites to mechanisms this app already has and already uses this
+exact way elsewhere:
+- `ProcessBroadcastMessagesAsync`'s post-login broadcast message now uses `MessageFunctions.XLEdgeMessage`
+  (the existing C# port of VB's `XLEdgeMsgDisplay` - a real standalone `XLEdgeMessageWindow`), instead
+  of `AppOverlayControl.ShowInfoAsync`.
+- `WebView_DocumentTitleChanged`'s report-generation triggers (`CreateReportFromTitleAsync`,
+  `CreateMultiDataReportsAsync`, `CreateLogsReportAsync`) now pass `useWaitWindow: true` instead of an
+  `AppOverlay` reference, so `ReportGenerator` shows its own already-existing standalone
+  `XLEdgeWaitWindow` - the exact same convention `AddinModule.cs`'s own drilldown call site
+  (`CreateReportFromTitleAsync(childTitle, useWaitWindow: true, ...)`) already used before this change.
+
+Both match VB.NET's own pattern (`FormProcessBar`/`MessageBox`, never drawn inside the task pane's
+control tree) using infrastructure this codebase already had, rather than introducing anything new.
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`, no errors, only pre-existing-style
+nullable-reference warnings); this is a substantial rewrite of the task pane's core hosting and login
+flow - not yet confirmed by the user in a real Excel session. Needs testing: login, logout, refresh,
+drilldown, broadcast messages, GLSense sync, and - the original bug - resizing the pane at every stage.
+
 ## Fixed: task pane content briefly shows torn/left-clipped text during a live resize drag — 2026-08-20
 
 Rama reported the task pane's WebView2 content gets trimmed while resizing, and provided two GIFs

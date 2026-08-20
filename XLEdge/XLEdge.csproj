@@ -231,9 +231,6 @@
     <Compile Include="Views\XLEdgeCalendar.xaml.cs">
       <DependentUpon>XLEdgeCalendar.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Views\XLEdgeCTP.xaml.cs">
-      <DependentUpon>XLEdgeCTP.xaml</DependentUpon>
-    </Compile>
     <Compile Include="Views\XLEdgeDrilldownReports.xaml.cs">
       <DependentUpon>XLEdgeDrilldownReports.xaml</DependentUpon>
     </Compile>
@@ -282,10 +279,6 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\XLEdgeCalendar.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Views\XLEdgeCTP.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

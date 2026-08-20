@@ -1686,6 +1686,35 @@ namespace XLEdge
 
         private void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj)
         {
+            // Ported from VB.NET's AdxExcelAppEvents1_WorkbookActivate (AddinModule.vb:2423-2438) -
+            // this block was missing from the C# port entirely. With multiple workbooks open, each
+            // gets its own task pane instance; if the user logs in via one workbook's pane, a
+            // DIFFERENT already-open workbook's own pane can still be sitting on the login form
+            // (created/last touched before the shared login token existed). VB re-navigates that
+            // pane straight to Home via the token-based redirect on every workbook activation, so
+            // switching to that window fixes it automatically instead of requiring the user to log
+            // in again there. Runs unconditionally, in its own try/catch exactly like VB's - not
+            // gated on IsLoginCompleted below, since a valid LoginToken can exist independently of
+            // that flag's timing.
+            try
+            {
+                ADXExcelTaskPane1 edgeExcelPane = GetPaneInstance();
+                string loginUrl = XLEdgeAppState.Instance.LoginUrl;
+
+                if (edgeExcelPane != null && edgeExcelPane.Visible && edgeExcelPane.WebCtrl != null &&
+                    !(edgeExcelPane.WebCtrl.Source?.ToString().Contains("excel=Y#Home") ?? false) &&
+                    !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.LoginToken))
+                {
+                    edgeExcelPane.Activate();
+                    edgeExcelPane.Text = loginUrl;
+                    edgeExcelPane.WebCtrl.Source = new Uri(loginUrl + "/web/public/excel-auth-redirect");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(adxExcelAppEvents1_WorkbookActivate));
+            }
+
             // Wrapped in try/catch for the same reason as adxExcelAppEvents1_SheetActivate above.
             try
             {

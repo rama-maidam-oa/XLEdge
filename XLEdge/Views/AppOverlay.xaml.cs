@@ -69,11 +69,12 @@ namespace XLEdge.Views
         /// <summary>
         /// Raised whenever a toast actually goes away - manual close-button click, timer auto-dismiss,
         /// or an explicit DismissToast() call - regardless of which Show*/ShowToastAsync method
-        /// displayed it. AppOverlay itself has no knowledge of Excel/WebView2 (it's also embedded in
-        /// plain popup windows like XLEdgeAbout/XLEdgeServerConfiguration/XLEdgeWaitWindow, not just
-        /// the task pane), so it just notifies; only XLEdgeCTP (the task pane host) subscribes to
-        /// release keyboard focus back to Excel, since that's the only host where the toast's own
-        /// button click can leave WPF/WebView2 holding focus Excel never gets told to reclaim.
+        /// displayed it. AppOverlay itself has no knowledge of Excel/WebView2 - it's embedded only in
+        /// plain popup windows (XLEdgeAbout/XLEdgeServerConfiguration/XLEdgeWaitWindow), never
+        /// alongside a live WebView2 since the task pane hosts WebView2 as a native WinForms control
+        /// with no AppOverlay in its tree at all (see ADXExcelTaskPane1.cs) - so there is currently no
+        /// subscriber that needs a WebView2 focus-reclaim on toast dismissal. Kept as a plain
+        /// notification event in case a future host needs it again.
         /// </summary>
         public event Action ToastDismissed;
 

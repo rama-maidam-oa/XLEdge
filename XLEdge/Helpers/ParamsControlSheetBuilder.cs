@@ -53,11 +53,11 @@ namespace XLEdge.Helpers
                     var result = MessageFunctions.XLEdgeMessage(
                         "Parameters Control Sheet already exists, this will wipe out the data and recreate a new one." + Environment.NewLine + "Do you want to continue?",
                         System.Windows.Forms.MessageBoxIcon.Question,
-                        System.Windows.Forms.MessageBoxButtons.YesNoCancel);
+                        System.Windows.Forms.MessageBoxButtons.YesNo);
 
                     if (result != System.Windows.MessageBoxResult.Yes)
                     {
-                        LogUtility.LogDebug($"{nameof(ShowOrRebuild)}: User cancelled rebuild");
+                        LogUtility.LogDebug($"{nameof(ShowOrRebuild)}: User pressed 'No' exiting the method!");
                         return;
                     }
 
@@ -66,6 +66,20 @@ namespace XLEdge.Helpers
                 else if (ExcelSheetHelper.SheetExists(ControlSheetName, workbook))
                 {
                     controlSheet = (Excel.Worksheet)workbook.Worksheets[ControlSheetName];
+                }
+
+                try
+                {
+                    //Try to clearing the control sheet first if it exists since locking cells are preventing in value updation
+                    //Fixed because for existing since cells in IA column are locked they are not updating the new values
+                    if (controlSheet != null)
+                    {
+                        controlSheet.Cells.Clear();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogError($"{nameof(ShowOrRebuild)}: Failed to resolve control sheet - {ex.Message}");
                 }
 
                 CreateControlSheet(workbook, ref controlSheet);
@@ -270,6 +284,16 @@ namespace XLEdge.Helpers
                 catch (Exception ex)
                 {
                     LogUtility.LogException(ex, $"{nameof(CreateControlSheet)}: Failed to setup Value2 validation");
+                }
+
+                // Setup validation for ORACLE_RESP_ID to prevent editing Operator/Value1/Value2
+                try
+                {
+                    SetupOracleRespIdValidation(ctrlSheet, lastRow);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"{nameof(CreateControlSheet)}: Failed to setup ORACLE_RESP_ID validation");
                 }
 
                 // Setup the title and other UI elements
@@ -810,6 +834,145 @@ namespace XLEdge.Helpers
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, nameof(SetupGLSegmentValidation));
+            }
+        }
+
+        /// <summary>
+        /// Sets up validation for ORACLE_RESP_ID rows to completely lock Operator (I), Value1 (J) and Value2 (K) from editing
+        /// </summary>
+        private static void SetupOracleRespIdValidation(Excel.Worksheet ctrlSheet, int lastRow)
+        {
+            try
+            {
+                if (ctrlSheet == null)
+                {
+                    LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: ctrlSheet is null");
+                    return;
+                }
+
+                Excel.Range paramNameRange = ctrlSheet.Range[ctrlSheet.Cells[4, 5], ctrlSheet.Cells[lastRow, 5]];
+                if (paramNameRange == null)
+                {
+                    LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: paramNameRange is null");
+                    return;
+                }
+
+                int processedCount = 0;
+                int totalCells = 0;
+
+                try
+                {
+                    foreach (Excel.Range cell in paramNameRange.Cells)
+                    {
+                        totalCells++;
+                        try
+                        {
+                            if (cell == null)
+                            {
+                                continue;
+                            }
+
+                            int row = cell.Row;
+
+                            Excel.Range paramNameCell = SafeCast<Excel.Range>(ctrlSheet.Cells[row, 5], $"{nameof(SetupOracleRespIdValidation)}: paramNameCell row {row}");
+                            Excel.Range paramTypeCell = SafeCast<Excel.Range>(ctrlSheet.Cells[row, 4], $"{nameof(SetupOracleRespIdValidation)}: paramTypeCell row {row}");
+
+                            if (paramNameCell == null || paramTypeCell == null)
+                            {
+                                continue;
+                            }
+
+                            string paramName = paramNameCell.Value2 as string ?? string.Empty;
+                            string paramType = paramTypeCell.Value2 as string ?? string.Empty;
+
+                            // If this is an extraParameter with name ORACLE_RESP_ID, lock Operator/Value1/Value2 for the row
+                            if (paramType.Equals("extraParameters", StringComparison.OrdinalIgnoreCase) &&
+                                paramName.Equals("ORACLE_RESP_ID", StringComparison.OrdinalIgnoreCase))
+                            {
+                                LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: Found ORACLE_RESP_ID at row {row}");
+
+                                foreach (int col in new[] { 9, 10, 11 })
+                                {
+                                    Excel.Range targetCell = SafeCast<Excel.Range>(ctrlSheet.Cells[row, col], $"{nameof(SetupOracleRespIdValidation)}: targetCell row {row} col {col}");
+                                    if (targetCell == null)
+                                    {
+                                        continue;
+                                    }
+
+                                    try
+                                    {
+                                        // Clear any existing validation
+                                        try
+                                        {
+                                            targetCell.Validation.Delete();
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: Failed to delete existing validation for row {row} col {col} - {ex.Message}");
+                                        }
+
+                                        // Add validation that blocks every edit with a custom message
+                                        targetCell.Validation.Add(
+                                            Excel.XlDVType.xlValidateCustom,
+                                            Excel.XlDVAlertStyle.xlValidAlertStop,
+                                            Excel.XlFormatConditionOperator.xlBetween,
+                                            "=FALSE",
+                                            Type.Missing);
+
+                                        targetCell.Validation.ErrorTitle = "Responsibility";
+                                        targetCell.Validation.ErrorMessage =
+                                            "Responsibility edits are strictly prohibited.\n" +
+                                            "This cell cannot be edited.";
+                                        targetCell.Validation.InputTitle = "Responsibility";
+                                        targetCell.Validation.InputMessage =
+                                            "Responsibility edits are strictly prohibited. This cell cannot be edited.";
+                                        targetCell.Validation.IgnoreBlank = true;
+                                        targetCell.Validation.ShowInput = true;
+                                        targetCell.Validation.ShowError = true;
+
+                                        // Lock the cell as an extra safeguard
+                                        targetCell.Locked = true;
+
+                                        processedCount++;
+                                    }
+                                    catch (InvalidCastException ex)
+                                    {
+                                        LogUtility.LogException(ex, $"{nameof(SetupOracleRespIdValidation)}: InvalidCastException at row {row} col {col}");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: Failed to set validation for row {row} col {col} - {ex.Message}");
+                                    }
+                                    finally
+                                    {
+                                        Marshal.ReleaseComObject(targetCell);
+                                    }
+                                }
+                            }
+                        }
+                        catch (InvalidCastException ex)
+                        {
+                            LogUtility.LogException(ex, $"{nameof(SetupOracleRespIdValidation)}: InvalidCastException at cell index {totalCells}");
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: Failed to process cell at index {totalCells} - {ex.Message}");
+                        }
+                    }
+                }
+                finally
+                {
+                    if (paramNameRange != null)
+                    {
+                        Marshal.ReleaseComObject(paramNameRange);
+                    }
+                }
+
+                LogUtility.LogDebug($"{nameof(SetupOracleRespIdValidation)}: Completed. Processed {processedCount} of {totalCells} cells.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(SetupOracleRespIdValidation));
             }
         }
 

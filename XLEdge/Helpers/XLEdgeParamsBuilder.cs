@@ -527,6 +527,25 @@ namespace XLEdge.Helpers
                     updatedParam["displayValues"] = values;
                     updatedParam.Remove("displayValue");
                 }
+                else
+                {
+                    // Bug fix: the new value is genuinely null (e.g. a control-sheet edit cleared
+                    // the parameter's cell back to blank - BuildJsonPayload correctly produces
+                    // Value=null for that case, not an empty string). Previously this branch did
+                    // nothing, so the "value"/"displayValue" copied from the original entry above
+                    // (the full-property copy a few lines up) stayed stale forever: the report data
+                    // itself refreshed correctly (the null was sent to the API), but the Parameters
+                    // Section kept showing whatever value was there at report-creation/last-edit
+                    // time - reported as "cleared DEPTNO back to empty, got the right data, but the
+                    // parameters display still shows 13". Explicitly clear every value-shaped field
+                    // so ComputeRawParamDisplayValue (ReportGenerator.cs) has nothing stale to read
+                    // and renders this parameter as empty, regardless of what shape (single value or
+                    // array) the original entry had.
+                    updatedParam["value"] = null;
+                    updatedParam["values"] = null;
+                    updatedParam.Remove("displayValue");
+                    updatedParam.Remove("displayValues");
+                }
 
                 updatedParams.Add(updatedParam);
 

@@ -9,8 +9,8 @@
         WindowStyle="None"
         WindowStartupLocation="CenterScreen"
         SizeToContent="Manual" 
-        MinHeight="300" MaxHeight="600" 
-        MinWidth="470" MaxWidth="600"
+        MinHeight="350" MaxHeight="600" 
+        MinWidth="500" MaxWidth="650"
         ResizeMode="CanResize"
         Background="White" ShowInTaskbar="False"
         Title="GL Accounts Segment Selection">
@@ -50,7 +50,7 @@
                 <Setter Property="Margin" Value="5,2"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
                 <Setter Property="VerticalContentAlignment" Value="Center"/>
-                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
                 <Setter Property="BorderBrush" Value="#D1D5DB"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="Padding" Value="5,2"/>
@@ -136,9 +136,9 @@
                                                HorizontalAlignment="Left" Width="Auto" Margin="10,0,0,0"
                                                VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="1" Text="Low" Style="{StaticResource SegmentHeaderStyle}"
-                                               VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                               VerticalAlignment="Center" Margin="10,0,0,0"/>
                                     <TextBlock Grid.Column="2" Text="High" Style="{StaticResource SegmentHeaderStyle}"
-                                               VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                               VerticalAlignment="Center" Margin="10,0,0,0"/>
                                 </Grid>
                             </Border>
 
