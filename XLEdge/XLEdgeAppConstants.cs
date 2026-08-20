@@ -3,7 +3,7 @@
     public static class XLEdgeAppConstants
     {
         // Default version info (can be overridden at runtime if needed)
-        public const string DefaultVersion = "11.1.0";
+        public const string DefaultVersion = "11.1.1";
         public const string DefaultCommitDate = "20-Aug-2026";
 
         // Logging constants (used in LogHelper and AppPaths)
