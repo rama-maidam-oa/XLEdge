@@ -386,6 +386,7 @@ namespace XLEdge.Utilities
                 if (EnableExcelCentering && !_initialLayoutApplied)
                 {
                     _initialLayoutApplied = true;
+                    CenterOverOwnerOnce();
                 }
             }
             catch (Exception ex)
@@ -581,13 +582,19 @@ namespace XLEdge.Utilities
                 double previousHeight = Height;
                 bool sizeChanged = false;
 
-                if (targetWidth > 0 && Math.Abs(targetWidth - previousWidth) > 0.5)
+                // NaN-safe: Math.Abs(x - NaN) is NaN, and NaN > 0.5 is always false, so a window
+                // that never had an explicit Width/Height set in XAML (only MinWidth/MaxWidth, e.g.
+                // XLEdgeGLAccountsWindow) had this comparison silently never trigger on its very
+                // first layout pass - Width/Height stayed NaN forever, and the window rendered at
+                // bare MinWidth/MinHeight via WPF's own fallback sizing instead of this method's
+                // actual content-fit target. Treat "was never set" as "changed."
+                if (targetWidth > 0 && (double.IsNaN(previousWidth) || Math.Abs(targetWidth - previousWidth) > 0.5))
                 {
                     Width = targetWidth;
                     sizeChanged = true;
                 }
 
-                if (targetHeight > 0 && Math.Abs(targetHeight - previousHeight) > 0.5)
+                if (targetHeight > 0 && (double.IsNaN(previousHeight) || Math.Abs(targetHeight - previousHeight) > 0.5))
                 {
                     Height = targetHeight;
                     sizeChanged = true;
@@ -708,6 +715,10 @@ namespace XLEdge.Utilities
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct Rect
         {
@@ -717,6 +728,98 @@ namespace XLEdge.Utilities
             public int Bottom;
             public readonly int Width => Right - Left;
             public readonly int Height => Bottom - Top;
+        }
+
+        /// <summary>
+        /// Explicitly centers the window over its owner (or the work area, if there is no owner)
+        /// using this window's real, post-layout Width/Height - called exactly once, right after the
+        /// first FitToAvailableWorkArea pass has resolved the window's true size. This is the fix for
+        /// windows appearing off-center: WindowStartupLocation="CenterScreen"/"CenterOwner" (set in
+        /// XAML) already ran once by this point, but for a window using SizeToContent="Manual" with
+        /// only MinWidth/MinHeight/MaxWidth constraints (no explicit Width/Height, e.g.
+        /// XLEdgeGLAccountsWindow), WPF performs that positioning before layout has resolved the
+        /// window's real MinWidth/MinHeight-driven size - so it centers using a placeholder width,
+        /// leaving the window's left edge sitting near the center instead of the window's own center
+        /// landing there. Re-centering here with the now-final Width/Height corrects that,
+        /// independent of whatever WindowStartupLocation computed beforehand. Ported from GLSense's
+        /// DpiAwareWindow.cs, which had the identical off-center bug.
+        /// </summary>
+        private void CenterOverOwnerOnce()
+        {
+            try
+            {
+                // Forces a synchronous layout pass so ActualWidth/ActualHeight are resolved from
+                // content before this window has ever been shown - valid to call here since
+                // _hwndSource already exists (SourceInitialized has already run), giving the visual
+                // tree a real PresentationSource to lay out against.
+                UpdateLayout();
+
+                double centerX;
+                double centerY;
+
+                IntPtr ownerHwnd = new WindowInteropHelper(this).Owner;
+                if (ownerHwnd != IntPtr.Zero && GetWindowRect(ownerHwnd, out Rect ownerRectPx) &&
+                    ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
+                {
+                    double scale = GetCurrentScaleFactor();
+                    double ownerLeft = ownerRectPx.Left / scale;
+                    double ownerTop = ownerRectPx.Top / scale;
+                    double ownerWidth = ownerRectPx.Width / scale;
+                    double ownerHeight = ownerRectPx.Height / scale;
+
+                    centerX = ownerLeft + (ownerWidth / 2.0);
+                    centerY = ownerTop + (ownerHeight / 2.0);
+                }
+                else
+                {
+                    var workArea = SystemParameters.WorkArea;
+                    centerX = workArea.Left + (workArea.Width / 2.0);
+                    centerY = workArea.Top + (workArea.Height / 2.0);
+                }
+
+                PositionAroundCenter(centerX, centerY);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error centering window over owner: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Positions the window so its own center lands on (centerX, centerY) - i.e. Left/Top =
+        /// center minus half of this window's own Width/Height - clamped so it can't be pushed off
+        /// the visible work area. Shared by RecenterAfterSizeChange (recentering around the window's
+        /// own previous center after a resize) and CenterOverOwnerOnce (centering around the
+        /// owner/work-area's center on first layout). Centering must always subtract half of *this*
+        /// window's size from the target center point - using the center point directly as Left/Top
+        /// (as WindowStartupLocation effectively did here, since it ran before SizeToContent="Manual"
+        /// plus MinWidth/MinHeight had resolved this window's real size) leaves the window's left/top
+        /// edge sitting at the center instead of the window's own center landing there.
+        /// </summary>
+        private void PositionAroundCenter(double centerX, double centerY)
+        {
+            // Width/Height (the DP) stays NaN for a SizeToContent="WidthAndHeight" window until WPF
+            // resolves it from content during a real layout pass - explicitly assigning Width from
+            // FitToAvailableWorkArea doesn't stick for these, since SizeToContent governs that
+            // dimension instead. ActualWidth/ActualHeight hold the true resolved size regardless of
+            // which sizing mode is in play, so prefer those and only fall back to Width/Height.
+            double effectiveWidth = ActualWidth > 0 ? ActualWidth : Width;
+            double effectiveHeight = ActualHeight > 0 ? ActualHeight : Height;
+
+            if (double.IsNaN(effectiveWidth) || double.IsNaN(effectiveHeight) || effectiveWidth <= 0 || effectiveHeight <= 0)
+                return;
+
+            double newLeft = centerX - (effectiveWidth / 2.0);
+            double newTop = centerY - (effectiveHeight / 2.0);
+
+            var workArea = SystemParameters.WorkArea;
+            if (effectiveWidth < workArea.Width)
+                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
+            if (effectiveHeight < workArea.Height)
+                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - effectiveHeight));
+
+            Left = newLeft;
+            Top = newTop;
         }
 
         protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)

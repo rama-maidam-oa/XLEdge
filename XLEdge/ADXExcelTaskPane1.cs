@@ -51,6 +51,58 @@ namespace XLEdge
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hWnd);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+            int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_ERASE = 0x0004;
+        private const uint RDW_FRAME = 0x0400;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+        private const uint RDW_UPDATENOW = 0x0100;
+
+        // A live drag-resize of this native task pane can leave the WebView2 child HWND (nested
+        // ElementHost -> WPF HwndSource -> WebView2's own native surface) painting a stale/torn frame
+        // for one recording frame - confirmed via a side-by-side GIF comparison against the VB.NET
+        // version (which never shows this): mid-drag, the report list text was shown left-clipped
+        // ("ocesses" instead of "Processes", "issue 5" instead of "Pivot CF issue 5") for a single
+        // ~100ms frame before recovering on its own. Same root cause/fix shape as
+        // DpiAwareWindow.ForceFrameRedraw (used for the same class of "torn backbuffer after resize"
+        // issue on WPF dialog windows) - RedrawWindow with INVALIDATE|ERASE|FRAME|ALLCHILDREN|
+        // UPDATENOW forces every native child (cascading down through ElementHost into WebView2's own
+        // HWND) to immediately repaint against its current bounds instead of whatever was last
+        // painted. SetWindowPos with the NOMOVE/NOSIZE/NOZORDER/NOACTIVATE flags only recomputes the
+        // non-client frame - neither call actually moves/resizes/activates anything on its own.
+        private void ForceFrameRedraw()
+        {
+            try
+            {
+                if (!this.IsHandleCreated)
+                {
+                    return;
+                }
+
+                IntPtr hwnd = this.Handle;
+                SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero,
+                    RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"{nameof(ForceFrameRedraw)}: failed to force a repaint - {ex.Message}");
+            }
+        }
+
         private int GetEffectiveDpi()
         {
             try
@@ -219,6 +271,7 @@ namespace XLEdge
         {
             LogUtility.LogDebug($"ResizeEnd: pane size={this.Width}x{this.Height}, host size={_host?.Width}x{_host?.Height}");
             _wpfControl?.RefreshWebViewHeight();
+            ForceFrameRedraw();
         }
 
         // Guards against infinite Resize reentrancy: setting this.Width/_host.Width below
@@ -271,6 +324,7 @@ namespace XLEdge
                     }
 
                     _wpfControl?.RefreshWebViewHeight();
+                    ForceFrameRedraw();
                 }
                 catch (Exception ex)
                 {

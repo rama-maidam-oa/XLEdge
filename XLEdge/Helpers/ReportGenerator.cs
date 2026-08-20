@@ -951,11 +951,13 @@ namespace XLEdge.Helpers
             int headerRow = sameSheet ? 8 : 1;
             int dataStartRow = headerRow + 1;
 
-            Excel.Worksheet sheet = ResolveOrCreateReportSheet(workbook, tableId, reportMeta, request, sameSheet, headerRow, out string companionSheetToDelete);
+            Excel.Worksheet sheet = ResolveOrCreateReportSheet(workbook, tableId, reportMeta, request, sameSheet, headerRow, out string companionSheetToDelete, out Excel.ListObject existingTableToReuse);
 
             ActivateAndUnfreezeSheet(excelApp, sheet);
 
-            Excel.ListObject listObject = WriteReportDataAndCreateTable(sheet, tableId, headerRow, dataStartRow, mappings, reportMeta, rows);
+            Excel.ListObject listObject = existingTableToReuse != null
+                ? RewriteExistingReportTable(sheet, existingTableToReuse, tableId, headerRow, dataStartRow, mappings, reportMeta, rows)
+                : WriteReportDataAndCreateTable(sheet, tableId, headerRow, dataStartRow, mappings, reportMeta, rows);
 
             HideFlaggedColumns(listObject, reportMeta, mappings);
 
@@ -1031,9 +1033,10 @@ namespace XLEdge.Helpers
         // Extracted from BuildReportTable - finds/prepares the worksheet to write this report's
         // table into, and tracks the name of any now-orphaned companion parameter sheet that should
         // be deleted once the new table/banner has been written.
-        private static Excel.Worksheet ResolveOrCreateReportSheet(Excel.Workbook workbook, string tableId, ReportMeta reportMeta, EdgeRequest request, bool sameSheet, int headerRow, out string companionSheetToDelete)
+        private static Excel.Worksheet ResolveOrCreateReportSheet(Excel.Workbook workbook, string tableId, ReportMeta reportMeta, EdgeRequest request, bool sameSheet, int headerRow, out string companionSheetToDelete, out Excel.ListObject existingTableToReuse)
         {
             Excel.Worksheet sheet = FindSheetWithTable(workbook, tableId);
+            existingTableToReuse = null;
 
             if (sheet != null)
             {
@@ -1041,7 +1044,7 @@ namespace XLEdge.Helpers
             }
             else
             {
-                sheet = CreateOrReuseReportSheet(workbook, reportMeta, request);
+                sheet = CreateOrReuseReportSheet(workbook, reportMeta, request, out existingTableToReuse);
                 companionSheetToDelete = null;
             }
 
@@ -1106,8 +1109,8 @@ namespace XLEdge.Helpers
         }
 
         // Extracted from BuildReportTable - resolves the worksheet to use when no existing table
-        // with this tableId was found: reuse the report's named sheet if it already exists (clearing
-        // it first), otherwise create a brand-new sheet.
+        // with this tableId was found: reuse the report's named sheet if it already exists, otherwise
+        // create a brand-new sheet.
         //
         // Ported from VB.NET's Edge_GenerateData (FormProcessBar.vb): a live ("Edge") report's
         // computed sheet name can coincide with an unrelated report's sheet (same/truncated display
@@ -1118,8 +1121,19 @@ namespace XLEdge.Helpers
         // this report's own sheet. Process (scheduled) reports never need this - BuildSheetName
         // already made their name unique by construction (a reportId suffix) - and a drilldown/child
         // sheet's name is likewise pre-resolved, so neither case runs the disambiguation probe.
-        private static Excel.Worksheet CreateOrReuseReportSheet(Excel.Workbook workbook, ReportMeta reportMeta, EdgeRequest request)
+        //
+        // A report gets a new tableId every run (the RunId suffix), so this sheet's own leftover
+        // ListObject from a prior run never matches the new tableId by exact name - but it IS still
+        // this same report's table (the sheet-name disambiguation above already established that this
+        // sheet belongs to this report). Rather than deleting that table and creating a fresh one
+        // (which VB never does either - see Edge_GenerateData's "tbExists" branch, which reuses
+        // sht.ListObjects(1) in place), hand it back via existingTableToReuse so BuildReportTable
+        // rewrites it in place instead: collapse to row 1, clear row 1's constants (preserving any
+        // user-added formula), then grow back out and write the new data - the exact same 3-step
+        // algorithm as RefreshListObjectAsync.
+        private static Excel.Worksheet CreateOrReuseReportSheet(Excel.Workbook workbook, ReportMeta reportMeta, EdgeRequest request, out Excel.ListObject existingTableToReuse)
         {
+            existingTableToReuse = null;
             string sheetName = BuildSheetName(reportMeta, request);
 
             bool isLiveReport = !string.Equals(request?.ReportType, "Process", StringComparison.OrdinalIgnoreCase);
@@ -1134,6 +1148,13 @@ namespace XLEdge.Helpers
             if (ExcelSheetHelper.SheetExists(sheetName, workbook))
             {
                 Excel.Worksheet existingSheet = (Excel.Worksheet)workbook.Worksheets[sheetName];
+
+                if (existingSheet.ListObjects.Count > 0)
+                {
+                    existingTableToReuse = existingSheet.ListObjects[1];
+                    return existingSheet;
+                }
+
                 existingSheet.Cells.Clear();
                 ResetLeftoverRowArtifacts(existingSheet);
                 return existingSheet;
@@ -1232,6 +1253,146 @@ namespace XLEdge.Helpers
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "Failed to unfreeze panes on report sheet");
+            }
+        }
+
+        // Extracted from BuildReportTable - rewrites an already-present ListObject in place for a new
+        // run of the same report, instead of deleting it and creating a fresh one. Mirrors VB.NET's
+        // Edge_GenerateData "tbExists" branch (FormProcessBar.vb), which reuses sht.ListObjects(1) the
+        // same way: rename to the new tableId, collapse the data body down to just row 1, clear row
+        // 1's constants leaving any user-added formula untouched (formulas get filled down to the new
+        // row count below), then resize out to the new row/column count and write the header + data.
+        // Uses the same AdjustTableRowCount/CaptureFirstRowFormulas building blocks as
+        // RefreshListObjectAsync's identical 3-step algorithm.
+        private static Excel.ListObject RewriteExistingReportTable(Excel.Worksheet sheet, Excel.ListObject existingTable, string tableId, int headerRow, int dataStartRow, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows)
+        {
+            int dataRowCount = Math.Max(0, rows.Count - 1);
+            int targetTotalRows = Math.Max(1, dataRowCount);
+
+            existingTable.Name = tableId;
+
+            // STEP 1: collapse the table down to just its first data row, discarding every row below
+            // it, before touching any cell content.
+            AdjustTableRowCount(existingTable, 1);
+
+            // STEP 2: capture which of row 1's cells are user-added formulas (to preserve and fill
+            // down below), then clear every other (constant) cell in row 1.
+            Dictionary<int, string> firstRowFormulas = CaptureFirstRowFormulas(existingTable);
+            ClearFirstRowConstantsForBuild(sheet, dataStartRow, existingTable.ListColumns.Count, firstRowFormulas);
+
+            // STEP 3: resize to the new column/row count (Excel adds/removes ListColumns to match a
+            // wider/narrower resize range automatically) and write the new header + data.
+            Excel.Range newTableRange = sheet.Range[sheet.Cells[headerRow, 1], sheet.Cells[headerRow + targetTotalRows, mappings.Count]];
+            existingTable.Resize(newTableRange);
+
+            object[,] headerArr = new object[1, mappings.Count];
+            for (int c = 0; c < mappings.Count; c++)
+            {
+                headerArr[0, c] = mappings[c].Modified;
+            }
+
+            ((Excel.Range)sheet.Cells[headerRow, 1]).Resize[1, mappings.Count].Value2 = headerArr;
+
+            WriteBuildDataRespectingPreservedFormulas(sheet, dataStartRow, targetTotalRows, mappings, reportMeta, rows, dataRowCount, firstRowFormulas);
+            FillDownPreservedFormulasForBuild(sheet, dataStartRow, targetTotalRows, mappings.Count, firstRowFormulas);
+
+            existingTable.TableStyle = "TableStyleLight9";
+            ApplyColumnNumberFormats(existingTable, reportMeta, mappings);
+
+            return existingTable;
+        }
+
+        // Extracted from RewriteExistingReportTable (STEP 2) - clears every constant (non-formula)
+        // cell in the table's first data row, leaving any user-added formula cell (already captured
+        // into firstRowFormulas) untouched. Same operation as RefreshListObjectAsync's
+        // ClearFirstRowConstants, parameterized directly since this call site has no RefreshContext.
+        private static void ClearFirstRowConstantsForBuild(Excel.Worksheet sheet, int dataStartRow, int tableCols, Dictionary<int, string> firstRowFormulas)
+        {
+            for (int c = 1; c <= tableCols; c++)
+            {
+                if (firstRowFormulas.ContainsKey(c))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    ((Excel.Range)sheet.Cells[dataStartRow, c]).ClearContents();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RewriteExistingReportTable)}: failed to clear row-1 constant for column {c} - {ex.Message}");
+                }
+            }
+        }
+
+        // Extracted from RewriteExistingReportTable (STEP 3) - writes the new data column-by-column,
+        // skipping row 1 for any column whose formula was preserved (same shape as
+        // RefreshListObjectAsync's WriteRefreshedColumnData/BuildRefreshedColumnArray).
+        private static void WriteBuildDataRespectingPreservedFormulas(Excel.Worksheet sheet, int dataStartRow, int targetTotalRows, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows, int dataRowCount, Dictionary<int, string> firstRowFormulas)
+        {
+            for (int c = 0; c < mappings.Count; c++)
+            {
+                int tc = c + 1;
+                bool hasRow1Formula = firstRowFormulas.ContainsKey(tc);
+                int colWriteStartRow = hasRow1Formula ? dataStartRow + 1 : dataStartRow;
+                int colRowCount = targetTotalRows - (hasRow1Formula ? 1 : 0);
+
+                if (colRowCount <= 0)
+                {
+                    continue;
+                }
+
+                int rawIndex = mappings[c].RawIndex;
+                string colType = reportMeta.Columns?
+                    .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
+                    .DataType;
+
+                try
+                {
+                    object[,] colArr = new object[colRowCount, 1];
+                    for (int i = 0; i < colRowCount; i++)
+                    {
+                        int physicalRow = colWriteStartRow + i;
+                        int csvRecordIndex = physicalRow - dataStartRow + 1;
+                        List<string> rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= dataRowCount) ? rows[csvRecordIndex] : null;
+                        object raw = (rowVals != null && rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
+                        colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
+                    }
+
+                    var colStartCell = (Excel.Range)sheet.Cells[colWriteStartRow, tc];
+                    var colEndCell = (Excel.Range)sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
+                    sheet.Range[colStartCell, colEndCell].Value2 = colArr;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Failed writing build data for column {tc} ('{mappings[c].Modified}')");
+                }
+            }
+        }
+
+        // Extracted from RewriteExistingReportTable (STEP 3) - fills down formulas from the first
+        // data row where applicable, matching RefreshListObjectAsync's FillDownPreservedFormulas.
+        private static void FillDownPreservedFormulasForBuild(Excel.Worksheet sheet, int dataStartRow, int targetTotalRows, int tableCols, Dictionary<int, string> firstRowFormulas)
+        {
+            int lastRow = dataStartRow + targetTotalRows - 1;
+            for (int c = 1; c <= tableCols; c++)
+            {
+                if (!firstRowFormulas.ContainsKey(c))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var topCell = (Excel.Range)sheet.Cells[dataStartRow, c];
+                    var fillRange = sheet.Range[topCell, sheet.Cells[lastRow, c]];
+                    fillRange.FillDown();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogWarn($"{nameof(RewriteExistingReportTable)}: failed to fill down formula for column {c} - {ex.Message}");
+                }
             }
         }
 
@@ -1809,7 +1970,11 @@ namespace XLEdge.Helpers
 
             Label((Excel.Range)sheet.Cells[2, 11], "Record Count : ");
             Excel.Range recordCountCell = (Excel.Range)sheet.Cells[2, 12];
-            Value(recordCountCell, dataRowCount > 0 ? (object)dataRowCount : null);
+            // Show "0" rather than leaving the cell blank when a report/refresh genuinely returns no
+            // records - VB.NET left this blank on zero rows too (FormProcessBar.vb: "If RowLng > 0 ...
+            // Then .Value = RowLng"), but Rama asked for the explicit 0 instead since a blank cell here
+            // reads as "not yet run" rather than "ran and found nothing."
+            Value(recordCountCell, dataRowCount);
             recordCountCell.HorizontalAlignment = Excel.XlHAlign.xlHAlignLeft;
         }
 
@@ -3624,21 +3789,34 @@ namespace XLEdge.Helpers
                 AddMissingColumnsToTable(ctx);
                 ReorderTableColumns(ctx);
                 EnsureTableHasDataRow(ctx.ListObject);
-                ctx.FirstRowFormulas = CaptureFirstRowFormulas(ctx.ListObject);
 
                 ctx.HeaderRowIdx = ctx.ListObject.HeaderRowRange.Row;
                 ctx.DataStartRow = ctx.HeaderRowIdx + 1;
-                ctx.TargetTotalRows = Math.Max(1, ctx.NewDataCount);
-
-                AdjustTableRowCount(ctx.ListObject, ctx.TargetTotalRows);
-
                 ctx.TableCols = ctx.ListObject.ListColumns.Count;
+
+                // STEP A: collapse the table down to just its first data row, discarding every row
+                // below it, before touching any cell content - matches VB.NET's approach of always
+                // working from a single surviving row (Edge_GenerateData/Edge_GenerateData_Multisheet)
+                // instead of resizing straight to the new record count.
+                AdjustTableRowCount(ctx.ListObject, 1);
+
+                // STEP B: capture which of row 1's cells are user-added formulas (to preserve and
+                // fill down later), then clear every other (constant) cell in row 1 - matches VB's
+                // unconditional DataBodyRange.Rows(1).SpecialCells(xlCellTypeConstants).ClearContents,
+                // which runs every refresh regardless of how many new records came back.
+                ctx.FirstRowFormulas = CaptureFirstRowFormulas(ctx.ListObject);
+                ClearFirstRowConstants(ctx);
+
+                // STEP C: grow back out to match the new record count and write the refreshed data.
+                ctx.TargetTotalRows = Math.Max(1, ctx.NewDataCount);
+                AdjustTableRowCount(ctx.ListObject, ctx.TargetTotalRows);
 
                 await WriteRefreshedDataToTableAsync(ctx);
                 FillDownPreservedFormulas(ctx);
                 HandleRefreshSyncColumnCleanup(ctx);
                 await ReembedLinksAfterRefreshAsync(ctx);
                 await UpdateRefreshedParamsAsync(ctx);
+                UpdateRunInfoStripAfterRefresh(ctx);
                 await CleanupRefreshProgressUiAsync(ctx);
 
                 // Reclaim keyboard focus from the WebView2 task pane back to Excel.
@@ -4085,6 +4263,32 @@ namespace XLEdge.Helpers
             return firstRowFormulas;
         }
 
+        // Extracted from RefreshListObjectAsync (STEP B) - clears every constant (non-formula) cell
+        // in the table's first data row, leaving any user-added formula cell (already captured into
+        // ctx.FirstRowFormulas) untouched. Mirrors VB.NET's unconditional
+        // DataBodyRange.Rows(1).SpecialCells(xlCellTypeConstants).ClearContents, run every refresh
+        // regardless of how many new records came back, so a zero-record refresh can never leave
+        // row 1's old constants on screen.
+        private static void ClearFirstRowConstants(RefreshContext ctx)
+        {
+            for (int c = 1; c <= ctx.TableCols; c++)
+            {
+                if (ctx.FirstRowFormulas.ContainsKey(c))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    ((Excel.Range)ctx.Sheet.Cells[ctx.DataStartRow, c]).ClearContents();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: failed to clear row-1 constant for column {c} - {ex.Message}");
+                }
+            }
+        }
+
         // Extracted from RefreshListObjectAsync (STEP 9) - adjusts table row count to match the new
         // data.
         private static void AdjustTableRowCount(Excel.ListObject lo, int targetTotalRows)
@@ -4439,6 +4643,51 @@ namespace XLEdge.Helpers
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "RefreshListObjectAsync|Failed to update params/save to CustomXMLParts");
+            }
+        }
+
+        // Extracted from RefreshListObjectAsync - refreshes the "Run Date : " / "Record Count : "
+        // (and Time Zone / Executed-in) strip written by WriteRunInfoStrip at initial build. VB.NET's
+        // RibEdgeRefresh_OnClick/RibEdgeRefreshAll_OnClick call the exact same Edge_GenerateData used
+        // for a full run, so this strip is always rewritten there; the C# port's refresh pipeline never
+        // called its WriteRunInfoStrip equivalent at all, so Run Date/Record Count stayed stuck at
+        // whatever the last full "Run"/regenerate wrote, even though the table's own data refreshed
+        // correctly. Runs unconditionally (not nested inside UpdateRefreshedParamsAsync's
+        // has-payload/has-stored-params branches) since the record count can change on every refresh
+        // regardless of whether parameters changed. Resolves the same sameSheet-vs-companion-sheet
+        // target UpdateParameterSheetCells already resolves for the Parameters Section rows.
+        private static void UpdateRunInfoStripAfterRefresh(RefreshContext ctx)
+        {
+            try
+            {
+                Excel.Worksheet targetSheet;
+
+                if (ctx.ListObject.HeaderRowRange != null && ctx.ListObject.HeaderRowRange.Offset[1, 0].Row == 2)
+                {
+                    string paramSheetName = $"P_{ctx.Sheet.Name}";
+                    if (paramSheetName.Length >= 29)
+                    {
+                        paramSheetName = paramSheetName.Substring(0, 28);
+                    }
+
+                    targetSheet = ExcelSheetHelper.GetParameterSheet(paramSheetName, ctx.ListObject.Name);
+                }
+                else
+                {
+                    targetSheet = ctx.Sheet;
+                }
+
+                if (targetSheet == null)
+                {
+                    LogUtility.LogDebug($"{nameof(RefreshListObjectAsync)}: parameter sheet not found for run-info strip update");
+                    return;
+                }
+
+                WriteRunInfoStrip(targetSheet, ctx.NewDataCount);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RefreshListObjectAsync: failed to update Run Date/Record Count strip");
             }
         }
 

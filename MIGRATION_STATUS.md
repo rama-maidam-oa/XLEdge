@@ -1,6 +1,197 @@
 # XLEdge VB.NET → C# WPF Migration — Status & Reference
 
-Last updated: 2026-08-18
+Last updated: 2026-08-20
+
+## Fixed: task pane content briefly shows torn/left-clipped text during a live resize drag — 2026-08-20
+
+Rama reported the task pane's WebView2 content gets trimmed while resizing, and provided two GIFs
+(`VB.NET.gif`, `C#.NET.gif`) of the same drag-resize on both versions for comparison.
+
+Confirmed via frame-by-frame extraction (PIL) and pixel-based splitter-position tracking: in the C#
+recording, frame 116 (of 198, ~10fps) shows the report list rendered left-clipped mid-drag - "ocesses"
+instead of "Processes", "issue 5" instead of "Pivot CF issue 5", "e 2" instead of "CF issue 2" - while
+the surrounding chrome (URL bar, pane background) had already redrawn at the new, wider bounds. It
+recovers on its own within 1-2 frames (~100-200ms) and settles correctly. Sampled the same
+transition-frame ranges in the VB.NET recording (multiple resize events) and found no equivalent glitch
+anywhere - VB's report list text stays fully intact and left-aligned throughout every resize step
+sampled.
+
+Root cause: `ADXExcelTaskPane1` (WinForms) hosts an `ElementHost` -> WPF (`XLEdgeCTP`) -> WebView2 chain
+- three nested native HWNDs. `XLEdgeReportsPane_Resize` already ran on every resize (DPI-aware min-width
+clamp + `_wpfControl.RefreshWebViewHeight()`), but nothing forced the nested native children to actually
+repaint against their new bounds - so WebView2's own native surface (which paints itself outside WPF's
+normal visual composition - see the "airspace" comment in `XLEdgeCTP.xaml`) could briefly keep showing a
+stale/torn frame from just before the resize while the surrounding WPF/WinForms chrome had already
+redrawn. Same class of issue as `DpiAwareWindow.ForceFrameRedraw` (already fixed for WPF dialog windows
+elsewhere in this codebase) - just never applied to this task pane's own resize path.
+
+Fixed by adding an equivalent `ForceFrameRedraw()` to `ADXExcelTaskPane1.cs` (`SetWindowPos` with
+`SWP_FRAMECHANGED` + `RedrawWindow` with `INVALIDATE|ERASE|FRAME|ALLCHILDREN|UPDATENOW` against the task
+pane's own `Handle` - `RDW_ALLCHILDREN` cascades the forced repaint down through `ElementHost` into
+WebView2's own native HWND) and calling it from both `XLEdgeReportsPane_Resize` (every resize) and
+`XLEdgeReportsPane_ResizeEnd` (final settle).
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`); this is a live-drag rendering timing
+issue that's inherently hard to fully verify outside a real Excel session with an actual mouse drag -
+not yet confirmed by the user.
+
+## Changed: "Record Count : " (L2) shows 0 instead of blank on a zero-record run/refresh — 2026-08-20
+
+Rama asked for this after confirming the run-info-strip refresh fix above was working: a blank L2 reads
+as "hasn't run yet" rather than "ran and found nothing," so a genuine zero-record result should show an
+explicit `0`.
+
+Note this is a deliberate deviation from VB.NET, not a parity fix - VB's `GenerateParamSheet`
+(`FormProcessBar.vb`) also leaves L2 blank on zero rows (`If RowLng > 0 AndAlso RowLng <= 1048569 Then
+.Value = RowLng`), and the C# port's `WriteRunInfoStrip` had faithfully carried that over
+(`dataRowCount > 0 ? (object)dataRowCount : null`). Changed to always write `dataRowCount` (0 included).
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`); not yet confirmed by the user in a real
+Excel session.
+
+## Fixed: Refresh Sheet/Book/re-run updates table data but never refreshes the "Run Date"/"Record Count" strip (H1/L2) — 2026-08-20
+
+Reported by Rama with a screenshot (`CountRecords.png`) of a same-sheet report showing the table data
+refreshed correctly while the info strip (`Run Date : ` / H1, `Time Zone : ` / J1, `Executed in : ` / L1,
+`Record Count : ` / L2 - written by `WriteRunInfoStrip`) stayed stuck at a prior run's values.
+
+Root cause: in VB.NET, `RibEdgeRefresh_OnClick`/`RibEdgeRefreshAll_OnClick` call the *exact same*
+`Edge_GenerateData`/`Edge_GenerateData_Multisheet` used for a full report run - there's no separate,
+leaner "refresh" pipeline in VB, so the run-info strip write inside `GenerateParamSheet` always
+executes on every refresh too. The C# port instead built `RefreshListObjectAsync` as a distinct, leaner
+pipeline that updates the table data and the "Parameters Section" rows (`UpdateParameterSheetCells`)
+but never calls `WriteRunInfoStrip` (or any equivalent) at all - so a refresh's actual new record count
+and run timestamp never reached those cells, even though the table itself refreshed correctly.
+
+Fixed by adding `UpdateRunInfoStripAfterRefresh(ctx)` (`Helpers/ReportGenerator.cs`), called
+unconditionally near the end of `RefreshListObjectAsync` (after `UpdateRefreshedParamsAsync`, not nested
+inside its has-payload/has-stored-params branches, since the record count can change on every refresh
+regardless of whether parameters changed). It resolves the same sameSheet-vs-companion-sheet target
+`UpdateParameterSheetCells` already resolves (`tableObj.HeaderRowRange.Offset[1,0].Row == 2` → separate
+companion sheet via `ExcelSheetHelper.GetParameterSheet`; otherwise the data sheet itself), then calls
+the existing `WriteRunInfoStrip(targetSheet, ctx.NewDataCount)` - the same method `BuildReportTable`
+already calls on every full run via `WriteReportParameterSection`.
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`); not yet confirmed by the user in a real
+Excel session.
+
+## Fixed: "A table can't overlap another table" rebuilding a report on a reused same-named sheet — 2026-08-20
+
+Found while triaging a customer log (RahulKumar, machine OL-RAHULK, `XLEdge_Logs_19-Aug-2026.log`, shared
+with Rama) - a cluster of 3 repeated failures at 16:37: `ClearOutline method of Range class failed`,
+`Unable to set the RowHeight property`, then `Failed to build report table in Excel` / "A table can't
+overlap another table."
+
+Root cause: every report run gets a brand-new tableId (`ORB_{reportId}_{RunId}_E` - the RunId suffix
+changes every execution, matching VB.NET's identical `EETableID` scheme). `ResolveOrCreateReportSheet`
+first calls `FindSheetWithTable(workbook, tableId)`, which never matches a prior run's sheet since the
+tableId is new every time - so it falls into `CreateOrReuseReportSheet`, which finds the report's
+same-named sheet already exists (from the prior run) and reuses it via `existingSheet.Cells.Clear()`.
+`Cells.Clear()` wipes cell values/formatting but does **not** remove a Table's structural definition -
+so the prior run's `ListObject` (e.g. `ORB_1090261_1341611_E`) silently survived on the sheet. When
+`WriteReportDataAndCreateTable` then called `sheet.ListObjects.Add(...)` to create the new run's table
+over the same range, Excel rejected it with "A table can't overlap another table" - and the preceding
+`ResetLeftoverRowArtifacts` calls (`ClearOutline`/`RowHeight`) likely failed for the same underlying
+reason (operating on a range Excel still considers part of an existing Table).
+
+**First attempt (wrong, corrected same day):** deleting the leftover `ListObject` before recreating a
+fresh one via `ListObjects.Add()`. Rama caught this - VB.NET never deletes-and-recreates here either.
+`Edge_TableExists` (`FormProcessBar.vb`) actually finds this SAME leftover table by matching just the
+reportId + `_E`/`_P` suffix segments of the table name, deliberately ignoring the RunId segment - so
+VB's `tbExists` branch reuses `sht.ListObjects(1)` *in place*: rename it to the new tableId, clear the
+data body down to row 1, clear row 1's constants via `SpecialCells(xlCellTypeConstants).ClearContents`
+(preserving any formula), then resize out and write the new data - i.e. the exact same 3-step algorithm
+already ported into `RefreshListObjectAsync` for the "refresh with zero returned records" fix above,
+just applied here at initial-build time instead of at refresh time.
+
+Fixed properly by threading an `out Excel.ListObject existingTableToReuse` through
+`ResolveOrCreateReportSheet`/`CreateOrReuseReportSheet` (`Helpers/ReportGenerator.cs`): when the
+resolved sheet already has a `ListObject` (`existingSheet.ListObjects.Count > 0` - simpler than porting
+`Edge_TableExists`'s name-segment matching outright, since the sheet-name disambiguation already run in
+`CreateOrReuseReportSheet` guarantees any table found here belongs to this same report), hand it back
+instead of clearing cells. `BuildReportTable` then calls a new `RewriteExistingReportTable` instead of
+`WriteReportDataAndCreateTable` for that case: renames the table to the new tableId, `AdjustTableRowCount`
+down to 1, `CaptureFirstRowFormulas` + a new `ClearFirstRowConstantsForBuild` (clears row 1's
+non-formula cells only), `existingTable.Resize(...)` out to the new row/column count (Excel
+adds/removes `ListColumns` to match), then `WriteBuildDataRespectingPreservedFormulas` +
+`FillDownPreservedFormulasForBuild` write the new data and fill any preserved formula down to the new
+row count. `AdjustTableRowCount`/`CaptureFirstRowFormulas` are reused as-is from the refresh pipeline;
+the write/clear/fill-down helpers are build-flow-specific twins of `RefreshListObjectAsync`'s equivalents
+(no `RefreshContext` available at this call site).
+
+Note: unlike VB's separate `RefreshSync`/`ColDeleteCollection` column-reconciliation block, a single
+`Resize()` call is relied on to add/remove `ListColumns` for a changed column count - this does not
+reorder already-existing columns if the report's column *order* changes between runs (uncommon in
+practice, since `BuildColumnMappings` derives order from `reportMeta.Columns`/CSV header fresh every run
+for the same report).
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`); not yet confirmed against the customer's
+exact repro (re-running the same live report enough times to force a sheet reuse) in a real Excel
+session.
+
+## Fixed: windows (e.g. XLEdgeGLAccountsWindow) rendering/centering off, only Min/Max sizes set — 2026-08-20
+
+Rama pointed at `D:\SQLLite_Test\GLSense\FinalWorkingCode\GLSense`'s `Utilities\DpiAwareWindow.cs`, which
+had already fixed the identical off-center bug there, and asked to check whether XLEdge's copy of the
+same base class had the same fix. It didn't - two pieces were missing.
+
+`Utilities\DpiAwareWindow.cs`'s `FitToAvailableWorkArea` decides whether to actually assign the
+content-fit `Width`/`Height` via `Math.Abs(targetWidth - previousWidth) > 0.5`. `Math.Abs(x - NaN)` is
+`NaN`, and `NaN > 0.5` is always `false` - so for a window that never had an explicit `Width`/`Height`
+in XAML (only `MinWidth`/`MaxWidth`/`MinHeight`/`MaxHeight`, e.g. `XLEdgeGLAccountsWindow`), this
+comparison silently never triggered on the first layout pass. `Width`/`Height` stayed `NaN` forever,
+and the window rendered at WPF's own fallback size instead of this method's real content-fit target.
+Fixed by treating "previous value was NaN" as "changed," same as GLSense already did.
+
+Separately, `ApplyLayoutRefresh`'s `if (EnableExcelCentering && !_initialLayoutApplied)` block only set
+the `_initialLayoutApplied` flag and did nothing else - GLSense's equivalent block calls a
+`CenterOverOwnerOnce()` there, which XLEdge's copy never had at all. Without it, positioning relies
+entirely on WPF's own `WindowStartupLocation` ("CenterScreen"/"CenterOwner", set in XAML), which runs
+*before* layout has resolved the window's true `SizeToContent="Manual"` + `MinWidth`/`MinHeight`-driven
+size - so it centers using a placeholder width, leaving the window's left/top edge sitting near the
+center instead of the window's own center landing there. Ported `CenterOverOwnerOnce`/
+`PositionAroundCenter` from GLSense (plus the `GetWindowRect` P/Invoke they need) and wired
+`CenterOverOwnerOnce()` into that empty block - it now re-centers using the window's real, post-layout
+`ActualWidth`/`ActualHeight` once, right after the first `FitToAvailableWorkArea` pass, over the owner
+(Excel) window if one is set or the work area otherwise.
+
+`RecenterAfterSizeChange` (the 2026-08-14ish port, see git blame) still early-returns when
+`previousWidth`/`previousHeight` were `NaN` (matches GLSense's own behavior) - that's fine, since
+`CenterOverOwnerOnce` is what actually corrects the *first-time* NaN case; `RecenterAfterSizeChange`
+only needs to handle *subsequent* resizes once a real size already exists.
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`); not yet confirmed by the user in a real
+Excel session.
+
+## Fixed (again): refresh with zero returned records still left stale constants in row 1 — 2026-08-20
+
+The 2026-08-18 fix below (removing the `ctx.NewDataCount > 0` guard around
+`WriteRefreshedDataToTableAsync`'s body) was verified by MSBuild compile only, never confirmed by the
+user in real Excel. Rama tested the 19-Aug build against Refresh Sheet and Refresh Book and reported
+row 1 was still stale on a zero-record refresh, even though the guard was already removed - i.e. the
+per-column conditional write logic (`WriteRefreshedColumnData`/`BuildRefreshedColumnArray`) wasn't
+reliably enough replicating VB's simpler, unconditional approach.
+
+Rama specified the exact intended algorithm (matching VB.NET's
+`DataBodyRange.Rows(1).SpecialCells(xlCellTypeConstants).ClearContents` approach more literally than
+the previous C# port did): (1) collapse the table down to just its first data row, discarding
+everything below it; (2) clear every constant (non-formula) cell in that first row, leaving any
+user-added formula cell untouched (formulas must be preserved and filled down to match the new record
+count, since a user may have added them); (3) only then grow the table back out to the new record
+count and write the refreshed data.
+
+Reimplemented `RefreshListObjectAsync` (`Helpers/ReportGenerator.cs`) to do exactly that instead of
+resizing straight to the new record count in one step: `AdjustTableRowCount(ctx.ListObject, 1)` first,
+then a new `ClearFirstRowConstants` (loops row 1's cells, skips any column already in
+`ctx.FirstRowFormulas`, `ClearContents()`s the rest) before growing to `ctx.TargetTotalRows` and
+running the existing `WriteRefreshedDataToTableAsync`/`FillDownPreservedFormulas`. This makes row 1's
+clear an explicit, unconditional step - independent of `WriteRefreshedColumnData`'s per-column
+row-math - so a zero-record refresh can't leave stale data there regardless of what edge case tripped
+up the conditional write path. `RibEdgeRefresh_OnClick` (Sheet) and `RibEdgeRefreshAll_OnClick` (Book)
+both call this same method, so both are covered by one change.
+
+Verified by an MSBuild compile (`RegisterForComInterop=false`); not yet confirmed by the user in a
+real Excel session.
 
 ## Fixed: refresh with zero returned records left stale constants in the table's first data row — 2026-08-18
 
