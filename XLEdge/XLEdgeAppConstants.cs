@@ -4,7 +4,7 @@
     {
         // Default version info (can be overridden at runtime if needed)
         public const string DefaultVersion = "11.1.1";
-        public const string DefaultCommitDate = "20-Aug-2026";
+        public const string DefaultCommitDate = "26-Aug-2026";
 
         // Logging constants (used in LogHelper and AppPaths)
         public const long LogMaxFileSizeBytes = 20 * 1024 * 1024; // 20 MB

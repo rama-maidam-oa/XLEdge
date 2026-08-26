@@ -9,7 +9,7 @@
                       ResizeMode="CanResize"
                       SizeToContent="Manual"
                       MinWidth="640"
-                      MinHeight="430"
+                      MinHeight="450"
                       Background="White"
                       ShowInTaskbar="False"
                       DataContext="{Binding RelativeSource={RelativeSource Self}}">
@@ -181,13 +181,13 @@
                 <Border Grid.Row="6" BorderBrush="{StaticResource BackgroundBrush}" BorderThickness="0,4,0,1" Padding="14,10">
                     <CheckBox x:Name="chkOverrideFormats"
                               Style="{StaticResource ModernToggleSwitch}"
-                              Content="Override formats on sheet or book refresh."
-                              IsChecked="{Binding OverrideFormats, Mode=TwoWay}">
+                              Content="Preserve user applied formats on refresh or run."
+                              IsChecked="{Binding PreserveFormats, Mode=TwoWay}">
                         <CheckBox.ToolTip>
                             <ToolTip Style="{StaticResource ChromeStyleToolTip}">
                                 <StackPanel MaxWidth="300">
-                                    <TextBlock Text="Override formats on sheet or book refresh" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
-                                    <TextBlock Text="When checked, refreshing a sheet or the whole book resets cell formatting to the report's defaults, overriding any manual formatting changes you've made."
+                                    <TextBlock Text="Preserve user applied formats on refresh or run" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="When checked, refreshing a sheet/book or re-running a report leaves your manual cell formatting untouched. When unchecked, the report's default formatting is re-applied."
                                                FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
                                 </StackPanel>
                             </ToolTip>

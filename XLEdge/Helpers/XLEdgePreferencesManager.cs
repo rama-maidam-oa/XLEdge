@@ -101,7 +101,7 @@ namespace XLEdge.Helpers
                     ChangeSheetName = XLEdgeAppState.Instance.AllowSheetNameChanges,
                     CalendarCtrlDisplay = XLEdgeAppState.Instance.ShowCalendarControl,
                     SegmentSelectionWindowDisplay = XLEdgeAppState.Instance.ShowSegmentSelectionWindow,
-                    OverrideFormats = XLEdgeAppState.Instance.OverrideFormats
+                    PreserveFormats = XLEdgeAppState.Instance.PreserveFormats
                 };
             }
         }
@@ -121,7 +121,7 @@ namespace XLEdge.Helpers
                 ChangeSheetName = XLEdgeAppState.Instance.AllowSheetNameChanges,
                 CalendarCtrlDisplay = XLEdgeAppState.Instance.ShowCalendarControl,
                 SegmentSelectionWindowDisplay = XLEdgeAppState.Instance.ShowSegmentSelectionWindow,
-                OverrideFormats = XLEdgeAppState.Instance.OverrideFormats
+                PreserveFormats = XLEdgeAppState.Instance.PreserveFormats
             };
         }
 
@@ -160,7 +160,7 @@ namespace XLEdge.Helpers
                         ChangeSheetName = ReadBooleanProperty(root, "changeSheetName", defaults.ChangeSheetName, ref missingProperty),
                         CalendarCtrlDisplay = ReadBooleanProperty(root, "calendarCtrlDisplay", defaults.CalendarCtrlDisplay, ref missingProperty),
                         SegmentSelectionWindowDisplay = ReadBooleanProperty(root, "segmentSelectionWindowDisplay", defaults.SegmentSelectionWindowDisplay, ref missingProperty),
-                        OverrideFormats = ReadBooleanProperty(root, "overrideFormats", defaults.OverrideFormats, ref missingProperty)
+                        PreserveFormats = ReadBooleanProperty(root, "preserveFormats", defaults.PreserveFormats, ref missingProperty)
                     };
 
                     shouldSave = missingProperty;
@@ -218,7 +218,7 @@ namespace XLEdge.Helpers
             appState.AllowSheetNameChanges = userPreferences.ChangeSheetName;
             appState.ShowCalendarControl = userPreferences.CalendarCtrlDisplay;
             appState.ShowSegmentSelectionWindow = userPreferences.SegmentSelectionWindowDisplay;
-            appState.OverrideFormats = userPreferences.OverrideFormats;
+            appState.PreserveFormats = userPreferences.PreserveFormats;
         }
     }
 }

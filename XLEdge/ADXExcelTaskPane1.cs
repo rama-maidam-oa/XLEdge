@@ -960,6 +960,11 @@ namespace XLEdge
                             string? runIds = await FetchWorkbookRerunIdsAsync();
                             if (!string.IsNullOrWhiteSpace(runIds))
                             {
+                                if (IsCellInEditModeAndWarn())
+                                {
+                                    break;
+                                }
+
                                 SafeFireAndForget(
                                     () => XLEdge.Helpers.ReportGenerator.CreateMultiDataReportsAsync(runIds, useWaitWindow: true),
                                     "Handle EdgeWorkbook (MultiData) document title change");
@@ -977,11 +982,21 @@ namespace XLEdge
                         }
                         else
                         {
+                            if (IsCellInEditModeAndWarn())
+                            {
+                                break;
+                            }
+
                             SafeFireAndForget(() => XLEdge.Helpers.ReportGenerator.CreateReportFromTitleAsync(title, useWaitWindow: true), "Handle document title change");
                         }
                         break;
 
                     case "Logs":
+                        if (IsCellInEditModeAndWarn())
+                        {
+                            break;
+                        }
+
                         SafeFireAndForget(() => XLEdge.Helpers.ReportGenerator.CreateLogsReportAsync(title, useWaitWindow: true), "Handle Logs document title change");
                         break;
 
@@ -1002,6 +1017,20 @@ namespace XLEdge
             {
                 LogUtility.LogException(ex, "Error in WebView_DocumentTitleChanged");
             }
+        }
+
+        // Ported from ADXExcelTaskPane1.vb's IsCellinEditMode() guard ahead of each report-generation
+        // branch (WebView_DocumentTitleChanged) - matches VB.NET exactly: log a warning and stop,
+        // with no user-facing message.
+        private static bool IsCellInEditModeAndWarn()
+        {
+            if (!ExcelApplicationHelper.IsCellInEditMode())
+            {
+                return false;
+            }
+
+            LogUtility.LogWarn($"{nameof(WebView_DocumentTitleChanged)}: active cell is in edit mode - stopping report generation.");
+            return true;
         }
 
         private async Task<string?> FetchWorkbookRerunIdsAsync()

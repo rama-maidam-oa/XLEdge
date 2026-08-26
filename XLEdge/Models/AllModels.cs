@@ -32,8 +32,8 @@ namespace XLEdge.Models
         [JsonPropertyName("segmentSelectionWindowDisplay")]
         public bool SegmentSelectionWindowDisplay { get; set; }
 
-        [JsonPropertyName("overrideFormats")]
-        public bool OverrideFormats { get; set; }
+        [JsonPropertyName("preserveFormats")]
+        public bool PreserveFormats { get; set; }
 
         public XLEdgeUserPreferences Clone()
         {
@@ -45,7 +45,7 @@ namespace XLEdge.Models
                 ChangeSheetName = ChangeSheetName,
                 CalendarCtrlDisplay = CalendarCtrlDisplay,
                 SegmentSelectionWindowDisplay = SegmentSelectionWindowDisplay,
-                OverrideFormats = OverrideFormats
+                PreserveFormats = PreserveFormats
             };
         }
     }

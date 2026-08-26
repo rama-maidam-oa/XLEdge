@@ -15,7 +15,7 @@ namespace XLEdge.Views
         private bool overrideSheetNameForScheduledOutputs;
         private bool showCalendarControl;
         private bool showSegmentSelectionWindow;
-        private bool overrideFormats;
+        private bool preserveFormats;
 
         public event PropertyChangedEventHandler PropertyChanged;
         public event EventHandler PreferencesApplied;
@@ -98,14 +98,14 @@ namespace XLEdge.Views
             }
         }
 
-        public bool OverrideFormats
+        public bool PreserveFormats
         {
-            get => overrideFormats;
+            get => preserveFormats;
             set
             {
-                if (overrideFormats != value)
+                if (preserveFormats != value)
                 {
-                    overrideFormats = value;
+                    preserveFormats = value;
                     OnPropertyChanged();
                 }
             }
@@ -129,7 +129,7 @@ namespace XLEdge.Views
             OverrideSheetNameForScheduledOutputs = appState.AllowSheetNameChanges;
             ShowCalendarControl = appState.ShowCalendarControl;
             ShowSegmentSelectionWindow = appState.ShowSegmentSelectionWindow;
-            OverrideFormats = appState.OverrideFormats;
+            PreserveFormats = appState.PreserveFormats;
         }
 
         private void BtnApply_Click(object sender, RoutedEventArgs e)
@@ -176,7 +176,7 @@ namespace XLEdge.Views
                 ChangeSheetName = OverrideSheetNameForScheduledOutputs,
                 CalendarCtrlDisplay = ShowCalendarControl,
                 SegmentSelectionWindowDisplay = ShowSegmentSelectionWindow,
-                OverrideFormats = OverrideFormats
+                PreserveFormats = PreserveFormats
             };
         }
 

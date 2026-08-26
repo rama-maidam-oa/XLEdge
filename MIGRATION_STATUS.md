@@ -2881,3 +2881,231 @@ codebase is on a bounded COM collection (`ListObjects`, `Rows`, `Columns`, `Name
 (returns a `double`, added in Excel 2007 for exactly this "range larger than 2^31 cells" case),
 wrapped in `Convert.ToDouble(...)` since the interop property surfaces as `object`/late-bound.
 Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-08-25: Two bugs from Rama's report - stale NumberFormat re-stamp on report re-run, and no cell-edit-mode guard before report generation
+
+**Bug 1 report**: "Override cell formats" checkbox (Options) is being partially ignored - re-running/
+regenerating an already-downloaded report re-applies column NumberFormat even when the checkbox is
+unchecked.
+
+**Root cause**: `Helpers/ReportGenerator.cs`'s `RewriteExistingReportTable` (the reuse-existing-
+`ListObject` path taken when a report is re-run/regenerated a second time - see the collapse-to-row1/
+clear-constants/grow-and-write algorithm from 2026-08-20) called `ApplyColumnNumberFormats`
+unconditionally, with no check of `XLEdgeAppState.Instance.OverrideFormats`. The sibling Refresh path
+(`WriteRefreshedColumnData`) already gated its own NumberFormat re-stamp behind that flag (fixed for
+OISR-21571). Confirmed against the VB.NET reference: `FormProcessBar.vb`'s
+`WriteDataTableColumnWiseUsingTuples` - the method used by both `Edge_GenerateData` and
+`Edge_GenerateData_Multisheet` for this same reuse-existing-table path - only sets
+`SingleColumnRange.NumberFormat` when `hasFormat AndAlso Not String.IsNullOrEmpty(formatStr) AndAlso
+OverrideFormats` (line ~4661); VB's brand-new-table build path (`DataTableToExcel`) has no such gate
+and always applies format, since there's no prior format on a fresh table to preserve - matching
+`BuildReportTable`'s own (correctly unconditional) `ApplyColumnNumberFormats` call for that path.
+
+**Fix**: wrapped `RewriteExistingReportTable`'s `ApplyColumnNumberFormats` call in `if
+(XLEdgeAppState.Instance.OverrideFormats)`, matching `WriteRefreshedColumnData` and the VB reference.
+No change to the brand-new-table build path.
+
+**Bug 2 report**: double-clicking any cell (entering Excel cell-edit mode) and then clicking Run in
+the task pane silently produces no data - no error, nothing written to the sheet.
+
+**Root cause**: VB.NET's `ADXExcelTaskPane1.vb` guards every report-generation branch of
+`WebView_DocumentTitleChanged` (`EdgeWorkbook`/`Logs`/`Process`+`Edge`) with `If IsCellinEditMode()
+Then ... Return` before calling into report generation - Excel COM calls made while a cell is in
+edit mode fail/behave unreliably, so VB.NET already knew not to proceed. The C# port's
+`ExcelApplicationHelper.IsCellInEditMode()` (a direct port of VB's `IsCellinEditMode`, toggling
+`Application.Interactive` to detect edit mode) was already wired into the Refresh Sheet/Book ribbon
+handlers (`AddinModule.cs`'s `RibEdgeRefresh_OnClick`/`RibEdgeRefreshAll_OnClick`), but
+`ADXExcelTaskPane1.cs`'s `WebView_DocumentTitleChanged` - the Run-button/report-generation entry
+point - had no such check at all, so it always proceeded into `ReportGenerator` even mid-edit,
+silently producing no visible data.
+
+**Fix**: added an `IsCellInEditModeAndWarn()` guard (new private helper in `ADXExcelTaskPane1.cs`)
+before the `EdgeWorkbook`, `Logs`, and `Process`/`Edge` branches, mirroring VB's three guarded
+branches. Unlike VB.NET (whose `XLEdgeMsgDisplay` call for this was left commented out - it only
+logged a `Warn`), Rama asked for an actual visible prompt here, since a silent no-op gives no
+indication of why nothing happened: the guard now also calls
+`MessageFunctions.XLEdgeMessage(ExcelApplicationHelper.CellEditModeMessage, ...)`. Also upgraded the
+two existing Refresh ribbon handlers' edit-mode checks (previously log-only, same as VB) to show the
+same message, for consistency across both entry points. Added `ExcelApplicationHelper
+.CellEditModeMessage` as the shared message text (ported from VB's `AddinModule.XLMsgStr`).
+
+Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-08-25 (follow-up): the row-collapse step was deleting rows, not clearing contents - real root cause of Bug 1
+
+Rama asked, after the fix above: "check if we are deleting contents or rows [before
+`ApplyColumnNumberFormats`] - should be contents only." Re-reading the VB.NET reference's actual
+`tbExists` branch directly (rather than trusting an earlier session's paraphrase of it in
+[[feedback-xledge-refresh-algorithm]]-equivalent code comments) turned up a real, separate bug from
+the `OverrideFormats` gate fixed above.
+
+**What the C# port was doing**: both `RefreshListObjectAsync` (STEP A) and
+`RewriteExistingReportTable` (STEP 1) called a helper (`AdjustTableRowCount(lo, 1)`) that shrank the
+table down to exactly 1 row by physically deleting `ListRow`s (`last.Delete()`) in a loop, *then*
+cleared row 1's constants, *then* grew back out (either another `AdjustTableRowCount` add-loop, or a
+direct `Resize()`). A comment on this code explicitly asserted "matches VB.NET's approach of always
+working from a single surviving row" - that claim was never actually verified against the VB source.
+
+**What VB.NET actually does** (`FormProcessBar.vb`, `Edge_GenerateData` line ~3901 and
+`Edge_GenerateData_Multisheet` line ~1740, identical in both): it never shrinks to 1 row and never
+deletes rows in this step. It clears CONTENTS ONLY of every row below row 1, at the table's *current*
+row count, via `TableObj.DataBodyRange.Offset(1).Resize(Rows.Count - 1, Cols).Rows.ClearContents()`.
+Then it clears row 1's constants (`SpecialCells(xlCellTypeConstants).ClearContents`, same as already
+ported). Then it does exactly ONE `TableObj.Resize(...)` call straight to the new report's actual
+row count (growing or shrinking, whichever is needed) - Excel's `ListObject.Resize` doesn't
+physically delete or shift any rows in either direction: shrinking just excludes the trailing rows
+from the table (they stay on the sheet, untouched, available to be pulled back in later), growing
+adds rows at the end that inherit formatting from the row above. The only place VB.NET does an actual
+`.Rows.Delete()` is the true-zero-new-records case (an `Else` branch neither C# method has, since
+both already clamp to a minimum of 1 row via `Math.Max(1, ...)` - a separate, pre-existing, deliberate
+convention left unchanged here).
+
+Physically deleting rows to shrink to 1 (as the C# port did) shifts every row below the table up by
+however many rows were deleted, before the final resize/grow pulls in "new" rows from what is now a
+completely different physical location than in VB - those rows carry whatever formatting happened to
+be sitting there previously (e.g. blank/default format from further down the sheet), not the row's
+own prior formatting or row 1's. This is the direct mechanism behind "partial formatting applied"
+complaints that survive even after the `OverrideFormats` gate fix above, since it corrupts cell
+*format* (not just NumberFormat) independent of that checkbox entirely.
+
+**Fix**: replaced `AdjustTableRowCount(lo, 1)` in both call sites with a new `ClearDataRowsBelowFirst`
+helper that does exactly VB's content-only clear (bounded to the *current* `DataBodyRange.Rows.Count`,
+never touching rows beyond it). `RefreshListObjectAsync`'s STEP C (grow to the new record count) was
+also changed from an `AdjustTableRowCount` add-loop to a single direct `.Resize(...)` call, matching
+VB's one-shot resize and `RewriteExistingReportTable`'s existing STEP 3 (which already resized
+directly and was left unchanged). The now-fully-unused `AdjustTableRowCount` was deleted rather than
+left as dead code.
+
+Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-08-25 (2 more corrections from Rama)
+
+**1. Cell-edit-mode guard: no message box, log-only + terminate.** Rama corrected the Bug 2 fix
+above: the new visible message box (`MessageFunctions.XLEdgeMessage`) added to
+`ADXExcelTaskPane1.cs`'s `IsCellInEditModeAndWarn` and to both `AddinModule.cs` Refresh handlers was
+not wanted after all - the desired behavior is exactly VB.NET's original (log a `Warn` to the NLog
+log file and stop the action immediately, no dialog). Removed all three `MessageFunctions
+.XLEdgeMessage(...)` calls (keeping the `LogUtility.LogWarn` + early-return in each), and deleted the
+now-unused `ExcelApplicationHelper.CellEditModeMessage` constant added for this purpose.
+
+**2. `OverrideFormats` option renamed/inverted: "Preserve user applied formats on refresh or run".**
+Product decision: the Options checkbox is being reworded from "Override formats on sheet or book
+refresh" (checked = apply/override format) to "Preserve user applied formats on refresh or run"
+(checked = preserve, i.e. the opposite polarity), and should extend to the report re-run/regenerate
+path too (previously the checkbox's label only mentioned refresh). Explicit constraint from Rama: do
+NOT rename the underlying property or its `xledgeuserpreferences.json` key
+(`overrideFormats`/`OverrideFormats`) - existing VB.NET users migrating to this C# build already have
+that key on disk, so the same name has to keep working; the polarity flip happens only in the
+*consuming* code.
+
+**Change**:
+- `XLEdgeAppState.OverrideFormats` default flipped from `true` to `false` - net default behavior is
+  unchanged (a fresh install still applies formats by default), since the meaning and the default
+  flipped together: old `true` ("override/apply", default) ⇔ new `false` ("don't preserve, i.e.
+  apply", default).
+- Both consuming checks in `ReportGenerator.cs` inverted from `if (OverrideFormats)` to
+  `if (!OverrideFormats)`: `WriteRefreshedColumnData` (Refresh path) and `RewriteExistingReportTable`
+  (re-run/regenerate path, today's Bug 1 fix above) - preserve-format is now the `true` state, so
+  format is only re-applied when the flag is `false`.
+- `Views/XLEdgeOptions.xaml`'s checkbox content/tooltip reworded to "Preserve user applied formats on
+  refresh or run"; the binding itself (`IsChecked="{Binding OverrideFormats}"`) is untouched - checking
+  the box now means "preserve" instead of "override", matching the new label directly, no inversion
+  needed at the binding layer.
+- `XLEdgeUserPreferences.OverrideFormats` (`Models/AllModels.cs`), its `[JsonPropertyName
+  ("overrideFormats")]`, and `XLEdgePreferencesManager` were all left untouched - they just carry the
+  same bool through under the same name, so the flip is entirely contained to `XLEdgeAppState`'s
+  default and the two `ReportGenerator.cs` consumers.
+
+**Caveat worth flagging**: an existing user migrating from VB.NET with `overrideFormats` already
+saved in their `xledgeuserpreferences.json` will have that value re-interpreted under the new,
+opposite meaning (e.g. a prior `false`, meaning "don't override" under the old checkbox, now means
+"don't preserve" = apply format under the new one) - this is an inherent consequence of keeping the
+same key while flipping what it means, which Rama explicitly asked for.
+
+Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-08-25 (3rd follow-up): `OverrideFormats` renamed to `PreserveFormats` in both VB.NET and C#
+
+Rama reconsidered the same-key-different-meaning approach above: since this option hasn't shipped to
+any user yet (still in QA, OISR-22179 not yet released), he decided a straight rename to
+`PreserveFormats`/`preserveFormats` is cleaner than keeping the old `OverrideFormats`/`overrideFormats`
+name with an inverted meaning baked into the consuming code. He made this change in VB.NET himself
+first (commit `d16e934`, OISR-22179) and asked for the same rename to be ported to C#.
+
+**VB.NET (already committed by Rama, for reference)**: `AddinModule.vb` (`Public Shared
+PreserveFormats`, all reads/writes to/from `userPreferences`, and the `IsAnyKeywordMissing` keyword
+list), `FormOptions.vb` (Load/Apply/Save), `FormProcessBar.vb` (the actual apply-format condition -
+now reads correctly by name: `Not PreserveFormats`), `ReportMetaInfo.vb`'s `xledgeuserPreferences`
+class (`overrideFormats` → `preserveFormats`, a real JSON-key rename since nothing's shipped with the
+old key). The WinForms control name `ChkFormtasOverride` was deliberately left as-is (only its
+`.Text` changed) - renaming a Designer control also touches TabIndex/layout wiring for no real
+benefit, since the control name isn't user- or JSON-facing.
+
+**C# (this port)**: same scope, same decision to leave the XAML control's `x:Name="chkOverrideFormats"`
+alone.
+- `XLEdgeAppState.OverrideFormats` → `PreserveFormats` (still defaults to `false`).
+- `Models/AllModels.cs`: `XLEdgeUserPreferences.OverrideFormats` → `PreserveFormats`,
+  `[JsonPropertyName("overrideFormats")]` → `[JsonPropertyName("preserveFormats")]`.
+- `Helpers/XLEdgePreferencesManager.cs`: all `OverrideFormats` reads/writes and the `"overrideFormats"`
+  JSON-key string renamed.
+- `Helpers/ReportGenerator.cs`: both consuming checks renamed from `!XLEdgeAppState.Instance
+  .OverrideFormats` to `!XLEdgeAppState.Instance.PreserveFormats` - same inverted-check logic as
+  before, just now reads correctly by name instead of looking backwards.
+- `Views/XLEdgeOptions.xaml`'s binding (`IsChecked="{Binding PreserveFormats}"`) and
+  `XLEdgeOptions.xaml.cs`'s backing field/property renamed to match.
+
+Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-08-25: clicking the Excel sheet during a report run/refresh terminates the whole process (not reproducible in VB.NET)
+
+**Bug report**: while a report is running or a sheet/book is refreshing, clicking anywhere on the
+Excel sheet terminates the whole in-flight operation. Confirmed not reproducible in VB.NET.
+
+**Root cause - two compounding gaps, both C#-only**:
+
+1. **VB.NET's progress dialog is modal; C#'s is not.** VB's `Edge_ThreadProgress`
+   (`XLEdgeProcedures.vb`) shows `FormProcessBar` via `.ShowDialog()` - a true modal dialog that
+   disables the Excel window underneath for its entire duration, so the user physically cannot click
+   the sheet at all while a report/refresh is running in VB.NET. The C# port's equivalent
+   (`XLEdgeWaitWindow`, created at all 4 of `ReportGenerator.cs`'s top-level operation entry points -
+   `CreateReportFromTitleAsyncCore`, `CreateLogsReportAsync`, `CreateReportFromListObjectAsync`,
+   `RefreshListObjectAsync`) is shown via `.Show()` - non-modal - so nothing stops the click from
+   reaching Excel while the operation is running.
+
+2. **`adxExcelAppEvents1_SheetSelectionChange` fires on every single-cell selection and touches the
+   active sheet's `ListObjects`/`DataBodyRange` - exactly what a concurrent refresh/report-generation
+   is busy resizing/rewriting.** VB.NET's own `AdxExcelAppEvents1_SheetSelectionChange`
+   (`AddinModule.vb:3175`) is entirely dead code - its very first line is an unconditional `Return`,
+   confirmed already noted for a different bug (OISR-22117, 2026-08-18 entry above). The C# port
+   *intentionally re-enabled equivalent functionality* (calendar popup + GL segment picker) that
+   VB.NET never actually runs. One of its two sub-handlers, `TryShowCalendarControl`, was wrapped in
+   `try { ... } finally { ... }` with **no `catch`** - unlike its sibling `TryShowSegmentSelectionWindow`,
+   which correctly has one. `Application.EnableEvents = False` (set for the whole operation via
+   `ExcelBulkOperationScope`) is not a reliable guarantee against this: Add-in Express's raw COM event
+   sink is not guaranteed to honor the VBA-oriented `EnableEvents` flag the way native VBA automation
+   does. So: user clicks the sheet mid-refresh → `SheetSelectionChange` fires → `TryShowCalendarControl`
+   enumerates `selectedSheet.ListObjects`/`tableObj.DataBodyRange` on the SAME sheet the concurrent
+   operation is actively resizing → a resulting COMException has nowhere to go, and escapes straight
+   out of a live Excel COM event callback - which terminates the whole in-flight operation (and
+   potentially destabilizes the process), instead of just failing gracefully.
+
+**Fix**:
+- Wired up `XLEdgeAppState.Instance.ProcessRunning` (this property already existed - matching VB's
+  `My.Settings.ProcessRunning` - and was even reset to `false` in `ProgressCoordinator
+  .ResetReportState`, but was never actually set `true` anywhere, making it permanently `false` and
+  useless as a guard). `ExcelBulkOperationScope`'s constructor now sets it `true` and `Dispose` sets
+  it `false`, so every one of the 4 operation entry points reliably brackets it - this is the same
+  shared bracket that already toggles `EnableEvents`/`ScreenUpdating`/etc., so no call sites needed
+  individual changes.
+- Added `if (XLEdgeAppState.Instance.ProcessRunning) return;` to the top of
+  `adxExcelAppEvents1_SheetSelectionChange` - this is the direct root-cause fix: while an operation is
+  in flight, the handler now no-ops immediately instead of touching the sheet at all, matching the
+  practical guarantee VB.NET gets "for free" from its modal dialog.
+- Added the missing `catch (Exception ex)` to `TryShowCalendarControl`, matching
+  `TryShowSegmentSelectionWindow`'s existing one, as defense-in-depth so no future exception from this
+  handler can ever again escape a live COM event callback unhandled.
+- Audited the other 3 wired Excel COM event handlers (`SheetActivate`, `WorkbookActivate`,
+  `SheetFollowHyperlink`) - all already have proper `try/catch` around their bodies, so they were not
+  independently at risk of this same "unhandled exception out of a COM callback" failure mode.
+
+Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).

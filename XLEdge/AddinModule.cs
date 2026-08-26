@@ -642,6 +642,19 @@ namespace XLEdge
             if (!XLEdgeAppState.Instance.IsLoginCompleted)
                 return;
 
+            // A report run/refresh is in flight (XLEdgeAppState.ProcessRunning, set/cleared by
+            // ReportGenerator's ExcelBulkOperationScope for the whole operation - matches VB.NET's
+            // My.Settings.ProcessRunning). VB.NET can never reach this handler mid-operation at all,
+            // since its equivalent progress dialog (FormProcessBar) is shown modally and blocks any
+            // click on the sheet; C#'s wait window is non-modal, so the click - and this event - can
+            // still happen. Below, TryShowCalendarControl/TryShowSegmentSelectionWindow enumerate and
+            // read the active sheet's ListObjects/DataBodyRange, which is exactly what a concurrent
+            // refresh/report-generation is busy resizing/rewriting; doing that while the sheet is
+            // mid-mutation risks a COM exception straight out of this live Excel event callback, which
+            // previously terminated the whole process. Bail out early instead.
+            if (XLEdgeAppState.Instance.ProcessRunning)
+                return;
+
             if (XLApp.App == null)
             {
                 LogUtility.LogError("Excel application instance is not available in SheetSelectionChange event.");
@@ -749,6 +762,15 @@ namespace XLEdge
                 {
                     XLApp.WriteDateToCell(selectedRange, selectedDate.Value);
                 }
+            }
+            catch (Exception ex)
+            {
+                // Same reasoning as its sibling TryShowSegmentSelectionWindow's catch: this runs off a
+                // raw Excel COM event sink, so an uncaught exception here (e.g. a COMException from
+                // the active sheet's ListObjects being read while something else is mutating it) would
+                // otherwise surface unhandled straight out of the COM callback instead of just failing
+                // this one popup attempt.
+                LogUtility.LogException(ex, "SheetSelectionChange - calendar control");
             }
             finally
             {

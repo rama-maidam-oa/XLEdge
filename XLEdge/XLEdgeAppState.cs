@@ -246,7 +246,7 @@ namespace XLEdge
         /// <summary>Set by UpdateTabLabel based on whether the active sheet has a valid,
         /// refreshable XLEdge table.</summary>
         public bool RefreshAll { get; set; }
-        public bool ParamDataSameSheet { get; set; }
+        public bool ParamDataSameSheet { get; set; } = true;
         public bool SchOutputsToSameSheet { get; set; }
         public bool RefreshSync { get; set; }
         public bool AllowSheetNameChanges { get; set; }
@@ -256,7 +256,13 @@ namespace XLEdge
         /// the user's saved preferences file, so existing users who already have this set to
         /// false keep their choice.</summary>
         public bool ShowSegmentSelectionWindow { get; set; } = true;
-        public bool OverrideFormats { get; set; }
+        /// <summary>Backs the "Preserve user applied formats on refresh or run" option: true means
+        /// preserve (skip re-stamping format), false means apply the report's default format.
+        /// Renamed from OverrideFormats (was inverted from its own name) to match VB.NET's
+        /// PreserveFormats rename (OISR-22179) - this is a pre-delivery product name/JSON-key change,
+        /// not just a code-side rename, so the preferences file key changes too (see
+        /// XLEdgeUserPreferences.PreserveFormats). Defaults to false, matching VB.NET.</summary>
+        public bool PreserveFormats { get; set; } = false;
 
         // --- Drilldown / report-navigation state ---
         public bool FollowDrilldown { get; set; }

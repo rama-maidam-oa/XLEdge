@@ -1259,10 +1259,11 @@ namespace XLEdge.Helpers
         // Extracted from BuildReportTable - rewrites an already-present ListObject in place for a new
         // run of the same report, instead of deleting it and creating a fresh one. Mirrors VB.NET's
         // Edge_GenerateData "tbExists" branch (FormProcessBar.vb), which reuses sht.ListObjects(1) the
-        // same way: rename to the new tableId, collapse the data body down to just row 1, clear row
-        // 1's constants leaving any user-added formula untouched (formulas get filled down to the new
-        // row count below), then resize out to the new row/column count and write the header + data.
-        // Uses the same AdjustTableRowCount/CaptureFirstRowFormulas building blocks as
+        // same way: rename to the new tableId, clear the data body below row 1 (contents only, no row
+        // deletion), clear row 1's constants leaving any user-added formula untouched (formulas get
+        // filled down to the new row count below), then resize out to the new row/column count and
+        // write the header + data.
+        // Uses the same ClearDataRowsBelowFirst/CaptureFirstRowFormulas building blocks as
         // RefreshListObjectAsync's identical 3-step algorithm.
         private static Excel.ListObject RewriteExistingReportTable(Excel.Worksheet sheet, Excel.ListObject existingTable, string tableId, int headerRow, int dataStartRow, List<(string Original, string Modified, int RawIndex)> mappings, ReportMeta reportMeta, List<List<string>> rows)
         {
@@ -1271,9 +1272,9 @@ namespace XLEdge.Helpers
 
             existingTable.Name = tableId;
 
-            // STEP 1: collapse the table down to just its first data row, discarding every row below
-            // it, before touching any cell content.
-            AdjustTableRowCount(existingTable, 1);
+            // STEP 1: clear every row below the first data row - contents only, no row deletion - so
+            // any formatting on those rows survives until the resize below changes the table's bounds.
+            ClearDataRowsBelowFirst(sheet, existingTable, dataStartRow, existingTable.ListColumns.Count);
 
             // STEP 2: capture which of row 1's cells are user-added formulas (to preserve and fill
             // down below), then clear every other (constant) cell in row 1.
@@ -1297,7 +1298,16 @@ namespace XLEdge.Helpers
             FillDownPreservedFormulasForBuild(sheet, dataStartRow, targetTotalRows, mappings.Count, firstRowFormulas);
 
             existingTable.TableStyle = "TableStyleLight9";
-            ApplyColumnNumberFormats(existingTable, reportMeta, mappings);
+
+            // Matches VB.NET's WriteDataTableColumnWiseUsingTuples (FormProcessBar.vb), which only
+            // re-stamps NumberFormat on this reuse-existing-table path when the user hasn't opted to
+            // preserve their own formatting - unlike the brand-new-table build path above
+            // (BuildDataWriteArray's caller), which always applies it since there's no prior format to
+            // preserve there.
+            if (!XLEdgeAppState.Instance.PreserveFormats)
+            {
+                ApplyColumnNumberFormats(existingTable, reportMeta, mappings);
+            }
 
             return existingTable;
         }
@@ -3794,11 +3804,15 @@ namespace XLEdge.Helpers
                 ctx.DataStartRow = ctx.HeaderRowIdx + 1;
                 ctx.TableCols = ctx.ListObject.ListColumns.Count;
 
-                // STEP A: collapse the table down to just its first data row, discarding every row
-                // below it, before touching any cell content - matches VB.NET's approach of always
-                // working from a single surviving row (Edge_GenerateData/Edge_GenerateData_Multisheet)
-                // instead of resizing straight to the new record count.
-                AdjustTableRowCount(ctx.ListObject, 1);
+                // STEP A: clear every row below the first data row - CONTENTS ONLY, no row deletion -
+                // before touching any cell content. Matches VB.NET's actual behavior exactly
+                // (Edge_GenerateData/Edge_GenerateData_Multisheet in FormProcessBar.vb):
+                // `DataBodyRange.Offset(1).Resize(Rows.Count - 1, Cols).Rows.ClearContents()`. VB never
+                // deletes rows here - deleting a ListRow physically removes/shifts sheet rows, which
+                // discards that row's cell formatting; clearing contents leaves every row (and its
+                // formatting) exactly where it is until the single Resize call below changes the
+                // table's bounds.
+                ClearDataRowsBelowFirst(ctx.Sheet, ctx.ListObject, ctx.DataStartRow, ctx.TableCols);
 
                 // STEP B: capture which of row 1's cells are user-added formulas (to preserve and
                 // fill down later), then clear every other (constant) cell in row 1 - matches VB's
@@ -3807,9 +3821,17 @@ namespace XLEdge.Helpers
                 ctx.FirstRowFormulas = CaptureFirstRowFormulas(ctx.ListObject);
                 ClearFirstRowConstants(ctx);
 
-                // STEP C: grow back out to match the new record count and write the refreshed data.
+                // STEP C: resize directly to the new record count in one call (grow or shrink) and
+                // write the refreshed data - matches VB's single `TableObj.Resize(...)` call. Excel's
+                // Resize never deletes/shifts rows either way: shrinking just excludes the trailing
+                // rows from the table (they remain on the sheet untouched), growing adds rows at the
+                // end that inherit formatting from the row above, same as RewriteExistingReportTable's
+                // build-flow twin already does.
                 ctx.TargetTotalRows = Math.Max(1, ctx.NewDataCount);
-                AdjustTableRowCount(ctx.ListObject, ctx.TargetTotalRows);
+                var refreshResizeRange = ctx.Sheet.Range[
+                    ctx.Sheet.Cells[ctx.HeaderRowIdx, 1],
+                    ctx.Sheet.Cells[ctx.HeaderRowIdx + ctx.TargetTotalRows, ctx.TableCols]];
+                ctx.ListObject.Resize(refreshResizeRange);
 
                 await WriteRefreshedDataToTableAsync(ctx);
                 FillDownPreservedFormulas(ctx);
@@ -4289,26 +4311,29 @@ namespace XLEdge.Helpers
             }
         }
 
-        // Extracted from RefreshListObjectAsync (STEP 9) - adjusts table row count to match the new
-        // data.
-        private static void AdjustTableRowCount(Excel.ListObject lo, int targetTotalRows)
+        // Extracted from RefreshListObjectAsync (STEP A) / RewriteExistingReportTable (STEP 1) -
+        // clears every row of the table's CURRENT data body below the first row - contents only, no
+        // row deletion - leaving row 1 and its own formatting untouched for the caller's subsequent
+        // row-1-constants clear. Matches VB.NET's
+        // `DataBodyRange.Offset(1).Resize(Rows.Count - 1, Cols).Rows.ClearContents()`
+        // (FormProcessBar.vb, both Edge_GenerateData and Edge_GenerateData_Multisheet).
+        private static void ClearDataRowsBelowFirst(Excel.Worksheet sheet, Excel.ListObject lo, int dataStartRow, int tableCols)
         {
             try
             {
-                while ((lo.DataBodyRange?.Rows.Count ?? 0) < targetTotalRows)
+                int currentRows = lo.DataBodyRange?.Rows.Count ?? 0;
+                if (currentRows < 2)
                 {
-                    lo.ListRows.Add();
+                    return;
                 }
 
-                while ((lo.DataBodyRange?.Rows.Count ?? 0) > targetTotalRows)
-                {
-                    var last = lo.ListRows[lo.ListRows.Count];
-                    last.Delete();
-                }
+                var startCell = (Excel.Range)sheet.Cells[dataStartRow + 1, 1];
+                var endCell = (Excel.Range)sheet.Cells[dataStartRow + currentRows - 1, tableCols];
+                sheet.Range[startCell, endCell].ClearContents();
             }
             catch (Exception ex)
             {
-                LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to adjust table row count to {targetTotalRows} - {ex.Message}");
+                LogUtility.LogWarn($"{nameof(RefreshListObjectAsync)}: failed to clear data rows below first - {ex.Message}");
             }
         }
 
@@ -4436,12 +4461,12 @@ namespace XLEdge.Helpers
                 var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
                 var writeRange = ctx.Sheet.Range[colStartCell, colEndCell];
 
-                // Only re-stamp NumberFormat when the user has opted in via "Override cell format"
-                // (XLEdgeAppState.Instance.OverrideFormats) - otherwise leave whatever format is
-                // already on the cell (the server-declared format from initial build, or the user's
-                // own manual override) untouched, matching VB.NET's unconditional preserve-on-refresh
-                // behavior.
-                if (XLEdgeAppState.Instance.OverrideFormats)
+                // Only re-stamp NumberFormat when the user has NOT opted to preserve their own
+                // formatting via "Preserve user applied formats on refresh or run" - otherwise leave
+                // whatever format is already on the cell (the server-declared format from initial
+                // build, or the user's own manual override) untouched, matching VB.NET's
+                // WriteDataTableColumnWiseUsingTuples behavior.
+                if (!XLEdgeAppState.Instance.PreserveFormats)
                 {
                     string fmt = ResolveColumnNumberFormat(reportColumn);
                     if (!string.IsNullOrEmpty(fmt))
@@ -5115,6 +5140,15 @@ namespace XLEdge.Helpers
 
         public ExcelBulkOperationScope()
         {
+            // Matches VB.NET's My.Settings.ProcessRunning = True (XLEdgeProcedures.vb's
+            // Edge_ThreadProgress, set right before FormProcessBar.ShowDialog()) - this is the "an
+            // operation is currently in flight" signal other code (e.g. AddinModule.cs's
+            // SheetSelectionChange handler) checks before touching the sheet, since C#'s wait window
+            // is shown non-modally (unlike VB's modal FormProcessBar) and so doesn't block the user
+            // from clicking the sheet mid-operation the way VB's does. Set unconditionally, before the
+            // COM-dependent settings below, so it's reliable even if resolving the Excel app fails.
+            XLEdgeAppState.Instance.ProcessRunning = true;
+
             try
             {
                 Excel.Application excelApp = ExcelApplicationHelper.RequireActiveExcelApplication();
@@ -5137,6 +5171,7 @@ namespace XLEdge.Helpers
             }
 
             _disposed = true;
+            XLEdgeAppState.Instance.ProcessRunning = false;
 
             try
             {
