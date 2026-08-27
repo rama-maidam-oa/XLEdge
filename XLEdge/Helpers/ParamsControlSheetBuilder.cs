@@ -1606,8 +1606,20 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Standard CSV-style quoting - matches XLEdgeParamsBuilder.SplitRespectingQuotes, which reads
+        // this same cell back. A value gets wrapped in "..." if it contains a comma OR a literal
+        // double quote, and any literal double quote inside it is escaped by doubling ("") before
+        // wrapping. Previously this only checked for a comma and never escaped an embedded quote, so
+        // a value containing both (e.g. a value with an internal " right before its own internal ,)
+        // was written to the cell in a form no CSV-aware parser could read back correctly: the
+        // un-doubled embedded quote looks exactly like the wrap's own closing quote, so it prematurely
+        // ends the field there regardless of how the read side is implemented - the two sides must
+        // agree on the same escaping convention, and this is what makes them agree.
         private static string JoinList(List<string> values) =>
-            string.Join(",", values.Select(v => v.Contains(",") ? $"\"{v}\"" : v));
+            string.Join(",", values.Select(v =>
+                (v.Contains(",") || v.Contains("\""))
+                    ? $"\"{v.Replace("\"", "\"\"")}\""
+                    : v));
 
         private static string GetString(JsonElement element, string propertyName)
         {

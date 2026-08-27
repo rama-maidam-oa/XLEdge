@@ -180,13 +180,22 @@ namespace XLEdge.Helpers
                 return (string.Empty, string.Empty);
             }
 
+            // Keyed by "name" only - never "label". The lookup below is always by row.ParameterName,
+            // which ParamsControlSheetBuilder populates from each parameter's raw "name" (falling back
+            // to "label" only when "name" is absent), so a label-keyed entry is never actually needed
+            // for this lookup. It used to also index by "label" with a case-insensitive comparer, which
+            // was actively harmful whenever a parameter's own "name" matched its "label" case-
+            // insensitively (e.g. name "ename" vs label "Ename") and the same report had multiple
+            // parameters sharing that label (duplicate columns produce "ename", "ename_1", "ename_2",
+            // all labeled "Ename") - each later duplicate's label-keyed write silently overwrote the
+            // shared "ename"/"Ename" dictionary slot, so editing the "ename" row on the control sheet
+            // resolved to whichever duplicate happened to be processed last (e.g. "ename_2") and sent
+            // that duplicate's data instead. Parameters whose label contains characters absent from the
+            // name (e.g. name "salcal" vs label "Sal cal", with a space) never collided, which is why
+            // this only affected some duplicated columns and not others.
             var columnMappings = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
             foreach (JsonElement item in paramMapping.EnumerateArray())
             {
-                if (JsonHelper.TryGetProperty(item, "label", out JsonElement labelEl) && labelEl.ValueKind != JsonValueKind.Null)
-                {
-                    columnMappings[labelEl.ToString()] = item;
-                }
                 if (JsonHelper.TryGetProperty(item, "name", out JsonElement nameEl) && nameEl.ValueKind != JsonValueKind.Null)
                 {
                     columnMappings[nameEl.ToString()] = item;
@@ -631,32 +640,78 @@ namespace XLEdge.Helpers
             }
         }
 
+        // Standard CSV-style quoting: a list value that itself contains a comma should be wrapped in a
+        // matching pair of double quotes (e.g. "Smith, Inc"), and a literal double quote inside such a
+        // value is written as a doubled "" - the same convention Excel itself uses for CSV. A '"' only
+        // starts a quoted field when it's the very first character of that field (right after a
+        // delimiter, or at the start of the input); inside a quoted field, "" unescapes to a single
+        // literal '"' rather than ending the field, and a single '"' ends it.
+        //
+        // Replaces an earlier version that toggled an "inside quotes" flag on every '"' character
+        // regardless of position. That broke even a correctly CSV-quoted value whenever it also
+        // contained an embedded "" escape: the doubled quote toggled the flag twice in a row (open,
+        // then immediately close again), so by the time a real delimiter comma was reached the parser
+        // incorrectly believed it was outside the quoted field and split there anyway - fragmenting
+        // the one intended value into pieces that never matched the real (unsplit) data value, which
+        // silently broke IN/NOT IN filtering for any value shaped that way.
         private static List<string> SplitRespectingQuotes(string input)
         {
             var result = new List<string>();
-            var current = new StringBuilder();
-            bool insideQuotes = false;
+            int i = 0;
+            int len = input?.Length ?? 0;
 
-            foreach (char ch in input)
+            while (true)
             {
-                if (ch == '"')
+                var field = new StringBuilder();
+
+                if (i < len && input[i] == '"')
                 {
-                    insideQuotes = !insideQuotes;
-                }
-                else if (ch == ',' && !insideQuotes)
-                {
-                    result.Add(current.ToString().Trim());
-                    current.Clear();
+                    i++; // skip opening quote
+                    while (i < len)
+                    {
+                        if (input[i] == '"')
+                        {
+                            if (i + 1 < len && input[i + 1] == '"')
+                            {
+                                field.Append('"');
+                                i += 2;
+                                continue;
+                            }
+
+                            i++; // skip closing quote
+                            break;
+                        }
+
+                        field.Append(input[i]);
+                        i++;
+                    }
+
+                    // Defensive: consume any stray characters between the closing quote and the next
+                    // delimiter, so malformed input degrades gracefully instead of losing data.
+                    while (i < len && input[i] != ',')
+                    {
+                        field.Append(input[i]);
+                        i++;
+                    }
                 }
                 else
                 {
-                    current.Append(ch);
+                    while (i < len && input[i] != ',')
+                    {
+                        field.Append(input[i]);
+                        i++;
+                    }
                 }
-            }
 
-            if (current.Length > 0)
-            {
-                result.Add(current.ToString().Trim());
+                result.Add(field.ToString().Trim());
+
+                if (i < len && input[i] == ',')
+                {
+                    i++;
+                    continue;
+                }
+
+                break;
             }
 
             return result;
