@@ -274,7 +274,7 @@ namespace XLEdge
                 EdgeExcelPane = (ADXExcelTaskPane1)adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance();
                 if (EdgeExcelPane != null)
                 {
-                    EdgeExcelPane.Width = 600;
+                    EdgeExcelPane.Width = 550;
                     EdgeExcelPane.Show();
                     EdgeExcelPane.Visible = true;
                 }
