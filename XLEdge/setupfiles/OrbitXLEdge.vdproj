@@ -1706,7 +1706,7 @@
         "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
-        "ProductVersion" = "8:11.1.1"
+        "ProductVersion" = "8:11.1.2"
         "Manufacturer" = "8:Orbit Analytics"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:"
