@@ -3175,6 +3175,11 @@ Alignment (`aln`), `PreserveFormats` gating and the three call sites (build, rer
 unchanged. The debug line now logs both `NumberFormatLocal` and `NumberFormat` read-backs.
 `ColumnProperties.DecimalSeparator`/`ThousandsSeparator` are still deserialized but unused.
 
+**Alignment gap closed (OISR-22696)**: VB's `DataTableToExcel` left-aligns DATE/TIME columns on the
+first write (`alignLeft`) before `aln` is applied; C# had no equivalent, so a date column with no `aln`
+stayed at Excel's default (right). `ApplyColumnFormatting` now left-aligns DATE/TIME columns when
+`TryGetHorizontalAlignment` finds no metadata alignment; an explicit `aln` still wins, as in VB.
+
 **VB.NET counterpart**: same change in 11.0.3 (`8be20cb`), 11.1.0 (`e0b040e`) and 11.1.1
 (`1fe4543`), verified on a Portuguese-region QA machine. VB also fixed the log header file name
 (`DateTime.Today.ToString("dd-MMM-yyyy")` gave `16-out-2026` while NLog wrote `16-Oct-2026`). Not
