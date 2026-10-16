@@ -104,8 +104,8 @@ namespace XLEdge.Helpers
                 // GetExcelCellValue fallbacks (invariant, then current culture).
                 string raw = value.ToString().Trim();
                 if (DateTime.TryParseExact(raw, KnownDateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date) ||
-                    DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out date) ||
-                    DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.None, out date))
+                    DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.NoCurrentDateDefault, out date) ||
+                    DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.NoCurrentDateDefault, out date))
                 {
                     return date.ToOADate();
                 }

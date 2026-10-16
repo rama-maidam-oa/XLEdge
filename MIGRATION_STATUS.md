@@ -3146,3 +3146,13 @@ values as real typed values on the rerun/refresh path; `TextToColumns` gets expl
 formats and altered values. It remains in `DataTableToExcel` (first run writes strings).
 
 Verified with a full `MSBuild.exe` rebuild of both `XLEdge.csproj` and the VB `XLEdge.vbproj` (clean).
+
+## 2026-10-16 (follow-up): time-only values got today's date
+
+`ToExcelCellValue`'s DATE/TIME fallback used `DateTime.TryParse(..., DateTimeStyles.None)`, which
+attaches the *current* date to a time-only value - `"13:45:00"` became `46311.57` (today 13:45)
+instead of `0.57`, unlike the previous string write (Excel parsed it as a pure time). Now uses
+`DateTimeStyles.NoCurrentDateDefault`, so `DateTime.ToOADate()` returns just the time fraction. Same
+fix applied to VB's `GetExcelCellValue` (rerun/refresh path, and now the first-run path too - VB
+`DataTableToExcel` writes DATE/TIME columns as serials, falling back to the old TextToColumns
+behavior for any column containing a non-date value).
