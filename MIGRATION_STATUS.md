@@ -3109,3 +3109,37 @@ Excel sheet terminates the whole in-flight operation. Confirmed not reproducible
   independently at risk of this same "unhandled exception out of a COM callback" failure mode.
 
 Verified with a full `MSBuild.exe` rebuild of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-10-16: OISR-22663 / OISR-22696 - number formats and column alignment on run/rerun/refresh (ported from VB.NET 11.1.1)
+
+**Bug reports**: OISR-22663 - number column formatting changes when rerunning or refreshing a report;
+OISR-22696 - column alignment differs between the scheduled output and a direct run. Separately,
+numeric values were mis-parsed on European-locale Excel (`,` decimal / `.` thousands).
+
+**VB.NET fixes being ported** (11.1.1 commits `c3792a0`, `73bb49b`, `e43b4cf`): new
+`ApplyReportColumnFormats` stamps each column's `fmt` via `NumberFormatLocal` (after converting the
+report's `ds`/`ts` separators to Excel's local ones) and the metadata `aln` alignment, and autofits
+DATE/TIME columns while ignoring `####` placeholder values; `GetExcelCellValue` writes numeric/date
+values as real typed values on the rerun/refresh path; `TextToColumns` gets explicit `.`/`,` separators.
+
+**Fix (C#)**:
+- `ColumnProperties` gains `ds`, `ts`, `aln` (`ReportMetaModels.cs`).
+- New `ApplyColumnFormatting` in `ReportGenerator.cs` (`NumberFormatLocal` + local-separator
+  conversion for numeric columns + alignment), used by `ApplyColumnNumberFormats` (initial build and
+  rerun - rerun still gated on `PreserveFormats`) and by `WriteRefreshedColumnData` (refresh, gated on
+  `PreserveFormats`).
+- `ApplyReportTableStyling` now calls `AutoFitDateColumnsIgnoringHashPlaceholders` (single `Value2`
+  array read, only placeholder cells touched individually - VB scans per cell).
+- New `XLEdgeValueFormatter.ToExcelCellValue`: numeric-typed values are parsed (invariant culture,
+  then current culture - same as VB's `GetExcelCellValue`) into doubles before writing, at all three
+  sheet-write sites (build, rerun, refresh). C# never used `TextToColumns`; this replaces it.
+  `FormatValue` itself is unchanged (parameter display still uses it).
+- **Not ported**: `GetExcelCellValue`'s DATE/TIME -> OADate conversion. C# still writes dates as
+  `dd-MMM-yyyy` strings; switching to serials would show raw numbers on date columns with no `fmt`
+  (resolved to `General`). Open follow-up for non-English Excel.
+
+**VB.NET follow-up made alongside**: `TextToColumns` removed from `WriteDataTableColumnWiseUsingTuples`
+(rerun/refresh path) - `WriteChunk` already writes typed values, and re-parsing them reset preserved
+formats and altered values. It remains in `DataTableToExcel` (first run writes strings).
+
+Verified with a full `MSBuild.exe` rebuild of both `XLEdge.csproj` and the VB `XLEdge.vbproj` (clean).

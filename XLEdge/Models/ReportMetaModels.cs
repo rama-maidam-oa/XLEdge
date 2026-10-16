@@ -31,6 +31,15 @@ namespace XLEdge.Models
         [JsonPropertyName("fmt")]
         public string Fmt { get; set; }
 
+        [JsonPropertyName("ds")]
+        public string DecimalSeparator { get; set; }
+
+        [JsonPropertyName("ts")]
+        public string ThousandsSeparator { get; set; }
+
+        [JsonPropertyName("aln")]
+        public string Alignment { get; set; }
+
         [JsonPropertyName("hdn")]
         public bool Hidden { get; set; }
 

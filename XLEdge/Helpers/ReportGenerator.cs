@@ -970,7 +970,7 @@ namespace XLEdge.Helpers
 
             PersistReportMetadata(workbook, title, tableId, metaJson, paramsJson, mappings);
 
-            ApplyReportTableStyling(listObject);
+            ApplyReportTableStyling(listObject, reportMeta, mappings);
 
             ApplyColumnFreeze(excelApp, reportMeta, mappings.Count);
 
@@ -1367,7 +1367,7 @@ namespace XLEdge.Helpers
                         int csvRecordIndex = physicalRow - dataStartRow + 1;
                         List<string> rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= dataRowCount) ? rows[csvRecordIndex] : null;
                         object raw = (rowVals != null && rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                        colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
+                        colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType) ?? string.Empty);
                     }
 
                     var colStartCell = (Excel.Range)sheet.Cells[colWriteStartRow, tc];
@@ -1460,7 +1460,7 @@ namespace XLEdge.Helpers
                 {
                     List<string> rowVals = rows[r + 1];
                     object raw = (rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                    writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
+                    writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType) ?? string.Empty);
                 }
             }
 
@@ -1550,13 +1550,14 @@ namespace XLEdge.Helpers
 
         // Extracted from BuildReportTable - cosmetic-only column autofit/font sizing; safe to ignore
         // on failure.
-        private static void ApplyReportTableStyling(Excel.ListObject listObject)
+        private static void ApplyReportTableStyling(Excel.ListObject listObject, ReportMeta reportMeta, List<(string Original, string Modified, int RawIndex)> mappings)
         {
             try
             {
                 Excel.Range styleRange = listObject.Range;
                 styleRange.Columns.AutoFit();
                 styleRange.Font.Size = 9;
+                AutoFitDateColumnsIgnoringHashPlaceholders(listObject, reportMeta, mappings);
             }
             catch (Exception)
             {
@@ -4390,6 +4391,139 @@ namespace XLEdge.Helpers
             return string.Equals(col.DataType, "STRING", StringComparison.OrdinalIgnoreCase) ? "@" : "General";
         }
 
+        private static bool IsNumericColumn(RptColumn col)
+        {
+            return string.Equals(col?.DataType, "INTEGER", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(col?.DataType, "DECIMAL", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(col?.DataType, "NUMERIC", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(col?.DataType, "NUMBER", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsDateOrTimeColumn(RptColumn col)
+        {
+            return !string.IsNullOrEmpty(col?.DataType) &&
+                   (col.DataType.IndexOf("DATE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    col.DataType.IndexOf("TIME", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static string ConvertNumberFormatToLocalSeparators(string reportFormat, ColumnProperties properties)
+        {
+            if (string.IsNullOrWhiteSpace(reportFormat) ||
+                string.IsNullOrWhiteSpace(properties?.DecimalSeparator) ||
+                string.IsNullOrWhiteSpace(properties?.ThousandsSeparator) ||
+                string.Equals(properties.DecimalSeparator, properties.ThousandsSeparator, StringComparison.Ordinal))
+            {
+                return reportFormat;
+            }
+
+            Excel.Application excelApp = XLApp.App;
+            if (excelApp == null ||
+                string.IsNullOrWhiteSpace(excelApp.DecimalSeparator) ||
+                string.IsNullOrWhiteSpace(excelApp.ThousandsSeparator))
+            {
+                return reportFormat;
+            }
+
+            var result = new StringBuilder();
+            bool inQuotedLiteral = false;
+            bool inBracketExpression = false;
+            bool escapedCharacter = false;
+
+            foreach (char formatCharacter in reportFormat)
+            {
+                if (escapedCharacter)
+                {
+                    result.Append(formatCharacter);
+                    escapedCharacter = false;
+                }
+                else if (formatCharacter == '\\')
+                {
+                    result.Append(formatCharacter);
+                    escapedCharacter = true;
+                }
+                else if (formatCharacter == '"')
+                {
+                    result.Append(formatCharacter);
+                    inQuotedLiteral = !inQuotedLiteral;
+                }
+                else if (!inQuotedLiteral && formatCharacter == '[')
+                {
+                    result.Append(formatCharacter);
+                    inBracketExpression = true;
+                }
+                else if (!inQuotedLiteral && formatCharacter == ']')
+                {
+                    result.Append(formatCharacter);
+                    inBracketExpression = false;
+                }
+                else if (!inQuotedLiteral && !inBracketExpression &&
+                         string.Equals(formatCharacter.ToString(), properties.DecimalSeparator, StringComparison.Ordinal))
+                {
+                    result.Append(excelApp.DecimalSeparator);
+                }
+                else if (!inQuotedLiteral && !inBracketExpression &&
+                         string.Equals(formatCharacter.ToString(), properties.ThousandsSeparator, StringComparison.Ordinal))
+                {
+                    result.Append(excelApp.ThousandsSeparator);
+                }
+                else
+                {
+                    result.Append(formatCharacter);
+                }
+            }
+
+            return result.ToString();
+        }
+
+        private static bool TryGetHorizontalAlignment(string metadataAlignment, out Excel.XlHAlign excelAlignment)
+        {
+            excelAlignment = Excel.XlHAlign.xlHAlignGeneral;
+            if (string.IsNullOrWhiteSpace(metadataAlignment))
+            {
+                return false;
+            }
+
+            switch (metadataAlignment.Trim().ToUpperInvariant())
+            {
+                case "LEFT":
+                    excelAlignment = Excel.XlHAlign.xlHAlignLeft;
+                    return true;
+                case "CENTER":
+                    excelAlignment = Excel.XlHAlign.xlHAlignCenter;
+                    return true;
+                case "RIGHT":
+                    excelAlignment = Excel.XlHAlign.xlHAlignRight;
+                    return true;
+                case "GENERAL":
+                    excelAlignment = Excel.XlHAlign.xlHAlignGeneral;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static void ApplyColumnFormatting(Excel.Range range, RptColumn reportColumn, string columnName)
+        {
+            string format = ResolveColumnNumberFormat(reportColumn);
+            if (string.IsNullOrEmpty(format))
+            {
+                return;
+            }
+
+            if (IsNumericColumn(reportColumn))
+            {
+                format = ConvertNumberFormatToLocalSeparators(format, reportColumn.Properties);
+            }
+
+            range.NumberFormatLocal = format;
+            if (TryGetHorizontalAlignment(reportColumn?.Properties?.Alignment, out Excel.XlHAlign alignment))
+            {
+                range.HorizontalAlignment = alignment;
+            }
+
+            LogUtility.LogDebug($"Applied local format '{format}' and alignment '{reportColumn?.Properties?.Alignment}' to column '{columnName}'.");
+        }
+
         // Stamps each table column's NumberFormat from the report metadata, matching VB.NET's
         // DataTableToExcel column-format computation - runs once at initial table creation so a
         // column's format is set explicitly instead of left to Excel's own autodetection.
@@ -4397,23 +4531,90 @@ namespace XLEdge.Helpers
         {
             for (int c = 0; c < mappings.Count; c++)
             {
-                string fmt = ResolveColumnNumberFormat(ResolveReportColumn(reportMeta, mappings[c].Original));
-                if (string.IsNullOrEmpty(fmt))
-                {
-                    continue;
-                }
-
                 try
                 {
                     var dataBodyRange = listObject.ListColumns[c + 1].DataBodyRange;
                     if (dataBodyRange != null)
                     {
-                        dataBodyRange.NumberFormat = fmt;
+                        ApplyColumnFormatting(dataBodyRange, ResolveReportColumn(reportMeta, mappings[c].Original), mappings[c].Modified);
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogException(ex, $"Failed to set NumberFormat for column '{mappings[c].Modified}'");
+                    LogUtility.LogException(ex, $"Failed to apply formatting for column '{mappings[c].Modified}'");
+                }
+            }
+        }
+
+        private static void AutoFitDateColumnsIgnoringHashPlaceholders(Excel.ListObject listObject, ReportMeta reportMeta, List<(string Original, string Modified, int RawIndex)> mappings)
+        {
+            for (int c = 0; c < mappings.Count; c++)
+            {
+                RptColumn reportColumn = ResolveReportColumn(reportMeta, mappings[c].Original);
+                if (!IsDateOrTimeColumn(reportColumn))
+                {
+                    continue;
+                }
+
+                Excel.Range dataBodyRange = null;
+                var placeholders = new List<(Excel.Range Cell, string Value)>();
+                try
+                {
+                    dataBodyRange = listObject.ListColumns[c + 1].DataBodyRange;
+                    if (dataBodyRange == null)
+                    {
+                        continue;
+                    }
+
+                    // Read the whole column in one COM call and only touch the placeholder cells
+                    // individually - a per-cell scan is very slow on large reports.
+                    object values = dataBodyRange.Value2;
+                    if (values is object[,] valueArr)
+                    {
+                        int lowerRow = valueArr.GetLowerBound(0);
+                        int lowerCol = valueArr.GetLowerBound(1);
+                        for (int i = lowerRow; i <= valueArr.GetUpperBound(0); i++)
+                        {
+                            if (valueArr[i, lowerCol] is string value && value.Length > 0 && value.All(character => character == '#'))
+                            {
+                                placeholders.Add(((Excel.Range)dataBodyRange.Cells[i - lowerRow + 1, 1], value));
+                            }
+                        }
+                    }
+                    else if (values is string singleValue && singleValue.Length > 0 && singleValue.All(character => character == '#'))
+                    {
+                        placeholders.Add(((Excel.Range)dataBodyRange.Cells[1, 1], singleValue));
+                    }
+
+                    if (placeholders.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (var placeholder in placeholders)
+                    {
+                        placeholder.Cell.Value2 = string.Empty;
+                    }
+
+                    dataBodyRange.EntireColumn.AutoFit();
+                    LogUtility.LogWarn($"{nameof(AutoFitDateColumnsIgnoringHashPlaceholders)} ignored {placeholders.Count} hash placeholder(s) while autofitting date column '{mappings[c].Modified}'.");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Failed to autofit date column '{mappings[c].Modified}'");
+                }
+                finally
+                {
+                    foreach (var placeholder in placeholders)
+                    {
+                        placeholder.Cell.Value2 = placeholder.Value;
+                        Marshal.ReleaseComObject(placeholder.Cell);
+                    }
+
+                    if (dataBodyRange != null)
+                    {
+                        Marshal.ReleaseComObject(dataBodyRange);
+                    }
                 }
             }
         }
@@ -4461,25 +4662,20 @@ namespace XLEdge.Helpers
                 var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
                 var writeRange = ctx.Sheet.Range[colStartCell, colEndCell];
 
-                // Only re-stamp NumberFormat when the user has NOT opted to preserve their own
+                // Only re-stamp report formatting when the user has NOT opted to preserve their own
                 // formatting via "Preserve user applied formats on refresh or run" - otherwise leave
                 // whatever format is already on the cell (the server-declared format from initial
                 // build, or the user's own manual override) untouched, matching VB.NET's
                 // WriteDataTableColumnWiseUsingTuples behavior.
                 if (!XLEdgeAppState.Instance.PreserveFormats)
                 {
-                    string fmt = ResolveColumnNumberFormat(reportColumn);
-                    if (!string.IsNullOrEmpty(fmt))
-                    {
-                        try { writeRange.NumberFormat = fmt; }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, $"Failed to reset NumberFormat for column {tc} ('{modifiedName}')");
-                        }
-                    }
+                    writeRange.Value2 = colArr;
+                    ApplyColumnFormatting(writeRange, reportColumn, modifiedName);
                 }
-
-                writeRange.Value2 = colArr;
+                else
+                {
+                    writeRange.Value2 = colArr;
+                }
             }
             catch (Exception ex)
             {
@@ -4500,7 +4696,7 @@ namespace XLEdge.Helpers
                 int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
                 var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
                 object raw = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.FormatValue(raw, colType) ?? string.Empty);
+                colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType) ?? string.Empty);
             }
 
             return colArr;

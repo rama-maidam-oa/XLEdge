@@ -77,6 +77,34 @@ namespace XLEdge.Helpers
             return trimmed;
         }
 
+        /// <summary>
+        /// Builds the value written into a report cell. Same as <see cref="FormatValue"/>, except a
+        /// numeric-typed column's value is parsed into a genuine double (server values always use "."
+        /// decimal / "," thousands) instead of being passed through as a string - a string like
+        /// "1234.56" is re-parsed by Excel using the user's locale, so on a European-locale Excel it
+        /// became text or the wrong number. Ported from FormProcessBar.vb's GetExcelCellValue and the
+        /// TextToColumns(DecimalSeparator:=".", ThousandsSeparator:=",") fix.
+        /// </summary>
+        public static object ToExcelCellValue(object value, string columnType)
+        {
+            object formatted = FormatValue(value, columnType);
+            if (!(formatted is string text) || text.Length == 0 ||
+                string.Equals(columnType, "STRING", StringComparison.OrdinalIgnoreCase) ||
+                columnType.IndexOf("DATE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                columnType.IndexOf("TIME", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return formatted;
+            }
+
+            if (double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out double number) ||
+                double.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out number))
+            {
+                return number;
+            }
+
+            return formatted;
+        }
+
         // Ported from AddinModule.vb's InferDataType (line ~1933) - distinct from the report-column
         // "datatype" metadata: this guesses a type from the raw value itself, used only for the
         // drilldown-request parameter building in AdxExcelAppEvents1_SheetFollowHyperlink (STATIC
