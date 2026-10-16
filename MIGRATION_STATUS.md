@@ -3134,9 +3134,12 @@ values as real typed values on the rerun/refresh path; `TextToColumns` gets expl
   then current culture - same as VB's `GetExcelCellValue`) into doubles before writing, at all three
   sheet-write sites (build, rerun, refresh). C# never used `TextToColumns`; this replaces it.
   `FormatValue` itself is unchanged (parameter display still uses it).
-- **Not ported**: `GetExcelCellValue`'s DATE/TIME -> OADate conversion. C# still writes dates as
-  `dd-MMM-yyyy` strings; switching to serials would show raw numbers on date columns with no `fmt`
-  (resolved to `General`). Open follow-up for non-English Excel.
+- **Follow-up (same day)**: `GetExcelCellValue`'s DATE/TIME -> OADate conversion ported too -
+  `ToExcelCellValue` parses the raw value (`KnownDateFormats` exact, then invariant, then current
+  culture) and writes `DateTime.ToOADate()`, so DATETIME keeps its time component and non-English
+  Excel no longer leaves `dd-MMM-yyyy` strings as text. A date column with no `fmt` still resolves to
+  `General` and shows the serial (as before, and as in VB). Drilldowns read date cells via `.Value`
+  (a `DateTime`), which `FormatDrilldownDateIso` already handles.
 
 **VB.NET follow-up made alongside**: `TextToColumns` removed from `WriteDataTableColumnWiseUsingTuples`
 (rerun/refresh path) - `WriteChunk` already writes typed values, and re-parsing them reset preserved

@@ -84,15 +84,32 @@ namespace XLEdge.Helpers
         /// "1234.56" is re-parsed by Excel using the user's locale, so on a European-locale Excel it
         /// became text or the wrong number. Ported from FormProcessBar.vb's GetExcelCellValue and the
         /// TextToColumns(DecimalSeparator:=".", ThousandsSeparator:=",") fix.
+        /// DATE/TIME-typed values are likewise written as an OLE Automation date serial (as VB does)
+        /// rather than a "dd-MMM-yyyy" string, which a non-English Excel can't parse ("Oct" vs "Okt").
         /// </summary>
         public static object ToExcelCellValue(object value, string columnType)
         {
             object formatted = FormatValue(value, columnType);
             if (!(formatted is string text) || text.Length == 0 ||
-                string.Equals(columnType, "STRING", StringComparison.OrdinalIgnoreCase) ||
-                columnType.IndexOf("DATE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                string.Equals(columnType, "STRING", StringComparison.OrdinalIgnoreCase))
+            {
+                return formatted;
+            }
+
+            if (columnType.IndexOf("DATE", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 columnType.IndexOf("TIME", StringComparison.OrdinalIgnoreCase) >= 0)
             {
+                // Parse the raw value, not FormatValue's "dd-MMM-yyyy" output, so a DATETIME keeps its
+                // time component. Known formats first (same order FormatDateValue uses), then VB's
+                // GetExcelCellValue fallbacks (invariant, then current culture).
+                string raw = value.ToString().Trim();
+                if (DateTime.TryParseExact(raw, KnownDateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date) ||
+                    DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out date) ||
+                    DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.None, out date))
+                {
+                    return date.ToOADate();
+                }
+
                 return formatted;
             }
 
