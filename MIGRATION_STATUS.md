@@ -3156,3 +3156,29 @@ instead of `0.57`, unlike the previous string write (Excel parsed it as a pure t
 fix applied to VB's `GetExcelCellValue` (rerun/refresh path, and now the first-run path too - VB
 `DataTableToExcel` writes DATE/TIME columns as serials, falling back to the old TextToColumns
 behavior for any column containing a non-date value).
+
+## 2026-10-16 (follow-up): report formats via `NumberFormat`, not `NumberFormatLocal` (ported from VB.NET)
+
+**Customer report** (OISR-22663, Portuguese/Hungarian regions): after the earlier port, dates showed as
+`01-mmm-yyyy` and numeric columns lost their decimals (`#,###,###.00` became `#,###,###00`), on the
+first run as well as rerun/refresh. VB 10.5.0 was fine because it always used `NumberFormat`.
+
+**Root cause**: report `fmt` values use invariant codes (`dd-MMM-yyyy`, `#,##0.00`). `NumberFormatLocal`
+reads them in the user's language, where e.g. the year code is `aaaa` and `.` is not the decimal
+separator. The `ds`/`ts` conversion only ran when the metadata sent both, and the customer's report
+(301939) did not.
+
+**Fix (C#)**: `ApplyColumnFormatting` (`ReportGenerator.cs`) sets `range.NumberFormat = format` as-is;
+Excel localizes the display (`01-out-2020`, `939,38`). `ds`/`ts` are ignored, so
+`ConvertNumberFormatToLocalSeparators` and `IsNumericColumn` were removed (no other callers).
+Alignment (`aln`), `PreserveFormats` gating and the three call sites (build, rerun, refresh) are
+unchanged. The debug line now logs both `NumberFormatLocal` and `NumberFormat` read-backs.
+`ColumnProperties.DecimalSeparator`/`ThousandsSeparator` are still deserialized but unused.
+
+**VB.NET counterpart**: same change in 11.0.3 (`8be20cb`), 11.1.0 (`e0b040e`) and 11.1.1
+(`1fe4543`), verified on a Portuguese-region QA machine. VB also fixed the log header file name
+(`DateTime.Today.ToString("dd-MMM-yyyy")` gave `16-out-2026` while NLog wrote `16-Oct-2026`). Not
+needed in C#: `LogHelper` writes the header through NLog's `FileTarget.Header`, so it always lands in
+the same file as the log lines.
+
+Verified with an `MSBuild.exe` build of `XLEdge.csproj` (clean, no `CS` errors).

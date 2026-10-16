@@ -4391,88 +4391,11 @@ namespace XLEdge.Helpers
             return string.Equals(col.DataType, "STRING", StringComparison.OrdinalIgnoreCase) ? "@" : "General";
         }
 
-        private static bool IsNumericColumn(RptColumn col)
-        {
-            return string.Equals(col?.DataType, "INTEGER", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(col?.DataType, "DECIMAL", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(col?.DataType, "NUMERIC", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(col?.DataType, "NUMBER", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static bool IsDateOrTimeColumn(RptColumn col)
         {
             return !string.IsNullOrEmpty(col?.DataType) &&
                    (col.DataType.IndexOf("DATE", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     col.DataType.IndexOf("TIME", StringComparison.OrdinalIgnoreCase) >= 0);
-        }
-
-        private static string ConvertNumberFormatToLocalSeparators(string reportFormat, ColumnProperties properties)
-        {
-            if (string.IsNullOrWhiteSpace(reportFormat) ||
-                string.IsNullOrWhiteSpace(properties?.DecimalSeparator) ||
-                string.IsNullOrWhiteSpace(properties?.ThousandsSeparator) ||
-                string.Equals(properties.DecimalSeparator, properties.ThousandsSeparator, StringComparison.Ordinal))
-            {
-                return reportFormat;
-            }
-
-            Excel.Application excelApp = XLApp.App;
-            if (excelApp == null ||
-                string.IsNullOrWhiteSpace(excelApp.DecimalSeparator) ||
-                string.IsNullOrWhiteSpace(excelApp.ThousandsSeparator))
-            {
-                return reportFormat;
-            }
-
-            var result = new StringBuilder();
-            bool inQuotedLiteral = false;
-            bool inBracketExpression = false;
-            bool escapedCharacter = false;
-
-            foreach (char formatCharacter in reportFormat)
-            {
-                if (escapedCharacter)
-                {
-                    result.Append(formatCharacter);
-                    escapedCharacter = false;
-                }
-                else if (formatCharacter == '\\')
-                {
-                    result.Append(formatCharacter);
-                    escapedCharacter = true;
-                }
-                else if (formatCharacter == '"')
-                {
-                    result.Append(formatCharacter);
-                    inQuotedLiteral = !inQuotedLiteral;
-                }
-                else if (!inQuotedLiteral && formatCharacter == '[')
-                {
-                    result.Append(formatCharacter);
-                    inBracketExpression = true;
-                }
-                else if (!inQuotedLiteral && formatCharacter == ']')
-                {
-                    result.Append(formatCharacter);
-                    inBracketExpression = false;
-                }
-                else if (!inQuotedLiteral && !inBracketExpression &&
-                         string.Equals(formatCharacter.ToString(), properties.DecimalSeparator, StringComparison.Ordinal))
-                {
-                    result.Append(excelApp.DecimalSeparator);
-                }
-                else if (!inQuotedLiteral && !inBracketExpression &&
-                         string.Equals(formatCharacter.ToString(), properties.ThousandsSeparator, StringComparison.Ordinal))
-                {
-                    result.Append(excelApp.ThousandsSeparator);
-                }
-                else
-                {
-                    result.Append(formatCharacter);
-                }
-            }
-
-            return result.ToString();
         }
 
         private static bool TryGetHorizontalAlignment(string metadataAlignment, out Excel.XlHAlign excelAlignment)
@@ -4510,18 +4433,21 @@ namespace XLEdge.Helpers
                 return;
             }
 
-            if (IsNumericColumn(reportColumn))
-            {
-                format = ConvertNumberFormatToLocalSeparators(format, reportColumn.Properties);
-            }
-
-            range.NumberFormatLocal = format;
+            // Same as VB 10.5.0: apply the report format as-is via NumberFormat (invariant codes, ds/ts ignored);
+            // Excel localizes the display (e.g. 01-out-2020, 1.234,56). NumberFormatLocal broke these on
+            // non-English regions (01-mmm-yyyy, lost decimals).
+            range.NumberFormat = format;
             if (TryGetHorizontalAlignment(reportColumn?.Properties?.Alignment, out Excel.XlHAlign alignment))
             {
                 range.HorizontalAlignment = alignment;
             }
+            else if (IsDateOrTimeColumn(reportColumn))
+            {
+                // No metadata alignment: left-align DATE/TIME columns, matching VB's DataTableToExcel alignLeft default.
+                range.HorizontalAlignment = Excel.XlHAlign.xlHAlignLeft;
+            }
 
-            LogUtility.LogDebug($"Applied local format '{format}' and alignment '{reportColumn?.Properties?.Alignment}' to column '{columnName}'.");
+            LogUtility.LogDebug($"Applied format '{format}' and alignment '{reportColumn?.Properties?.Alignment}' to column '{columnName}'; Excel retained format '{range.NumberFormatLocal}' (invariant '{range.NumberFormat}').");
         }
 
         // Stamps each table column's NumberFormat from the report metadata, matching VB.NET's
