@@ -3115,6 +3115,11 @@ namespace XLEdge.Helpers
 
                         if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, out string displayValue, out string linkValue))
                         {
+                            // No attachment for this row: show a blank cell like the web report instead of the raw anchor HTML
+                            if (AttachmentLinkHelper.IsEmptyAttachmentAnchor(rawText))
+                            {
+                                cell.Value2 = string.Empty;
+                            }
                             continue;
                         }
 

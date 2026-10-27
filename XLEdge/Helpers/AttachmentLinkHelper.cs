@@ -90,6 +90,17 @@ namespace XLEdge.Helpers
             }
         }
 
+        private static readonly Regex EmptyAnchorRegex = new Regex(@"^\s*<a\b[^>]*>\s*</a>\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// True when the cell holds an anchor with no display text, i.e. a row without an attachment
+        /// (e.g. "...{documentId:,businessObjectId:{businessObjectId}});'></a>"). The web report renders it blank.
+        /// </summary>
+        public static bool IsEmptyAttachmentAnchor(string rawCellText)
+        {
+            return !string.IsNullOrWhiteSpace(rawCellText) && EmptyAnchorRegex.IsMatch(rawCellText);
+        }
+
         /// <summary>
         /// Builds the attachment download URL from a stored "ATTACHMENT|key1=value1|key2=value2|...|downloadType"
         /// ScreenTip. Falls back to the "get-oracle-lob-file" endpoint when no explicit download type is present,

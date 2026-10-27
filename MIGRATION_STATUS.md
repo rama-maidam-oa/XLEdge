@@ -3187,3 +3187,17 @@ needed in C#: `LogHelper` writes the header through NLog's `FileTarget.Header`, 
 the same file as the log lines.
 
 Verified with an `MSBuild.exe` build of `XLEdge.csproj` (clean, no `CS` errors).
+
+## 2026-10-27: OISR-22767 - raw `<a ...></a>` HTML shown in attachment columns for rows without an attachment (ported from VB.NET 11.1.1)
+
+Root cause: for a row with no attachment the server sends an anchor with no display text
+(`...{documentId:,businessObjectId:{businessObjectId}});'></a>`). `DisplayValueRegex` (`>([^<]+)<`)
+finds nothing, `TryParseAttachmentLink` returns false and `ReportGenerator.AddAttachmentColumn` just skipped
+the cell, leaving the raw HTML from the CSV. The web report renders such an anchor blank.
+
+Fix: new `AttachmentLinkHelper.IsEmptyAttachmentAnchor` (whole value is `<a ...>` + optional
+whitespace + `</a>`); when parsing fails and the cell is such an empty anchor, the cell is cleared.
+Rows with a real attachment still get the hyperlink; any other unparseable value is left as is.
+
+**VB.NET counterpart**: same change in 11.1.1 (`d7ef3c9`, `FormProcessBar.ParseAttachmentLink` callers
+in sheet refresh and full run).
