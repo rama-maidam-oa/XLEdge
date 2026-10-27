@@ -3201,3 +3201,10 @@ Rows with a real attachment still get the hyperlink; any other unparseable value
 
 **VB.NET counterpart**: same change in 11.1.1 (`d7ef3c9`, `FormProcessBar.ParseAttachmentLink` callers
 in sheet refresh and full run).
+
+**Follow-up (attachment-link click error, VB `a0142cd`)**: VB's `SheetFollowHyperlink` called
+`DataSheet.Range(HyprLink.SubAddress)` for every link; attachment links are added with an empty
+SubAddress, so `Range("")` threw 0x800A03EC and the download never ran. VB also built the download URL
+from the lower-cased ScreenTip. C# was not affected (attachment clicks go to
+`HandleAttachmentDownloadAsync` with the original ScreenTip before any `Range` call); the drilldown path
+in `AddinModule` now falls back to `hyperLink.Range` when `SubAddress` is empty, matching VB.

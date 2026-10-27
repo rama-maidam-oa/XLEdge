@@ -2638,7 +2638,10 @@ namespace XLEdge
             Excel.Range clickedRange;
             try
             {
-                clickedRange = dataSheet.Range[hyperLink.SubAddress];
+                // A link added without a SubAddress (Range[""] throws 0x800A03EC) resolves to the clicked cell
+                clickedRange = string.IsNullOrEmpty(hyperLink.SubAddress)
+                    ? hyperLink.Range
+                    : dataSheet.Range[hyperLink.SubAddress];
                 Excel.Range headerCell = (Excel.Range)dataSheet.Cells[tableObj.HeaderRowRange.Row, clickedRange.Column];
                 columnName = Convert.ToString(headerCell.Value) ?? string.Empty;
             }
