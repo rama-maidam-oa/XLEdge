@@ -58,7 +58,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
+    <Compile Include="Pane\PaneContentWindow.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Pane\TaskPaneContentHost.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <EmbeddedResource Include="Pane\SpikePage.html" />
     <Compile Include="..\XLEdgeSharedVersion.cs">
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>

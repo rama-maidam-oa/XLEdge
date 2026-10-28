@@ -64,12 +64,15 @@ namespace XLEdge.Tests
                 var context = new FakeContext(new PathProvider(t.Combine("inst"), t.Combine("data"))) { Logger = logger };
                 WithCoreEntry((entry, domainName) =>
                 {
+                    // Pane calls before Initialize are safe no-ops (the pane content itself is covered on STA by CorePaneTests).
+                    Assert.AreEqual(IntPtr.Zero, entry.CreateTaskPaneContent(new IntPtr(1)));
+                    entry.CloseTaskPaneContent(new IntPtr(1));
+                    entry.OnTaskPaneShown(new IntPtr(1));
                     entry.Initialize(context);
                     Assert.IsTrue(logger.Contains($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{domainName}'"), logger.Dump());
                     Assert.IsFalse(entry.GetLoginInfo().IsLoggedIn);
                     Assert.AreEqual(0, entry.GetOpenWindowTitles().Length);
                     Assert.IsFalse(entry.IsBusy());
-                    Assert.AreEqual(IntPtr.Zero, entry.CreateTaskPaneContent(new IntPtr(1)));
                     entry.OnRibbonAction("RibEdgeRefresh", null);
                     Assert.IsTrue(entry.OnExcelEvent("SheetActivate", new object[] { "Sheet1" }));
                     entry.Shutdown();

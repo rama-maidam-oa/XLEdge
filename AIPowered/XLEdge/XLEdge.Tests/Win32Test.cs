@@ -93,6 +93,7 @@ namespace XLEdge.Tests
         [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
+        [DllImport("user32.dll")] public static extern IntPtr GetActiveWindow();
         [DllImport("user32.dll")] public static extern bool DestroyWindow(IntPtr hWnd);
         [DllImport("kernel32.dll")] private static extern int GetCurrentThreadId();
         [DllImport("user32.dll")] private static extern bool EnumThreadWindows(int threadId, EnumWindowsProc callback, IntPtr lParam);
