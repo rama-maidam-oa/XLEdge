@@ -63,7 +63,9 @@
     <Compile Include="ReleaseFolders.cs" />
     <Compile Include="FakeContext.cs" />
     <Compile Include="LoggerTests.cs" />
+    <Compile Include="OfflineReleaseScannerTests.cs" />
     <Compile Include="PathProviderTests.cs" />
+    <Compile Include="ReleaseHistoryRowsTests.cs" />
     <Compile Include="ReleaseHistoryStoreTests.cs" />
     <Compile Include="RemoteScopeCaller.cs" />
     <Compile Include="ResolverProbe.cs" />

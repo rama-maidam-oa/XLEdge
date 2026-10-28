@@ -128,6 +128,8 @@
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>
     <Compile Include="RibbonControlIds.cs" />
+    <Compile Include="Views\OfflineReleaseScanner.cs" />
+    <Compile Include="Views\ReleaseHistoryRows.cs" />
     <Compile Include="XLEdgeContext.cs" />
   </ItemGroup>
   <ItemGroup>
