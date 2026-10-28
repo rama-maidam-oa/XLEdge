@@ -33,15 +33,30 @@ namespace XLEdge.Tests
         {
             var result = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
             var line = new Regex(@"^\s*this\.(?<field>\w+)\.(?<rest>.+?);\s*$");
-            foreach (string text in File.ReadAllLines(designerFile))
+            var creation = new Regex(@"^\s*this\.(?<field>\w+)\s*=\s*new\s+(?<type>[\w.]+)\(");
+            foreach (string text in JoinContinuations(File.ReadAllLines(designerFile)))
             {
+                var c = creation.Match(text);
                 var m = line.Match(text);
-                if (!m.Success) continue;
-                string field = m.Groups["field"].Value;
+                string field = c.Success ? c.Groups["field"].Value : m.Success ? m.Groups["field"].Value : null;
+                if (field == null) continue;
                 if (!result.TryGetValue(field, out var set)) result[field] = set = new SortedSet<string>(StringComparer.Ordinal);
-                set.Add(m.Groups["rest"].Value.Trim());
+                set.Add(c.Success ? "new " + c.Groups["type"].Value : m.Groups["rest"].Value.Trim());
             }
             return result;
+        }
+
+        /// <summary>Designer code splits long strings over lines ending in '+'; join them into one statement.</summary>
+        private static IEnumerable<string> JoinContinuations(IEnumerable<string> lines)
+        {
+            string pending = null;
+            foreach (string raw in lines)
+            {
+                string text = pending == null ? raw : pending + " " + raw.Trim();
+                if (text.TrimEnd().EndsWith("+")) { pending = text.TrimEnd(); continue; }
+                pending = null;
+                yield return text;
+            }
         }
 
         [TestMethod]
@@ -73,14 +88,27 @@ namespace XLEdge.Tests
         {
             var shell = Assignments(ShellDesigner);
             var reload = shell["RibReload"];
-            CollectionAssert.IsSubsetOf(new[] { "Caption = \"Reload Add-in\"", "ImageList = this.ImageList_16X16", "Image = 0", "ScreenTip = \"Reload Add-in\"" }, reload.ToArray(),
+            CollectionAssert.IsSubsetOf(new[] { "Caption = \"Reload Add-in\"", "ImageList = this.ImageList_HotReload16", "Image = 40", "ScreenTip = \"Reload Add-in\"" }, reload.ToArray(),
                 string.Join(" | ", reload));
             var history = shell["RibVersionHistory"];
-            CollectionAssert.IsSubsetOf(new[] { "Caption = \"Version History\"", "ImageList = this.ImageList_32X32", "Image = 11",
+            CollectionAssert.IsSubsetOf(new[] { "Caption = \"Version History\"", "ImageList = this.ImageList_HotReload32", "Image = 34",
                 "Size = AddinExpress.MSO.ADXRibbonXControlSize.Large", "ScreenTip = \"Version History\"" }, history.ToArray(), string.Join(" | ", history));
 
             var ribbonFields = shell.Keys.Where(k => k.StartsWith("Rib", StringComparison.Ordinal) || k.StartsWith("adxRibbon", StringComparison.Ordinal) || k == "TabXLEdge");
             CollectionAssert.AreEquivalent(TodaysControls.Concat(new[] { "RibReload", "RibVersionHistory" }).ToArray(), ribbonFields.ToArray());
+        }
+
+        private static System.Xml.Linq.XElement ResxValue(string resxFile, string name) =>
+            System.Xml.Linq.XDocument.Load(resxFile).Root.Elements("data").Single(d => (string)d.Attribute("name") == name).Element("value");
+
+        [TestMethod]
+        public void ShellResx_KeepsTodaysImagesAndTipsByteForByte()
+        {
+            // Re-encoding an ImageList changes the colours of semi-transparent pixels; today's icons must stay as they are.
+            string todayResx = Path.Combine(Path.GetDirectoryName(TodaysDesigner), "AddinModule.resx");
+            string shellResx = Path.Combine(Path.GetDirectoryName(ShellDesigner), "AddinModule.resx");
+            foreach (string key in new[] { "ImageList_32X32.ImageStream", "RibEdgeRefresh.SuperTip", "RibEdgeRefreshAll.SuperTip", "RibControlSheet.SuperTip" })
+                Assert.AreEqual(ResxValue(todayResx, key).Value.Trim(), ResxValue(shellResx, key).Value.Trim(), key);
         }
 
         [TestMethod]

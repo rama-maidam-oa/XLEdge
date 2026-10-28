@@ -177,7 +177,14 @@ Open items for Stage 0e (from the Stage 0a review):
   only one of them can be registered on a machine at a time. Dev boxes unregister one before registering
   the other.
 - Loader DLL name: `adxloader.XLEdge.dll` (GLSense pattern) vs the existing `adxloader.dll`.
-- `stdole.dll` is copied next to the shell (Office interop dependency): include it in the MSI file list or drop it deliberately.
+- `stdole.dll` is copied next to the shell (Office interop dependency). Decided in Stage 0e: keep it, and the Stage 5 MSI
+  ships it next to `XLEdge.dll` exactly as today's XLEdge MSI does.
+- From Stage 0e: a reload asked for by the core (`IRibbonController.ExecuteAction` for Reload / Version History) is posted
+  to Excel's message loop and runs after the core's call has returned. A reload is refused while the core `IsBusy()`.
+  During a reload no core is reachable (`Addin` is null from the start), task-pane content is detached before the old
+  core shuts down and re-attached after the new one loads, and Excel closing mid-reload loads nothing.
+- From Stage 0e: an offline release is staged into `AddinCore\Manifest\` only once the reload goes ahead (after the busy
+  check and the open-windows question), not when the picker closes.
 - From Stage 0d: after every successful load (startup, reload, Release History) the shell calls
   `UpdateBootstrapper.RememberLoaded(context, folder)` so the release survives a restart; a newly staged release still wins.
 - `AddinDomainLoader.Unload` must never run on a thread that came from the core (a core→shell callback); queue the reload.
@@ -213,3 +220,5 @@ Worth adding to both later.
 ## 9. Noticed along the way (separate from this work)
 - GLSense `OrbitGLSense.vdproj` (~line 2556): `GLSense.dll` SourcePath is `..\obj\Debug\GLSense.dll` — looks wrong for a Release MSI.
 - GLSense comments `ConfiguratorPaneHost.cs:16`, `IGLSenseAddin.cs:66` say "own dedicated WPF thread"; the code uses Excel's thread.
+- XLEdge 11.1.2 calls GLSense `GetGLCubeInformation` / `LogoutSession`, which GLSense AIPowered 11.1.2 does not expose
+  (only FinalWorkingCode has them): XLEdge→GLSense login/logout sync fails silently against AIPowered GLSense today.

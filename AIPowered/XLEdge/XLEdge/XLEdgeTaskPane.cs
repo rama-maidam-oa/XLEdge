@@ -75,6 +75,25 @@ namespace XLEdge
             }
         }
 
+        /// <summary>
+        /// Before the core is unloaded: asks it to destroy this window's content and forgets the handle, so nothing is left
+        /// pointing at a window of an unloaded AppDomain. The next core's content is embedded by <see cref="EmbedContent"/>.
+        /// </summary>
+        internal void ReleaseContent(global::XLEdge.Contracts.IXLEdgeAddin core)
+        {
+            IntPtr content = _content;
+            _content = IntPtr.Zero;
+            try
+            {
+                if (content != IntPtr.Zero && IsWindow(content)) SetParent(content, IntPtr.Zero);
+                core?.CloseTaskPaneContent(ExcelWindowHandle);
+            }
+            catch (Exception ex)
+            {
+                global::XLEdge.AddinModule.CurrentInstance?.LogError("XLEdgeTaskPane.ReleaseContent failed.", ex);
+            }
+        }
+
         private void ResizeContent()
         {
             if (_content != IntPtr.Zero) MoveWindow(_content, 0, 0, ClientSize.Width, ClientSize.Height, true);
@@ -88,6 +107,7 @@ namespace XLEdge
         private void XLEdgeTaskPane_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
         {
             ShowRequested = false;
+            if (_content != IntPtr.Zero && !IsWindow(_content)) _content = IntPtr.Zero;
             if (_content == IntPtr.Zero) EmbedContent();
             try { global::XLEdge.AddinModule.CurrentInstance?.Host?.Addin?.OnTaskPaneShown(ExcelWindowHandle); }
             catch (Exception ex) { global::XLEdge.AddinModule.CurrentInstance?.LogError("XLEdgeTaskPane: OnTaskPaneShown failed.", ex); }
@@ -113,6 +133,10 @@ namespace XLEdge
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindow(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool MoveWindow(IntPtr hWnd, int x, int y, int width, int height, bool repaint);

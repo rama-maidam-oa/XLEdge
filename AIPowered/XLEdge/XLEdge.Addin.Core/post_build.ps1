@@ -22,8 +22,10 @@ try {
     # Assembly version without loading (no file lock).
     $version = [Reflection.AssemblyName]::GetAssemblyName($coreDll).Version.ToString()
 
-    # ContractInfo.Version is a constant: read it in a child process so this one never locks the DLL.
-    $contractVersion = [int](& powershell -NoProfile -Command "([Reflection.Assembly]::LoadFile('$contractsDll')).GetType('XLEdge.Contracts.ContractInfo').GetField('Version').GetRawConstantValue()")
+    # ContractInfo.Version is a constant: read it in a child process so this one never locks the DLL. The path goes
+    # through the environment, not the command text, so a quote or '$' in it cannot break or inject into the command.
+    $env:XLEDGE_CONTRACTS = $contractsDll
+    $contractVersion = [int](& powershell -NoProfile -Command '([Reflection.Assembly]::LoadFile($env:XLEDGE_CONTRACTS)).GetType(''XLEdge.Contracts.ContractInfo'').GetField(''Version'').GetRawConstantValue()')
     if ($contractVersion -lt 1) { throw "Could not read XLEdge.Contracts.ContractInfo.Version from $contractsDll" }
 
     $releaseDate = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)
@@ -35,21 +37,21 @@ try {
 
     $notesFile = Join-Path $projectDir 'ReleaseNotes.txt'
     $notes = 'XLEdge core build'
-    if (Test-Path $notesFile) {
-        $first = Get-Content $notesFile -TotalCount 1
+    if (Test-Path -LiteralPath $notesFile) {
+        $first = Get-Content -LiteralPath $notesFile -TotalCount 1
         if ($first -and $first.Trim()) { $notes = $first.Trim() }
     }
 
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    Get-ChildItem $outDir -File | Where-Object { $_.Extension -eq '.zip' -or $_.Name -eq 'manifest.json' } | Remove-Item -Force
+    Get-ChildItem -LiteralPath $outDir -File | Where-Object { $_.Extension -eq '.zip' -or $_.Name -eq 'manifest.json' } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zipPath = Join-Path $outDir $fileName
     $archive = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Create)
     try {
-        $root = (Resolve-Path $TargetDir).Path.TrimEnd('\') + '\'
-        Get-ChildItem $TargetDir -Recurse -File |
+        $root = (Get-Item -LiteralPath $TargetDir).FullName.TrimEnd('\') + '\'
+        Get-ChildItem -LiteralPath $TargetDir -Recurse -File |
             Where-Object { $_.Extension -notin '.pdb', '.xml', '.zip' -and $_.FullName -notlike "$($root)AddinCore\*" } |
             ForEach-Object {
                 $entry = $_.FullName.Substring($root.Length).Replace('\', '/')
@@ -82,5 +84,11 @@ try {
 }
 catch {
     Write-Output "error XLEDGE0001: XLEdge.Addin.Core post-build failed: $($_.Exception.Message)"
+    # A half-written zip or manifest must not be staged by the shell's post-build as a release.
+    if ($outDir) {
+        foreach ($partial in @($zipPath, (Join-Path $outDir 'manifest.json'))) {
+            if ($partial -and (Test-Path -LiteralPath $partial)) { Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue }
+        }
+    }
     exit 1
 }

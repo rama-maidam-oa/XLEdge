@@ -27,7 +27,7 @@ namespace XLEdge.Tests
             public FakeAddin(Recorder r, string name) { _r = r; Name = name; }
             public string Name { get; }
             public string[] Titles = new string[0];
-            public bool ThrowOnTitles, ThrowOnShutdown;
+            public bool ThrowOnTitles, ThrowOnShutdown, Busy;
             public void Initialize(IXLEdgeContext context) { }
             public void OnRibbonAction(string action, object parameter) { }
             public bool OnExcelEvent(string eventName, object[] args) => true;
@@ -39,7 +39,7 @@ namespace XLEdge.Tests
             public void OnLogoutFromGLSense() { }
             public LoginInfo GetLoginInfo() => new LoginInfo();
             public string[] GetOpenWindowTitles() { if (ThrowOnTitles) throw new InvalidOperationException("old core"); return Titles; }
-            public bool IsBusy() => false;
+            public bool IsBusy() => Busy;
         }
 
         private sealed class FakeLoader : ICoreLoader
@@ -66,19 +66,29 @@ namespace XLEdge.Tests
             private readonly Recorder _r;
             public FakeUi(Recorder r) { _r = r; }
             public bool ConfirmAnswer = true;
+            public Action<int> OnStage;
             public readonly List<string> Errors = new List<string>();
             public bool ConfirmCloseOpenWindows(string[] titles) { _r.Add("Confirm:" + string.Join("|", titles)); return ConfirmAnswer; }
-            public IReloadProgress ShowProgress(string currentVersion, string currentReleaseDate) { _r.Add("ProgressShown:" + currentVersion); return new Progress(_r); }
+            public IReloadProgress ShowProgress(string currentVersion, string currentReleaseDate) { _r.Add("ProgressShown:" + currentVersion); return new Progress(_r, this); }
             public void ShowError(string message, string title) { _r.Add("Error"); Errors.Add(title + ": " + message); }
 
             private sealed class Progress : IReloadProgress
             {
                 private readonly Recorder _r;
-                public Progress(Recorder r) { _r = r; }
-                public void ShowStage(string message, int step) => _r.Add($"Stage{step}:{message}");
+                private readonly FakeUi _ui;
+                public Progress(Recorder r, FakeUi ui) { _r = r; _ui = ui; }
+                public void ShowStage(string message, int step) { _r.Add($"Stage{step}:{message}"); _ui.OnStage?.Invoke(step); }
                 public void SetTarget(string version, string releaseDate) => _r.Add("Target:" + version);
                 public void Close() => _r.Add("ProgressClosed");
             }
+        }
+
+        private sealed class FakePanes : IPaneHost
+        {
+            private readonly Recorder _r;
+            public FakePanes(Recorder r) { _r = r; }
+            public void DetachAll(IXLEdgeAddin core) => _r.Add("Detach:" + ((FakeAddin)core).Name);
+            public void AttachAll() => _r.Add("Attach");
         }
 
         private sealed class Setup
@@ -98,7 +108,7 @@ namespace XLEdge.Tests
                 Loader = new FakeLoader(R) { OnLoad = rel => Addins[rel.FolderName] = new FakeAddin(R, rel.FolderName) };
                 Catalog = new FakeCatalog(R) { StartRelease = Release("vA") };
                 Ui = new FakeUi(R);
-                Host = new CoreHost(Context, Loader, Catalog, Ui);
+                Host = new CoreHost(Context, Loader, Catalog, Ui, new FakePanes(R));
             }
 
             public static ResolvedRelease Release(string folder) => new ResolvedRelease { Version = "ver-" + folder, ReleaseDate = "date-" + folder, FolderName = folder, ContractVersion = 1 };
@@ -115,7 +125,7 @@ namespace XLEdge.Tests
             Assert.AreEqual("vA", s.Context.ActiveFolderName);
             Assert.AreEqual("ver-vA", s.Context.Version);
             Assert.AreEqual("date-vA", s.Context.ReleaseDate);
-            CollectionAssert.AreEqual(new[] { "Resolve:Install", "Load:vA", "Remember:vA" }, s.R.Events);
+            CollectionAssert.AreEqual(new[] { "Resolve:Install", "Load:vA", "Remember:vA", "Attach" }, s.R.Events);
             Assert.IsTrue(s.Log.Contains("SESSION | begin ver-vA"), s.Log.Dump());
             Assert.AreEqual(0, s.Ui.Errors.Count);
         }
@@ -158,11 +168,11 @@ namespace XLEdge.Tests
             {
                 "ProgressShown:ver-vA",
                 "Stage1:Closing the current XLEdge session...",
-                "Shutdown:vA", "Unload",
+                "Detach:vA", "Shutdown:vA", "Unload",
                 "Stage2:Finding the selected XLEdge version...",
                 "Resolve:new", "Target:ver-vB",
                 "Stage3:Loading the selected XLEdge version...",
-                "Load:vB", "Remember:vB",
+                "Load:vB", "Remember:vB", "Attach",
                 "Stage4:XLEdge reload complete.",
                 "ProgressClosed",
             }, s.R.Events);
@@ -170,6 +180,63 @@ namespace XLEdge.Tests
             Assert.AreEqual("vB", s.Context.ActiveFolderName);
             var sessions = s.Log.Lines.Where(l => l.StartsWith("SESSION")).ToArray();
             CollectionAssert.AreEqual(new[] { "SESSION | begin ver-vA", "SESSION | end ver-vA", "SESSION | begin ver-vB" }, sessions);
+        }
+
+        [TestMethod]
+        public void Reload_WhileTheCoreIsBusy_IsRefused()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            s.Addins["vA"].Busy = true;
+            s.R.Events.Clear();
+            Assert.IsFalse(s.Host.Reload(() => Setup.Release("vB")));
+            CollectionAssert.AreEqual(new[] { "Error" }, s.R.Events);
+            Assert.AreEqual("Reload XLEdge Add-in: XLEdge is busy (a report or refresh is running). Use Reload Add-in again when it has finished.", s.Ui.Errors.Single());
+            Assert.AreSame(s.Addins["vA"], s.Host.Addin);
+        }
+
+        [TestMethod]
+        public void Reload_NoCoreIsReachableWhileReloading()
+        {
+            // Ribbon clicks / Excel events / GLSense calls processed while the progress window pumps messages must not reach
+            // the core that is being shut down.
+            var s = new Setup();
+            s.Host.Start();
+            var seen = new List<object>();
+            s.Ui.OnStage = step => seen.Add(s.Host.Addin);
+            s.Host.Reload(() => Setup.Release("vB"));
+            CollectionAssert.AreEqual(new object[] { null, null, null, s.Addins["vB"] }, seen);
+        }
+
+        [TestMethod]
+        public void Shutdown_DuringReload_NoNewCoreIsLoaded()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            s.Ui.OnStage = step => { if (step == 2) s.Host.Shutdown(); };
+            Assert.IsFalse(s.Host.Reload(() => Setup.Release("vB")));
+            CollectionAssert.DoesNotContain(s.R.Events, "Load:vB");
+            Assert.IsNull(s.Host.Addin);
+            Assert.AreEqual(0, s.Ui.Errors.Count, "Excel is closing - no message");
+        }
+
+        [TestMethod]
+        public void Reload_ResolveThrows_ReportsItsMessage()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            Assert.IsFalse(s.Host.Reload(() => throw new System.IO.IOException("disk full")));
+            Assert.AreEqual("Reload XLEdge Add-in: Reload failed: disk full. Use Reload Add-in again, or restart Excel.", s.Ui.Errors.Single());
+        }
+
+        [TestMethod]
+        public void Shutdown_DetachesPanesBeforeTheCoreShutsDown()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            s.R.Events.Clear();
+            s.Host.Shutdown();
+            CollectionAssert.AreEqual(new[] { "Detach:vA", "Shutdown:vA", "Unload" }, s.R.Events);
         }
 
         [TestMethod]
@@ -220,6 +287,7 @@ namespace XLEdge.Tests
             Assert.IsNull(s.Host.Addin);
             Assert.AreEqual("Reload XLEdge Add-in: Reload failed: contract too new. Use Reload Add-in again, or restart Excel.", s.Ui.Errors.Single());
             CollectionAssert.DoesNotContain(s.R.Events, "Remember:vB");
+            Assert.AreEqual(1, s.R.Events.Count(e => e == "Attach"), "panes are attached only after a successful load");
 
             s.Loader.OnLoad = rel => s.Addins[rel.FolderName] = new FakeAddin(s.R, rel.FolderName);
             Assert.IsTrue(s.Host.Reload(() => Setup.Release("vA")));
@@ -274,7 +342,7 @@ namespace XLEdge.Tests
                     File.Copy(file, Path.Combine(paths.ManifestDirectory, Path.GetFileName(file)));
                 var context = new FakeContext(paths) { Logger = new RecordingLogger() };
                 var loader = new AddinDomainLoader();
-                var host = new CoreHost(context, new DomainCoreLoader(loader), new BootstrapperReleaseCatalog(new UpdateBootstrapper()), new FakeUi(new Recorder()));
+                var host = new CoreHost(context, new DomainCoreLoader(loader), new BootstrapperReleaseCatalog(new UpdateBootstrapper()), new FakeUi(new Recorder()), new FakePanes(new Recorder()));
                 try
                 {
                     Assert.IsTrue(host.Start(), ((RecordingLogger)context.Logger).Dump());

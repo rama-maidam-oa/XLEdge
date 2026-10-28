@@ -42,11 +42,11 @@ namespace XLEdge
             RibEdgeLogin, RibEdgeDebug, RibControlSheet, RibEdgeAbout,
         });
 
-        /// <summary>Every XLEdge feature control; all disabled when the user has no XLEdge permission.</summary>
-        public static readonly ReadOnlyCollection<string> AllFeatureControls = new ReadOnlyCollection<string>(new[]
+        /// <summary>Disabled when the user has no XLEdge permission (Logout stays usable).</summary>
+        public static readonly ReadOnlyCollection<string> NoPermissionDisabled = new ReadOnlyCollection<string>(new[]
         {
             RibEdgeDialogBoxLauncher, RibEdgeRefresh, RibEdgeRefreshAll, RibEdgeParamRefresh, RibEdgeShowHide,
-            RibEdgeIncludeOutputData, RibEdgeOptions, RibEdgeHelp, RibEdgeLogin, RibEdgeLogout, RibEdgeDebug, RibControlSheet,
+            RibEdgeIncludeOutputData, RibEdgeOptions, RibEdgeHelp, RibEdgeLogin, RibEdgeDebug, RibControlSheet, RibEdgeAbout,
         });
     }
 }

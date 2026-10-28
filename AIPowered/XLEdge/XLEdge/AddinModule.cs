@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using AddinExpress.MSO;
 using XLEdge.Hosting;
 using XLEdge.Loader.Core;
@@ -19,7 +20,10 @@ namespace XLEdge
     [Guid("80B0FB76-A5F4-41E0-B283-C175B7374B60"), ProgId("XLEdge.AddinModule")]
     public partial class AddinModule : ADXAddinModule
     {
+        private const int TaskPaneWidth = 500;
+
         private readonly UpdateBootstrapper _bootstrapper = new UpdateBootstrapper();
+        private readonly WpfHostUi _hostUi;
         private XLEdgeContext _context;
         private RibbonController _ribbonController;
         private bool _hostWindowOpen;
@@ -29,6 +33,7 @@ namespace XLEdge
         {
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
             System.Windows.Forms.Application.EnableVisualStyles();
+            _hostUi = new WpfHostUi(ReadExcelHandle);
             InitializeComponent();
         }
 
@@ -99,19 +104,20 @@ namespace XLEdge
 
         private void AddinModule_OnRibbonLoaded(object sender, IRibbonUI ribbon)
         {
+            // Office raises this once per ribbon load; the core is started only once per Excel session.
+            if (Host != null) return;
             try
             {
                 string installRoot = Path.GetDirectoryName(typeof(AddinModule).Assembly.Location);
                 _context = new XLEdgeContext(HostApplication, installRoot);
-                try { _context.ExcelHandle = new IntPtr((HostApplication as Excel._Application).Hwnd); }
-                catch (Exception ex) { _context.Logger.LogWarn("AddinModule: could not read Excel's window handle: " + ex.Message); }
+                ReadExcelHandle();
                 _context.Logger.LogInfo($"AddinModule: XLEdge {_context.ShellVersion} started (install folder '{installRoot}').");
 
-                _ribbonController = new RibbonController(this, ribbon, _context.Logger);
+                _ribbonController = new RibbonController(this, new ShellCommands(this, ribbon, Dispatcher.CurrentDispatcher), _context.Logger);
                 _context.SetRibbonController(_ribbonController);
                 _ribbonController.SetState("LoggedOut");
 
-                Host = new CoreHost(_context, new DomainCoreLoader(new AddinDomainLoader()), new BootstrapperReleaseCatalog(_bootstrapper), new WpfHostUi(_context.ExcelHandle));
+                Host = new CoreHost(_context, new DomainCoreLoader(new AddinDomainLoader()), new BootstrapperReleaseCatalog(_bootstrapper), _hostUi, new PaneHost(this));
                 Host.Start();
             }
             catch (Exception ex)
@@ -152,6 +158,7 @@ namespace XLEdge
         {
             try { UnsubscribeExcelEvents(); }
             catch (Exception) { }
+            AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
         }
 
         private void AddinModule_OnError(ADXErrorEventArgs e)
@@ -177,8 +184,11 @@ namespace XLEdge
 
         private void RibLogin_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeLogin);
         private void RibEdgeLogout_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeLogout);
-        private void RibEdgeLogout_PropertyChanging(object sender, ADXRibbonPropertyChangingEventArgs e) =>
-            Forward("RibEdgeLogout_PropertyChanging", e.PropertyType.ToString());
+        private void RibEdgeLogout_PropertyChanging(object sender, ADXRibbonPropertyChangingEventArgs e)
+        {
+            // Today's add-in updates the sheet label only when Logout is shown or hidden (the login state changed).
+            if (e.PropertyType == ADXRibbonControlPropertyType.Visible) Forward("RibEdgeLogout_PropertyChanging", e.PropertyType.ToString());
+        }
         private void RibEdgeDialogBoxLauncher_OnAction(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeDialogBoxLauncher);
         private void RibEdgeRefresh_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeRefresh);
         private void RibEdgeRefreshAll_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeRefreshAll);
@@ -191,9 +201,15 @@ namespace XLEdge
         private void RibEdgeAbout_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeAbout);
         private void RibEdgeHelp_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeHelp);
 
+        /// <summary>The Debug toggle's state as the shell's logger sees it (also set when the core resets the ribbon).</summary>
+        internal void SetDebugMode(bool enabled)
+        {
+            if (_context != null) _context.DebugMode = enabled;
+        }
+
         private void RibEdgeDebug_OnClick(object sender, IRibbonControl control, bool pressed)
         {
-            if (_context != null) _context.DebugMode = pressed;
+            SetDebugMode(pressed);
             Forward(RibbonControlIds.RibEdgeDebug, pressed);
         }
 
@@ -236,8 +252,8 @@ namespace XLEdge
                 try
                 {
                     picker = new XLEdgeReloadSourcePicker(_context);
-                    new WindowInteropHelper(picker).Owner = _context.ExcelHandle;
-                    if (picker.ShowDialog() != true) return;
+                    new WindowInteropHelper(picker).Owner = ReadExcelHandle();
+                    if (picker.ShowDialog() != true || picker.ScanResult == null) return;
                 }
                 catch (Exception ex)
                 {
@@ -246,7 +262,13 @@ namespace XLEdge
                     return;
                 }
                 string source = picker.SelectedSource ?? "Offline";
-                Host.Reload(() => _bootstrapper.ResolveVersionToLoad(_context, source));
+                OfflineScanResult release = picker.ScanResult;
+                // Staged only now that the reload goes ahead (not refused, not cancelled) and the old core is unloaded.
+                Host.Reload(() =>
+                {
+                    OfflineReleaseScanner.Stage(release, _context.Paths);
+                    return _bootstrapper.ResolveVersionToLoad(_context, source);
+                });
             }
             finally
             {
@@ -264,7 +286,7 @@ namespace XLEdge
                 try
                 {
                     var browser = new XLEdgeReleaseHistoryBrowser(_context);
-                    new WindowInteropHelper(browser).Owner = _context.ExcelHandle;
+                    new WindowInteropHelper(browser).Owner = ReadExcelHandle();
                     if (browser.ShowDialog() != true || browser.Chosen == null) return;
                     chosen = browser.Chosen;
                 }
@@ -282,7 +304,7 @@ namespace XLEdge
             }
         }
 
-        // ---- task panes (used by RibbonController) -------------------------------------------
+        // ---- task panes (used by RibbonController and CoreHost) -------------------------------
 
         internal XLEdgeTaskPane ActivePane
         {
@@ -296,24 +318,39 @@ namespace XLEdge
         internal IEnumerable<XLEdgeTaskPane> AllPanes()
         {
             var panes = new List<XLEdgeTaskPane>();
-            foreach (object pane in adxExcelTaskPanesCollectionItem1.TaskPaneInstances)
-                if (pane is XLEdgeTaskPane p) panes.Add(p);
+            try
+            {
+                foreach (object pane in adxExcelTaskPanesCollectionItem1.TaskPaneInstances)
+                    if (pane is XLEdgeTaskPane p) panes.Add(p);
+            }
+            catch (Exception ex)
+            {
+                LogError("AddinModule: could not list the task panes.", ex);
+            }
             return panes;
         }
 
-        internal void ShowTaskPane(int width)
+        internal void ShowTaskPane()
         {
             XLEdgeTaskPane.ShowRequested = true;
-            XLEdgeTaskPane pane = ActivePane;
-            if (pane == null)
+            try
             {
-                adxExcelTaskPanesCollectionItem1.Position = AddinExpress.XL.ADXExcelTaskPanePosition.Right;
-                pane = adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance() as XLEdgeTaskPane;
-                if (pane == null) return;
-                pane.Width = width;
+                XLEdgeTaskPane pane = ActivePane;
+                if (pane == null)
+                {
+                    adxExcelTaskPanesCollectionItem1.Position = AddinExpress.XL.ADXExcelTaskPanePosition.Right;
+                    pane = adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance() as XLEdgeTaskPane;
+                    if (pane == null) return;
+                    pane.Width = TaskPaneWidth;
+                }
+                pane.Show();
+                pane.Visible = true;
             }
-            pane.Show();
-            pane.Visible = true;
+            finally
+            {
+                // A pane that did not show must not let Excel restore it later on its own.
+                XLEdgeTaskPane.ShowRequested = false;
+            }
         }
 
         // ---- Excel events: primitives only ----------------------------------------------------
@@ -396,10 +433,23 @@ namespace XLEdge
             catch (Exception) { }
         }
 
-        private void ShowMessage(string message, string title)
+        /// <summary>An error box owned by the Excel window (never throws).</summary>
+        private void ShowMessage(string message, string title) => _hostUi.ShowError(message, title);
+
+        /// <summary>Excel's main window, read fresh each time (Excel can recreate it); IntPtr.Zero when it cannot be read.</summary>
+        private IntPtr ReadExcelHandle()
         {
-            try { System.Windows.Forms.MessageBox.Show(message, title, System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error); }
-            catch (Exception) { }
+            try
+            {
+                var handle = new IntPtr((HostApplication as Excel._Application).Hwnd);
+                if (_context != null) _context.ExcelHandle = handle;
+                return handle;
+            }
+            catch (Exception ex)
+            {
+                _context?.Logger.LogWarn("AddinModule: could not read Excel's window handle: " + ex.Message);
+                return IntPtr.Zero;
+            }
         }
     }
 }

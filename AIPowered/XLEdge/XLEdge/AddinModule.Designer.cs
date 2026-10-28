@@ -33,7 +33,8 @@ namespace XLEdge
             this.adxRibbonGroup1 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibEdgeLogin = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.ImageList_32X32 = new System.Windows.Forms.ImageList(this.components);
-            this.ImageList_16X16 = new System.Windows.Forms.ImageList(this.components);
+            this.ImageList_HotReload16 = new System.Windows.Forms.ImageList(this.components);
+            this.ImageList_HotReload32 = new System.Windows.Forms.ImageList(this.components);
             this.RibEdgeLogout = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibLoginURL = new AddinExpress.MSO.ADXRibbonLabel(this.components);
             this.RibEdgeDialogBoxLauncher = new AddinExpress.MSO.ADXRibbonDialogBoxLauncher(this.components);
@@ -117,13 +118,16 @@ namespace XLEdge
             this.ImageList_32X32.Images.SetKeyName(8, "create-control-panel-01.png");
             this.ImageList_32X32.Images.SetKeyName(9, "About.png");
             this.ImageList_32X32.Images.SetKeyName(10, "Help.png");
-            this.ImageList_32X32.Images.SetKeyName(11, "version-history.png");
             // 
-            // ImageList_16X16
+            // ImageList_HotReload16
             // 
-            this.ImageList_16X16.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("ImageList_16X16.ImageStream")));
-            this.ImageList_16X16.TransparentColor = System.Drawing.Color.Transparent;
-            this.ImageList_16X16.Images.SetKeyName(0, "reload.png");
+            this.ImageList_HotReload16.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("ImageList_HotReload16.ImageStream")));
+            this.ImageList_HotReload16.TransparentColor = System.Drawing.Color.Transparent;
+            // 
+            // ImageList_HotReload32
+            // 
+            this.ImageList_HotReload32.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("ImageList_HotReload32.ImageStream")));
+            this.ImageList_HotReload32.TransparentColor = System.Drawing.Color.Transparent;
             // 
             // RibEdgeLogout
             // 
@@ -314,8 +318,8 @@ namespace XLEdge
             // 
             this.RibReload.Caption = "Reload Add-in";
             this.RibReload.Id = "adxRibbonButton_694ffa134a06422bbd05d01d34d20be6";
-            this.RibReload.Image = 0;
-            this.RibReload.ImageList = this.ImageList_16X16;
+            this.RibReload.Image = 40;
+            this.RibReload.ImageList = this.ImageList_HotReload16;
             this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReload.ScreenTip = "Reload Add-in";
@@ -348,8 +352,8 @@ namespace XLEdge
             // 
             this.RibVersionHistory.Caption = "Version History";
             this.RibVersionHistory.Id = "adxRibbonButton_1492a1d46806465bb9d3498887738f2d";
-            this.RibVersionHistory.Image = 11;
-            this.RibVersionHistory.ImageList = this.ImageList_32X32;
+            this.RibVersionHistory.Image = 34;
+            this.RibVersionHistory.ImageList = this.ImageList_HotReload32;
             this.RibVersionHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibVersionHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibVersionHistory.ScreenTip = "Version History";
@@ -428,9 +432,10 @@ namespace XLEdge
 
         private AddinExpress.MSO.ADXRibbonTab TabXLEdge;
         internal System.Windows.Forms.ImageList ImageList_32X32;
-        internal System.Windows.Forms.ImageList ImageList_16X16;
+        internal System.Windows.Forms.ImageList ImageList_HotReload16;
+        internal System.Windows.Forms.ImageList ImageList_HotReload32;
         private AddinExpress.XL.ADXExcelTaskPanesManager adxExcelTaskPanesManager1;
-        public AddinExpress.XL.ADXExcelTaskPanesCollectionItem adxExcelTaskPanesCollectionItem1;
+        private AddinExpress.XL.ADXExcelTaskPanesCollectionItem adxExcelTaskPanesCollectionItem1;
         private AddinExpress.MSO.ADXExcelAppEvents adxExcelAppEvents1;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeLogin;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeLogout;

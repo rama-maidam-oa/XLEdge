@@ -53,6 +53,22 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void ShellBuild_StagesExactlyTheCorePackage_AndNoCoreNextToTheShell()
+        {
+            string coreBin = ReleaseFolders.CoreBuildFolder;
+            string config = new DirectoryInfo(coreBin).Name;
+            string shellBin = Path.GetFullPath(Path.Combine(coreBin, @"..\..\..\XLEdge\bin", config));
+            string staged = Path.Combine(shellBin, "AddinCore", "Manifest");
+            var package = Directory.GetFiles(PackageFolder).Select(Path.GetFileName).OrderBy(n => n).ToArray();
+            CollectionAssert.AreEqual(package, Directory.GetFiles(staged).Select(Path.GetFileName).OrderBy(n => n).ToArray());
+            foreach (string name in package)
+                CollectionAssert.AreEqual(File.ReadAllBytes(Path.Combine(PackageFolder, name)), File.ReadAllBytes(Path.Combine(staged, name)), name);
+            Assert.IsFalse(File.Exists(Path.Combine(shellBin, "XLEdge.Addin.Core.dll")));
+            foreach (string loader in new[] { "adxloader.dll", "adxloader64.dll", "adxloader.dll.manifest" })
+                Assert.IsTrue(File.Exists(Path.Combine(shellBin, loader)), loader);
+        }
+
+        [TestMethod]
         public void BuiltPackage_RunsWithTheShellsRealLoggerAndPaths()
         {
             // The shell passes XLEdge.Shared's Logger/PathProvider (NLog, System.Text.Json) into the core's AppDomain.

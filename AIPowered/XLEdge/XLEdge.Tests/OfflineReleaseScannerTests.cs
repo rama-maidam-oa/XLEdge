@@ -108,6 +108,20 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Scan_PrefersTheZipTheManifestNames()
+        {
+            using (var t = new TempFolder())
+            {
+                var named = Write(t.Path);
+                File.WriteAllBytes(Path.Combine(t.Path, "v99.9_unrelated.zip"), new byte[] { 1, 2, 3 });
+                File.SetLastWriteTimeUtc(named.Zip, DateTime.UtcNow.AddHours(-1));
+                var r = OfflineReleaseScanner.Scan(t.Path, null, null);
+                Assert.IsTrue(r.Ok, r.Message);
+                Assert.AreEqual(named.Zip, r.ZipPath);
+            }
+        }
+
+        [TestMethod]
         public void Stage_CopiesThePairAndRemovesOtherStagedZips()
         {
             using (var t = new TempFolder())

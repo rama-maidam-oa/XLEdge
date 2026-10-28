@@ -37,6 +37,45 @@ namespace XLEdge.Tests
             }
         }
 
+        public sealed class FakeComAddin
+        {
+            public string ProgId { get; set; } = "GLSense.AddinModule";
+            public bool Connect { get; set; } = true;
+            public object Object { get; set; } = new object();
+        }
+
+        public sealed class FakeComAddins
+        {
+            public FakeComAddin Only { get; } = new FakeComAddin();
+            public int Count => 1;
+            public object Item(object index) => Only;
+        }
+
+        public sealed class FakeExcel
+        {
+            public FakeComAddins COMAddIns { get; } = new FakeComAddins();
+        }
+
+        [TestMethod]
+        public void Context_GLSense_IsLookedUpEveryTime()
+        {
+            // GLSense can be disconnected or reloaded during the session: a cached object would go stale.
+            using (var t = new TempFolder())
+            {
+                var excel = new FakeExcel();
+                using (var context = new XLEdgeContext(excel, new PathProvider(t.Combine("inst"), t.Combine("data"))))
+                {
+                    object first = excel.COMAddIns.Only.Object;
+                    Assert.AreSame(first, context.GetGLSenseAddinInstance());
+                    excel.COMAddIns.Only.Connect = false;
+                    Assert.IsNull(context.GetGLSenseAddinInstance());
+                    excel.COMAddIns.Only.Connect = true;
+                    excel.COMAddIns.Only.Object = new object();
+                    Assert.AreSame(excel.COMAddIns.Only.Object, context.GetGLSenseAddinInstance());
+                }
+            }
+        }
+
         [TestMethod]
         public void Context_Dispose_ReleasesTheLogFile()
         {
@@ -56,9 +95,9 @@ namespace XLEdge.Tests
             CollectionAssert.AreEquivalent(new[] { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp" },
                 RibbonControlIds.LoggedOutDisabled.ToArray());
             CollectionAssert.AreEquivalent(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }, RibbonControlIds.LoggedOutEnabled.ToArray());
-            Assert.AreEqual(12, RibbonControlIds.AllFeatureControls.Count);
-            CollectionAssert.DoesNotContain(RibbonControlIds.AllFeatureControls.ToArray(), RibbonControlIds.RibReload);
-            CollectionAssert.DoesNotContain(RibbonControlIds.AllFeatureControls.ToArray(), RibbonControlIds.RibVersionHistory);
+            CollectionAssert.AreEquivalent(new[] { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide",
+                "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp", "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" },
+                RibbonControlIds.NoPermissionDisabled.ToArray());
         }
     }
 }

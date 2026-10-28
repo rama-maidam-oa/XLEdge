@@ -10,8 +10,8 @@ namespace XLEdge.Views
     /// <summary>
     /// The Reload window: picks where the next core version comes from. Only Offline works for now (a folder holding a
     /// manifest.json + zip pair, checked by <see cref="OfflineReleaseScanner"/>); Online is shown but disabled until the
-    /// server endpoints exist. On Reload the verified release is staged into AddinCore\Manifest\ and the dialog returns true
-    /// with <see cref="SelectedSource"/> set; the bootstrapper picks the staged release up after the core is unloaded.
+    /// server endpoints exist. On Reload the dialog returns true with <see cref="SelectedSource"/> and <see cref="ScanResult"/>
+    /// set; the shell stages the release into AddinCore\Manifest\ after the old core is unloaded, and the bootstrapper picks it up.
     /// </summary>
     internal partial class XLEdgeReloadSourcePicker : Window
     {
@@ -42,8 +42,11 @@ namespace XLEdge.Views
 
         public bool IsOfflineSelected => RbOffline.IsChecked == true;
 
-        /// <summary>"Offline" once a release was staged and the dialog accepted; null until then.</summary>
+        /// <summary>"Offline" once a verified release was chosen and the dialog accepted; null until then.</summary>
         public string SelectedSource { get; private set; }
+
+        /// <summary>The verified release the user chose (not staged yet: the shell stages it once the reload goes ahead).</summary>
+        public OfflineScanResult ScanResult { get; private set; }
 
         protected override void OnClosed(EventArgs e)
         {
@@ -144,15 +147,16 @@ namespace XLEdge.Views
             if (_busy || _candidate == null) return;
             try
             {
-                OfflineReleaseScanner.Stage(_candidate, _context.Paths);
+                ScanResult = _candidate;
                 SelectedSource = "Offline";
-                SafeLog(l => l.LogDebug(LogPrefix + $"staged version {_candidate.Release?.Version} into the Manifest folder - proceeding with reload."));
+                SafeLog(l => l.LogDebug(LogPrefix + $"version {_candidate.Release?.Version} chosen - proceeding with reload."));
                 CloseWith(true);
             }
             catch (Exception ex)
             {
+                ScanResult = null;
                 SelectedSource = null;
-                LogFailure($"Failed to stage the new release: {ex.Message}", ex);
+                LogFailure($"Failed to start the reload: {ex.Message}", ex);
             }
         }
 

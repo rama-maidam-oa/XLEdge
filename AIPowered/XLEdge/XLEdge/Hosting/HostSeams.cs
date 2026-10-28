@@ -24,6 +24,33 @@ namespace XLEdge.Hosting
         void Close();
     }
 
+    /// <summary>The task panes, around a core load or unload (each pane holds a window the core created).</summary>
+    internal interface IPaneHost
+    {
+        /// <summary>Before the core is shut down: asks it to close each pane's content and detaches the windows.</summary>
+        void DetachAll(IXLEdgeAddin core);
+
+        /// <summary>After a core has loaded: asks it for each open pane's content again.</summary>
+        void AttachAll();
+    }
+
+    /// <summary>What RibbonController needs from the shell (AddinModule in the add-in, a fake in tests).</summary>
+    internal interface IShellCommands
+    {
+        /// <summary>Runs the action later on Excel's thread, after the current call has returned.</summary>
+        void Post(System.Action action);
+
+        void RunRibbonAction(string controlId);
+        void InvalidateRibbon();
+        void InvalidateControl(string ribbonXId);
+        void DebugModeChanged(bool enabled);
+        void ShowTaskPane();
+        void ToggleTaskPane();
+        void HideAllTaskPanes();
+        bool IsTaskPaneVisible();
+        void SetTaskPaneCaption(string caption);
+    }
+
     /// <summary>Loads and unloads the core (AppDomain loader in the add-in).</summary>
     internal interface ICoreLoader
     {

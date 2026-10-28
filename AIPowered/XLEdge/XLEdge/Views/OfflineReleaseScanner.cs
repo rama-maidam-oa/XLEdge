@@ -46,9 +46,21 @@ namespace XLEdge.Views
             if (string.IsNullOrWhiteSpace(release.Checksum))
                 return Fail("manifest.json has no checksum recorded - cannot verify, refusing to reload.");
 
-            byte[] bytes = File.ReadAllBytes(zip);
+            // The zip the manifest names wins over the newest one (another zip may sit in the same folder).
+            if (!string.IsNullOrWhiteSpace(release.FileName) && release.FileName.IndexOfAny(Path.GetInvalidFileNameChars()) < 0)
+            {
+                string named = Path.Combine(folder, release.FileName);
+                if (File.Exists(named)) zip = named;
+            }
+
+            long length;
             string actual;
-            using (var sha = SHA256.Create()) actual = BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "");
+            using (var stream = new FileStream(zip, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var sha = SHA256.Create())
+            {
+                length = stream.Length;
+                actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "");
+            }
             if (!string.Equals(actual, release.Checksum, StringComparison.OrdinalIgnoreCase))
                 return Fail($"Checksum mismatch - the zip may be corrupt or incomplete. Expected {release.Checksum}, got {actual}.");
 
@@ -67,7 +79,7 @@ namespace XLEdge.Views
             }
 
             result.Ok = true;
-            result.Message = $"Ready to reload: version {release.Version}, released {release.ReleaseDate} ({Math.Round(bytes.Length / 1024.0):0} KB).";
+            result.Message = $"Ready to reload: version {release.Version}, released {release.ReleaseDate} ({Math.Round(length / 1024.0):0} KB).";
             return result;
         }
 

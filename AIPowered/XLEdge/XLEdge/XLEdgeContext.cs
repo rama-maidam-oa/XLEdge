@@ -16,7 +16,6 @@ namespace XLEdge
     {
         private const string GLSenseProgId = "GLSense.AddinModule";
         private readonly Logger _logger;
-        private object _glSenseAddin;
 
         /// <param name="excelApp">The Excel Application COM object (ADX HostApplication).</param>
         /// <param name="installRoot">The folder XLEdge.dll runs from (Assembly.Location, not AppDomain.BaseDirectory: that can be Excel's folder).</param>
@@ -47,10 +46,12 @@ namespace XLEdge
 
         public void SetRibbonController(IRibbonController controller) => RibbonController = controller;
 
-        /// <summary>The GLSense add-in's COM object (COMAddIns item "GLSense.AddinModule", when connected), or null. Cached once found.</summary>
+        /// <summary>
+        /// The GLSense add-in's COM object (COMAddIns item "GLSense.AddinModule", when connected), or null. Looked up on every
+        /// call: GLSense can be disconnected or reconnected during the session.
+        /// </summary>
         public object GetGLSenseAddinInstance()
         {
-            if (_glSenseAddin != null) return _glSenseAddin;
             object addins = null;
             try
             {
@@ -65,9 +66,9 @@ namespace XLEdge
                         if (!string.Equals(progId, GLSenseProgId, StringComparison.OrdinalIgnoreCase)) continue;
                         bool connected = Convert.ToBoolean(addin.GetType().InvokeMember("Connect", BindingFlags.GetProperty, null, addin, null));
                         if (!connected) return null;
-                        _glSenseAddin = addin.GetType().InvokeMember("Object", BindingFlags.GetProperty, null, addin, null);
+                        object glSense = addin.GetType().InvokeMember("Object", BindingFlags.GetProperty, null, addin, null);
                         Logger.LogDebug("XLEdgeContext.GetGLSenseAddinInstance: GLSense add-in found.");
-                        return _glSenseAddin;
+                        return glSense;
                     }
                     finally
                     {

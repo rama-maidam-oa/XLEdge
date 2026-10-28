@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -26,6 +27,44 @@ namespace XLEdge.Tests
             thread.Start();
             thread.Join();
             failure?.Throw();
+        }
+
+        /// <summary>Every piece of text in the window (TextBlocks, labels, buttons, tooltips are not included).</summary>
+        private static List<string> Texts(System.Windows.DependencyObject root)
+        {
+            var texts = new List<string>();
+            void Walk(object node)
+            {
+                if (node is System.Windows.Controls.TextBlock tb) texts.Add(string.Concat(tb.Inlines.OfType<System.Windows.Documents.Run>().Select(r => r.Text)) is string runs && runs.Length > 0 ? runs : tb.Text);
+                if (node is System.Windows.Controls.ContentControl cc && cc.Content is string s) texts.Add(s);
+                if (node is System.Windows.DependencyObject d)
+                    foreach (object child in System.Windows.LogicalTreeHelper.GetChildren(d)) Walk(child);
+            }
+            Walk(root);
+            return texts;
+        }
+
+        [TestMethod]
+        public void Windows_ShowTheXLEdgeTexts()
+        {
+            using (var t = new TempFolder())
+            {
+                var context = new FakeContext(new PathProvider(t.Combine("inst"), t.Combine("data")));
+                OnSta(() =>
+                {
+                    var progress = Texts(new XLEdgeReloadProgressWindow("1", "d"));
+                    CollectionAssert.IsSubsetOf(new[] { "Reloading XLEdge", "Please keep Excel open while the new version is loaded.",
+                        "This window closes automatically when reload is complete.", "Closing current", "Finding version", "Loading", "Done" }, progress, string.Join(" | ", progress));
+
+                    var picker = Texts(new XLEdgeReloadSourcePicker(context));
+                    CollectionAssert.IsSubsetOf(new[] { "Reload XLEdge", "Choose a source to safely load an available version.",
+                        "Reloading safely restarts the XLEdge add-in without restarting Excel." }, picker, string.Join(" | ", picker));
+
+                    var browser = Texts(new XLEdgeReleaseHistoryBrowser(context));
+                    CollectionAssert.IsSubsetOf(new[] { "XLEdge Version History", "Versions adopted on this machine.",
+                        "Loading a version safely restarts the XLEdge add-in without restarting Excel." }, browser, string.Join(" | ", browser));
+                });
+            }
         }
 
         [TestMethod]
@@ -64,6 +103,7 @@ namespace XLEdge.Tests
                     Assert.IsFalse(picker.IsOnlineEnabled, "online updates arrive with the orbitbootapp endpoints (Stage 6)");
                     Assert.IsTrue(picker.IsOfflineSelected);
                     Assert.IsNull(picker.SelectedSource);
+                    Assert.IsNull(picker.ScanResult, "the picker only verifies; the module stages after the reload is confirmed");
                     picker.Close();
                 });
             }
@@ -100,7 +140,8 @@ namespace XLEdge.Tests
         {
             OnSta(() =>
             {
-                var ui = new XLEdge.Hosting.WpfHostUi(IntPtr.Zero);
+                // The owner handle is read on every window; a read that throws shows the window unowned.
+                var ui = new XLEdge.Hosting.WpfHostUi(() => throw new System.Runtime.InteropServices.COMException("Excel is busy"));
                 var progress = ui.ShowProgress("11.1.2.0", "2026-10-28T10:00:00");
                 Assert.IsNotNull(progress);
                 progress.ShowStage("Loading the selected XLEdge version...", 3);

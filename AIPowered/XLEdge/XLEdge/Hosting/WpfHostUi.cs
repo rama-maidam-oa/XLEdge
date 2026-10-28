@@ -13,12 +13,21 @@ namespace XLEdge.Hosting
     {
         private const string ReloadTitle = "Reload XLEdge Add-in";
 
-        private readonly IntPtr _ownerHwnd;
+        private readonly Func<IntPtr> _ownerHwnd;
 
-        /// <param name="ownerHwnd">The Excel main window; IntPtr.Zero shows the windows unowned.</param>
-        public WpfHostUi(IntPtr ownerHwnd)
+        /// <param name="ownerHwnd">
+        /// Reads the Excel main window each time a window is shown (Excel can recreate it); IntPtr.Zero, or a read that throws,
+        /// shows the windows unowned.
+        /// </param>
+        public WpfHostUi(Func<IntPtr> ownerHwnd)
         {
-            _ownerHwnd = ownerHwnd;
+            _ownerHwnd = ownerHwnd ?? throw new ArgumentNullException(nameof(ownerHwnd));
+        }
+
+        private IntPtr OwnerHandle()
+        {
+            try { return _ownerHwnd(); }
+            catch { return IntPtr.Zero; }
         }
 
         public bool ConfirmCloseOpenWindows(string[] titles)
@@ -44,7 +53,8 @@ namespace XLEdge.Hosting
             try
             {
                 window = new XLEdgeReloadProgressWindow(currentVersion, currentReleaseDate);
-                if (_ownerHwnd != IntPtr.Zero) new WindowInteropHelper(window).Owner = _ownerHwnd;
+                IntPtr owner = OwnerHandle();
+                if (owner != IntPtr.Zero) new WindowInteropHelper(window).Owner = owner;
                 window.ShowAndRender();
                 return new ProgressAdapter(window);
             }
@@ -69,7 +79,11 @@ namespace XLEdge.Hosting
             }
         }
 
-        private WinForms.IWin32Window Owner() => _ownerHwnd != IntPtr.Zero ? new HwndOwner(_ownerHwnd) : null;
+        private WinForms.IWin32Window Owner()
+        {
+            IntPtr owner = OwnerHandle();
+            return owner != IntPtr.Zero ? new HwndOwner(owner) : null;
+        }
 
         /// <summary>Lets a WinForms message box be owned by a native window (the Excel main window).</summary>
         private sealed class HwndOwner : WinForms.IWin32Window
