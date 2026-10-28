@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XLEdge.Loader.Core", "XLEdg
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XLEdge.Addin.Core", "XLEdge.Addin.Core\XLEdge.Addin.Core.csproj", "{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XLEdge", "XLEdge\XLEdge.csproj", "{98093E3C-A05D-4EE1-BF6D-AC742BE9F782}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XLEdge.Build", "XLEdge.Build\XLEdge.Build.csproj", "{28474CC4-88C0-40D3-AC9A-2DE4407C0A11}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +37,14 @@ Global
 		{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{98093E3C-A05D-4EE1-BF6D-AC742BE9F782}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{98093E3C-A05D-4EE1-BF6D-AC742BE9F782}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{98093E3C-A05D-4EE1-BF6D-AC742BE9F782}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{98093E3C-A05D-4EE1-BF6D-AC742BE9F782}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28474CC4-88C0-40D3-AC9A-2DE4407C0A11}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28474CC4-88C0-40D3-AC9A-2DE4407C0A11}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28474CC4-88C0-40D3-AC9A-2DE4407C0A11}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28474CC4-88C0-40D3-AC9A-2DE4407C0A11}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
