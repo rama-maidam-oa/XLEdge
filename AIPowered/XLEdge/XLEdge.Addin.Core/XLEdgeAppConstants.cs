@@ -1,0 +1,17 @@
+﻿namespace XLEdge
+{
+    public static class XLEdgeAppConstants
+    {
+        // Default version info (can be overridden at runtime if needed)
+        public const string DefaultVersion = "11.1.2";
+        public const string DefaultCommitDate = "16-Oct-2026";
+
+        // Logging constants (used in LogHelper and AppPaths)
+        public const long LogMaxFileSizeBytes = 20 * 1024 * 1024; // 20 MB
+        public const int LogMaxArchiveFiles = 30;
+
+        //Theme and accentHex
+        public const string GLTheme = "Light";
+        public const string GLAccentHex = "#149FDB";
+    }
+}

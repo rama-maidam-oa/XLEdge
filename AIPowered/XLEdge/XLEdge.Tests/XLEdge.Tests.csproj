@@ -70,6 +70,7 @@
     <Compile Include="CoreFacadeTests.cs" />
     <Compile Include="CorePackageTests.cs" />
     <Compile Include="CorePaneTests.cs" />
+    <Compile Include="CorePortParityTests.cs" />
     <Compile Include="CoreProbe.cs" />
     <Compile Include="CoreRibbonFacadeTests.cs" />
     <Compile Include="HostWindowsTests.cs" />
