@@ -51,6 +51,8 @@
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MSTest.TestFramework" Version="3.11.1" />
@@ -71,6 +73,7 @@
     <Compile Include="FakeContext.cs" />
     <Compile Include="LoggerTests.cs" />
     <Compile Include="OfflineReleaseScannerTests.cs" />
+    <Compile Include="PaneEmbeddingTests.cs" />
     <Compile Include="PathProviderTests.cs" />
     <Compile Include="ReleaseHistoryRowsTests.cs" />
     <Compile Include="ReleaseHistoryStoreTests.cs" />
@@ -81,6 +84,7 @@
     <Compile Include="TempFolder.cs" />
     <Compile Include="UpdateBootstrapperTests.cs" />
     <Compile Include="VersionParserTests.cs" />
+    <Compile Include="Win32Test.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

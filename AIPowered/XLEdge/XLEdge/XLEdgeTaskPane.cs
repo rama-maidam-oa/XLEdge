@@ -1,26 +1,17 @@
 using System;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using AddinExpress.XL;
+using XLEdge.Hosting;
 
 namespace XLEdge
 {
     /// <summary>
     /// The XLEdge task pane (one per Excel window). It holds no content of its own: the core creates a borderless window for
-    /// this Excel window and returns its handle, which is re-parented into the pane and kept sized to it.
+    /// this Excel window and returns its handle, which <see cref="PaneEmbedding"/> re-parents into the pane and keeps sized to it.
     /// </summary>
     // "AddinModule" alone is ADXExcelTaskPane.AddinModule (an object) here, hence global::XLEdge.AddinModule.
     public partial class XLEdgeTaskPane : ADXExcelTaskPane
     {
-        private const int GWL_STYLE = -16;
-        private const long WS_CHILD = 0x40000000L;
-        private const long WS_POPUP = 0x80000000L;
-        private const long WS_CAPTION = 0x00C00000L;
-        private const long WS_THICKFRAME = 0x00040000L;
-        private const long WS_SYSMENU = 0x00080000L;
-        private const long WS_MINIMIZEBOX = 0x00020000L;
-        private const long WS_MAXIMIZEBOX = 0x00010000L;
-
         private IntPtr _content;
 
         /// <summary>Set by the shell right before it shows a pane; Excel's own attempts to restore a pane are ignored.</summary>
@@ -31,7 +22,7 @@ namespace XLEdge
             InitializeComponent();
             HandleCreated += (s, e) => EmbedContent();
             HandleDestroyed += (s, e) => _content = IntPtr.Zero;
-            Resize += (s, e) => ResizeContent();
+            Resize += (s, e) => PaneEmbedding.Resize(_content, ClientSize.Width, ClientSize.Height);
         }
 
         /// <summary>Handle of the Excel window this pane belongs to.</summary>
@@ -59,15 +50,7 @@ namespace XLEdge
                 var addin = global::XLEdge.AddinModule.CurrentInstance?.Host?.Addin;
                 if (addin == null || !IsHandleCreated) return;
                 IntPtr content = addin.CreateTaskPaneContent(ExcelWindowHandle);
-                if (content == IntPtr.Zero) return;
-
-                long style = GetWindowLongPtr(content, GWL_STYLE).ToInt64();
-                style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MAXIMIZEBOX | WS_MINIMIZEBOX);
-                style |= WS_CHILD;
-                SetWindowLongPtr(content, GWL_STYLE, new IntPtr(style));
-                SetParent(content, Handle);
-                _content = content;
-                ResizeContent();
+                if (PaneEmbedding.Embed(content, Handle, ClientSize.Width, ClientSize.Height)) _content = content;
             }
             catch (Exception ex)
             {
@@ -76,7 +59,7 @@ namespace XLEdge
         }
 
         /// <summary>
-        /// Before the core is unloaded: asks it to destroy this window's content and forgets the handle, so nothing is left
+        /// Before the core is unloaded: takes its content out of the pane and asks it to destroy it, so nothing is left
         /// pointing at a window of an unloaded AppDomain. The next core's content is embedded by <see cref="EmbedContent"/>.
         /// </summary>
         internal void ReleaseContent(global::XLEdge.Contracts.IXLEdgeAddin core)
@@ -85,18 +68,13 @@ namespace XLEdge
             _content = IntPtr.Zero;
             try
             {
-                if (content != IntPtr.Zero && IsWindow(content)) SetParent(content, IntPtr.Zero);
+                PaneEmbedding.Release(content);
                 core?.CloseTaskPaneContent(ExcelWindowHandle);
             }
             catch (Exception ex)
             {
                 global::XLEdge.AddinModule.CurrentInstance?.LogError("XLEdgeTaskPane.ReleaseContent failed.", ex);
             }
-        }
-
-        private void ResizeContent()
-        {
-            if (_content != IntPtr.Zero) MoveWindow(_content, 0, 0, ClientSize.Width, ClientSize.Height, true);
         }
 
         private void XLEdgeTaskPane_ADXBeforeTaskPaneShow(object sender, ADXBeforeTaskPaneShowEventArgs e)
@@ -107,7 +85,7 @@ namespace XLEdge
         private void XLEdgeTaskPane_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
         {
             ShowRequested = false;
-            if (_content != IntPtr.Zero && !IsWindow(_content)) _content = IntPtr.Zero;
+            if (!PaneEmbedding.IsAlive(_content)) _content = IntPtr.Zero;
             if (_content == IntPtr.Zero) EmbedContent();
             try { global::XLEdge.AddinModule.CurrentInstance?.Host?.Addin?.OnTaskPaneShown(ExcelWindowHandle); }
             catch (Exception ex) { global::XLEdge.AddinModule.CurrentInstance?.LogError("XLEdgeTaskPane: OnTaskPaneShown failed.", ex); }
@@ -117,37 +95,6 @@ namespace XLEdge
         {
             e.CloseForm = false;
             Visible = false;
-        }
-
-        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
-        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
-
-        [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
-        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
-
-        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
-        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
-        [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
-        private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool IsWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool MoveWindow(IntPtr hWnd, int x, int y, int width, int height, bool repaint);
-
-        private static IntPtr GetWindowLongPtr(IntPtr hWnd, int index) =>
-            IntPtr.Size == 8 ? GetWindowLongPtr64(hWnd, index) : new IntPtr(GetWindowLong32(hWnd, index));
-
-        private static void SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value)
-        {
-            if (IntPtr.Size == 8) SetWindowLongPtr64(hWnd, index, value);
-            else SetWindowLong32(hWnd, index, value.ToInt32());
         }
     }
 }
