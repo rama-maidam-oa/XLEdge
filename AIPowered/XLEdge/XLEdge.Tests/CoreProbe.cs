@@ -35,6 +35,31 @@ namespace XLEdge.Tests
             return Unwrap(() => property.GetValue(null));
         }
 
+        /// <summary>Reads or (with one argument) sets a property of a singleton reached through a static member (e.g. Instance).</summary>
+        public object OnSingleton(string typeName, string instanceMember, string property, params object[] args)
+        {
+            object instance = CallStatic(typeName, instanceMember);
+            PropertyInfo info = instance.GetType().GetProperty(property, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                                ?? throw new MissingMemberException(typeName, property);
+            if (args != null && args.Length == 1) { Unwrap(() => { info.SetValue(instance, args[0]); return null; }); return null; }
+            return Unwrap(() => info.GetValue(instance));
+        }
+
+        /// <summary>Calls LogUtility.LogException with an exception thrown (so it has a stack trace) inside this domain.</summary>
+        public void LogThrownException(string message, string context)
+        {
+            try { throw new InvalidOperationException(message, new ArgumentException("inner " + message)); }
+            catch (InvalidOperationException ex) { CallStatic("XLEdge.Utilities.LogUtility", "LogException", ex, context); }
+        }
+
+        /// <summary>Opens and closes a LogUtility.LogScope inside this domain, logging one debug line in it.</summary>
+        public void RunInLogScope(string scopeName, string line)
+        {
+            Type scopeType = CoreType("XLEdge.Utilities.LogUtility+LogScope");
+            using ((IDisposable)Activator.CreateInstance(scopeType, scopeName))
+                CallStatic("XLEdge.Utilities.LogUtility", "LogDebug", line);
+        }
+
         /// <summary>The core's view of its Excel object: is it a COM object of this domain, or a remoting proxy?</summary>
         public string DescribeExcel()
         {

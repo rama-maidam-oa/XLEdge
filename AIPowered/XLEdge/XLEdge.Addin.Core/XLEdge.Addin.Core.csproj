@@ -42,6 +42,14 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Microsoft.Office.Interop.Excel">
+      <HintPath>..\XLEdge\Interops\Microsoft.Office.Interop.Excel.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Office">
+      <HintPath>..\XLEdge\Interops\Office.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="Microsoft.Web.WebView2.Core, Version=1.0.4022.49, Culture=neutral, PublicKeyToken=2a8ab48044d2601e, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Web.WebView2.1.0.4022.49\lib\net462\Microsoft.Web.WebView2.Core.dll</HintPath>
     </Reference>
@@ -59,6 +67,10 @@
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
     <Compile Include="Infrastructure\CoreServices.cs" />
+    <Compile Include="Utilities\LogUtility.cs" />
+    <Compile Include="XLApp.cs" />
+    <Compile Include="XLEdgeAppPaths.cs" />
+    <Compile Include="XLEdgeAppState.cs" />
     <Compile Include="Pane\PaneContentWindow.cs">
       <SubType>Form</SubType>
     </Compile>

@@ -34,6 +34,12 @@ namespace XLEdge.Addin.Core.Infrastructure
             }
         }
 
+        /// <summary>Drops the core's Excel RCW (a disconnected one); the next <see cref="ExcelApp"/> asks the shell again.</summary>
+        public static void ResetExcel()
+        {
+            lock (Gate) ReleaseExcel();
+        }
+
         public static void Initialize(IXLEdgeContext context)
         {
             lock (Gate)
