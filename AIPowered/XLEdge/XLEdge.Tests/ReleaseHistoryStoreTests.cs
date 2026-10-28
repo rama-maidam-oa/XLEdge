@@ -96,6 +96,31 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Write_TargetBrieflyOpenElsewhere_StillSucceeds()
+        {
+            // Antivirus / indexers open a freshly written file for a moment; File.Replace then fails with
+            // "Unable to remove the file to be replaced" unless the write is retried.
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json");
+                ReleaseHistoryStore.Append(file, Entry("v1"));
+                var reader = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+                var closer = new Thread(() => { Thread.Sleep(150); reader.Dispose(); });
+                closer.Start();
+                try
+                {
+                    ReleaseHistoryStore.Append(file, Entry("v2"));
+                }
+                finally
+                {
+                    closer.Join();
+                }
+                Assert.AreEqual(2, ReleaseHistoryStore.ReadAll(file).Count);
+                Assert.IsFalse(File.Exists(file + ".tmp"));
+            }
+        }
+
+        [TestMethod]
         public void Reconcile_DropsMissingFolderAndFolderWithoutDll_RewritesOnlyOnChange()
         {
             using (var t = new TempFolder())

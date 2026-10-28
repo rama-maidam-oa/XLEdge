@@ -28,6 +28,8 @@ namespace XLEdge.Shared
     {
         private const string LockNamePrefix = @"Global\XLEdge_ReleaseHistory_";
         private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(10);
+        private const int ReplaceAttempts = 10;
+        private static readonly TimeSpan ReplaceRetryDelay = TimeSpan.FromMilliseconds(100);
         private static readonly JsonSerializerOptions ReadOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         private static readonly JsonSerializerOptions WriteOptions = new JsonSerializerOptions { WriteIndented = true };
 
@@ -208,8 +210,22 @@ namespace XLEdge.Shared
 
             string tmp = file + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(entries, WriteOptions));
-            if (File.Exists(file)) File.Replace(tmp, file, null);
-            else File.Move(tmp, file);
+
+            // Antivirus and indexers open a freshly written file for a moment; File.Replace then fails with a
+            // sharing violation. Retry briefly before giving up (the temp file is still complete on failure).
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(file)) File.Replace(tmp, file, null);
+                    else File.Move(tmp, file);
+                    return;
+                }
+                catch (IOException) when (attempt < ReplaceAttempts)
+                {
+                    Thread.Sleep(ReplaceRetryDelay);
+                }
+            }
         }
     }
 }
