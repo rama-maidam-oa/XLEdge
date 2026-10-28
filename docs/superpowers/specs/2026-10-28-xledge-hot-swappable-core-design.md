@@ -129,6 +129,15 @@ WebView2 + DPI + multiple Excel windows. **Phase 1 is a 2-day spike** to prove i
 WebView2 stays in the shell pane and forwards strings to the core (`OnWebCommand`, `OnWebSourceChanged`,
 `IPaneHost`), recorded as a deviation in §6.
 
+**Spike verdict (2026-10-28): pass — the fallback is not needed.** Automated (CorePaneTests, PaneEmbeddingTests,
+PaneFocusTests) and in Excel 365 64-bit: the pane opens with the core's page, keyboard input reaches the WebView2, the real
+login page loads, the pane resizes, each Excel window gets its own pane, Version History rollback and an offline Reload
+with the pane open each take about a second and re-embed the page, and closing Excel leaves no EXCEL.EXE. Found and fixed
+in Excel: a click on a cell did not take the keyboard back from the WebView2 (shell `PaneFocus`). Only Excel's own window
+is ever in the taskbar/Alt-Tab; the windows seen opening and closing around the pane are Add-in Express's (its resize bar
+and hidden helpers). Not checked: a second monitor with another scale (code path covered by `CreateUnderDpiOf`), 32-bit
+Excel.
+
 ## 5. Plan and effort
 
 | Phase | Work | Days |
