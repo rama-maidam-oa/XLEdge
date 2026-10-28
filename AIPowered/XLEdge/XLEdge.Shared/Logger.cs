@@ -37,8 +37,16 @@ namespace XLEdge.Shared
         private static readonly TimeSpan SafetyNetPeriod = TimeSpan.FromSeconds(15);
         private const string LockNamePrefix = @"Global\XLEdge_Log_";
 
-        /// <summary>How long a write waits for another process's write; after that it writes anyway (never freezes Excel).</summary>
+        /// <summary>How long a write waits for another process's write; after that it writes anyway.</summary>
         internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// After a timed-out wait, writes only take the lock when it is free at once, for this long: a process stuck holding it
+        /// costs one wait, not one per line (Excel's thread would otherwise freeze for LockTimeout on every log call).
+        /// </summary>
+        internal static readonly TimeSpan LockBackoff = TimeSpan.FromSeconds(30);
+
+        private long _lockBackoffUntilUtcTicks;
 
         private readonly IXLEdgeContext _context;
         private readonly string _logsFolder;
@@ -74,8 +82,9 @@ namespace XLEdge.Shared
             if (context.Paths == null || string.IsNullOrWhiteSpace(context.Paths.Logs))
                 throw new ArgumentException("The context has no logs folder (Paths.Logs).", nameof(context));
             _logsFolder = context.Paths.Logs;
+            // Any failure (an unusable path, no rights to the Global namespace) only means writes go unprotected.
             try { _writeLock = new Mutex(false, LockName(_logsFolder)); }
-            catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException || ex is WaitHandleCannotBeOpenedException) { _writeLock = null; }
+            catch (Exception) { _writeLock = null; }
             try
             {
                 Directory.CreateDirectory(_logsFolder);
@@ -355,7 +364,13 @@ namespace XLEdge.Shared
             bool acquired = false;
             try
             {
-                try { acquired = _writeLock?.WaitOne(LockTimeout) ?? false; }
+                bool backingOff = DateTime.UtcNow.Ticks < Interlocked.Read(ref _lockBackoffUntilUtcTicks);
+                try
+                {
+                    acquired = _writeLock?.WaitOne(backingOff ? TimeSpan.Zero : LockTimeout) ?? false;
+                    if (!acquired && !backingOff && _writeLock != null)
+                        Interlocked.Exchange(ref _lockBackoffUntilUtcTicks, DateTime.UtcNow.Add(LockBackoff).Ticks);
+                }
                 catch (AbandonedMutexException) { acquired = true; }
                 catch (ObjectDisposedException) { acquired = false; }
                 _nlog.Debug(text);

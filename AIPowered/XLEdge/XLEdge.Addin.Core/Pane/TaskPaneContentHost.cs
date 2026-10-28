@@ -25,14 +25,30 @@ namespace XLEdge.Addin.Core.Pane
 
         public int Count => _windows.Count;
 
-        /// <summary>The content window for <paramref name="excelWindow"/> (created and started on first use).</summary>
+        /// <summary>
+        /// The content window for <paramref name="excelWindow"/> (created and started on first use). Zero (the shell could not
+        /// read the Excel window) gets nothing: a shared Zero key would hand one pane's content to another.
+        /// </summary>
         public IntPtr Create(IntPtr excelWindow)
         {
-            if (_windows.TryGetValue(excelWindow, out PaneContentWindow existing) && !existing.IsDisposed && existing.IsHandleCreated)
-                return existing.Handle;
+            if (excelWindow == IntPtr.Zero) return IntPtr.Zero;
+            if (_windows.TryGetValue(excelWindow, out PaneContentWindow existing))
+            {
+                if (!existing.IsDisposed && existing.IsHandleCreated) return existing.Handle;
+                // Its pane was destroyed (Excel window closed) and took the child window with it: the form and its WebView2
+                // are still alive here, so dispose them before replacing them.
+                _windows.Remove(excelWindow);
+                existing.Dispose();
+                Log(l => l.LogDebug("PaneContent: discarded content whose window was destroyed."));
+            }
 
             var window = new PaneContentWindow(_context, Environment);
-            window.Show();
+            try { window.Show(); }
+            catch
+            {
+                window.Dispose();
+                throw;
+            }
             _windows[excelWindow] = window;
             window.Start();
             return window.Handle;
@@ -58,11 +74,29 @@ namespace XLEdge.Addin.Core.Pane
         private Task<CoreWebView2Environment> Environment()
         {
             if (_environment == null || _environment.IsFaulted || _environment.IsCanceled)
-            {
-                var options = new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
-                _environment = CoreWebView2Environment.CreateAsync(null, _context.Paths.BrowserDataPath, options);
-            }
+                _environment = CoreWebView2Environment.CreateAsync(null, _context.Paths.BrowserDataPath, EnvironmentOptions());
             return _environment;
+        }
+
+        /// <summary>
+        /// Today's XLEdge options, and they must stay exactly these in every core version: a reloaded or rolled-back core, or a
+        /// second Excel running another core, shares the user data folder and its browser process, and a different set of
+        /// options fails with 0x8007139F.
+        /// </summary>
+        internal static CoreWebView2EnvironmentOptions EnvironmentOptions() =>
+            new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
+
+        private void Log(Action<ILogger> write)
+        {
+            try
+            {
+                ILogger logger = _context.Logger;
+                if (logger != null) write(logger);
+            }
+            catch (Exception)
+            {
+                // Logging must never break the pane.
+            }
         }
     }
 }

@@ -78,6 +78,61 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Embed_ParentGone_ReturnsFalse_AndLeavesTheContentAsItWas()
+        {
+            WithPaneAndContent((pane, content) =>
+            {
+                IntPtr deadParent;
+                using (var gone = new Form()) { deadParent = gone.Handle; }
+                long before = Win32Test.Style(content.Handle);
+                Assert.IsFalse(PaneEmbedding.Embed(content.Handle, deadParent, 100, 100, out _));
+                Assert.AreEqual(before, Win32Test.Style(content.Handle), "a failed embed must not leave a parentless WS_CHILD");
+            });
+        }
+
+        [TestMethod]
+        public void CreateUnderDpiOf_GivesTheContentThePanesDpiAwareness_SoItCanBeEmbedded()
+        {
+            // Office switches the thread's DPI awareness context; Windows refuses to parent a window into one of another
+            // awareness (in-process, without mixed hosting). The core's window is therefore created under the pane's context.
+            Win32Test.OnSta(() =>
+            {
+                IntPtr previous = Win32Test.SetThreadDpiAwarenessContext(Win32Test.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+                Assert.AreNotEqual(IntPtr.Zero, previous, "per-thread DPI awareness needs Windows 10 1607 or later");
+                try
+                {
+                    using (var pane = new Form { Width = 400, Height = 600 })
+                    {
+                        pane.Show();
+                        Win32Test.SetThreadDpiAwarenessContext(Win32Test.DPI_AWARENESS_CONTEXT_UNAWARE);
+
+                        using (var mismatched = new Form())
+                        {
+                            mismatched.Show();
+                            long before = Win32Test.Style(mismatched.Handle);
+                            Assert.IsFalse(PaneEmbedding.Embed(mismatched.Handle, pane.Handle, 100, 100, out int refused), "precondition: a mismatched window cannot be embedded");
+                            Assert.AreNotEqual(0, refused, "the error of the refused SetParent is reported (for the log)");
+                            Assert.AreEqual(before, Win32Test.Style(mismatched.Handle), "a refused embed must not leave a parentless WS_CHILD");
+                        }
+
+                        Form matched = null;
+                        IntPtr handle = PaneEmbedding.CreateUnderDpiOf(pane.Handle, () => { matched = new Form(); matched.Show(); return matched.Handle; });
+                        using (matched)
+                        {
+                            Assert.IsTrue(PaneEmbedding.Embed(handle, pane.Handle, 100, 100, out int error), "error " + error);
+                            Assert.IsTrue(Win32Test.AreDpiAwarenessContextsEqual(Win32Test.GetThreadDpiAwarenessContext(), Win32Test.DPI_AWARENESS_CONTEXT_UNAWARE),
+                                "the thread's own context is restored");
+                        }
+                    }
+                }
+                finally
+                {
+                    Win32Test.SetThreadDpiAwarenessContext(previous);
+                }
+            });
+        }
+
+        [TestMethod]
         public void Embed_DeadHandle_ReturnsFalse()
         {
             WithPaneAndContent((pane, content) =>

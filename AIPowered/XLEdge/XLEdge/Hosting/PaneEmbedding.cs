@@ -21,16 +21,58 @@ namespace XLEdge.Hosting
         public static bool IsAlive(IntPtr content) => content != IntPtr.Zero && IsWindow(content);
 
         /// <summary>Re-parents <paramref name="content"/> into <paramref name="parent"/> as a borderless child of that size.</summary>
-        public static bool Embed(IntPtr content, IntPtr parent, int width, int height)
+        public static bool Embed(IntPtr content, IntPtr parent, int width, int height) => Embed(content, parent, width, height, out _);
+
+        /// <summary>
+        /// As <see cref="Embed(IntPtr, IntPtr, int, int)"/>; on failure the content keeps its original styles (never a parentless
+        /// WS_CHILD) and <paramref name="win32Error"/> holds the error of the refused SetParent - typically ERROR_INVALID_STATE
+        /// when the two windows have different DPI awareness (see <see cref="CreateUnderDpiOf"/>).
+        /// </summary>
+        public static bool Embed(IntPtr content, IntPtr parent, int width, int height, out int win32Error)
         {
-            if (!IsAlive(content) || parent == IntPtr.Zero) return false;
-            long style = GetWindowLongPtr(content, GWL_STYLE).ToInt64();
-            style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MAXIMIZEBOX | WS_MINIMIZEBOX);
+            win32Error = 0;
+            if (!IsAlive(content) || !IsAlive(parent)) return false;
+            long original = GetWindowLongPtr(content, GWL_STYLE).ToInt64();
+            long style = original & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MAXIMIZEBOX | WS_MINIMIZEBOX);
             style |= WS_CHILD;
             SetWindowLongPtr(content, GWL_STYLE, new IntPtr(style));
             SetParent(content, parent);
+            if (GetParent(content) != parent)
+            {
+                win32Error = Marshal.GetLastWin32Error();
+                if (win32Error == 0) win32Error = -1;
+                SetWindowLongPtr(content, GWL_STYLE, new IntPtr(original));
+                return false;
+            }
             Resize(content, width, height);
             return true;
+        }
+
+        /// <summary>
+        /// Runs <paramref name="create"/> (the call that makes the core create its content window) under the DPI awareness
+        /// context of <paramref name="pane"/>, so the new window can be parented into it: Office switches the thread's context,
+        /// and Windows refuses SetParent between windows of different awareness. Before Windows 10 1607 it just runs it.
+        /// </summary>
+        public static IntPtr CreateUnderDpiOf(IntPtr pane, Func<IntPtr> create)
+        {
+            IntPtr previous = IntPtr.Zero;
+            try
+            {
+                IntPtr context = IsAlive(pane) ? GetWindowDpiAwarenessContext(pane) : IntPtr.Zero;
+                if (context != IntPtr.Zero) previous = SetThreadDpiAwarenessContext(context);
+            }
+            catch (EntryPointNotFoundException)
+            {
+                previous = IntPtr.Zero;
+            }
+            try
+            {
+                return create();
+            }
+            finally
+            {
+                if (previous != IntPtr.Zero) SetThreadDpiAwarenessContext(previous);
+            }
         }
 
         public static void Resize(IntPtr content, int width, int height)
@@ -73,6 +115,15 @@ namespace XLEdge.Hosting
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetParent(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindowDpiAwarenessContext(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

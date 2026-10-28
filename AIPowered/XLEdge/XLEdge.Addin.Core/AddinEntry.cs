@@ -56,6 +56,7 @@ namespace XLEdge.Addin.Core
             {
                 // Every window of this AppDomain goes before the domain is unloaded.
                 _panes?.CloseAll();
+                _panes = null;
                 Logger?.LogInfo("AddinEntry.Shutdown: XLEdge core shut down.");
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Shutdown"); }

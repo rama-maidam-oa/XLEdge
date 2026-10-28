@@ -135,6 +135,12 @@ namespace XLEdge.Tests
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetActiveWindow();
+
+        public static readonly IntPtr DPI_AWARENESS_CONTEXT_UNAWARE = new IntPtr(-1);
+        public static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+        [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+        [DllImport("user32.dll")] public static extern IntPtr GetThreadDpiAwarenessContext();
+        [DllImport("user32.dll")] public static extern bool AreDpiAwarenessContextsEqual(IntPtr a, IntPtr b);
         [DllImport("user32.dll")] public static extern bool DestroyWindow(IntPtr hWnd);
         [DllImport("kernel32.dll")] private static extern int GetCurrentThreadId();
         [DllImport("user32.dll")] private static extern bool EnumThreadWindows(int threadId, EnumWindowsProc callback, IntPtr lParam);

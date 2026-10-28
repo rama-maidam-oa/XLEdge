@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using XLEdge.Contracts;
 using XLEdge.Shared;
 
 namespace XLEdge.Tests
@@ -205,10 +206,58 @@ namespace XLEdge.Tests
             using (var held = new Mutex(false, Logger.LockName(f.Paths.Logs)))
             {
                 Assert.IsTrue(held.WaitOne(0));
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 var write = System.Threading.Tasks.Task.Run(() => f.Logger.LogInfo("written without the lock"));
                 Assert.IsTrue(write.Wait(Logger.LockTimeout + TimeSpan.FromSeconds(3)));
+                Assert.IsTrue(clock.Elapsed >= Logger.LockTimeout - TimeSpan.FromMilliseconds(200), $"waited only {clock.Elapsed} for the lock");
                 held.ReleaseMutex();
                 StringAssert.Contains(f.Text(), "| written without the lock");
+            }
+        }
+
+        [TestMethod]
+        public void Writes_AfterATimeout_DoNotWaitAgainForAWhile()
+        {
+            // A stuck process holding the lock costs one wait, not one per line: an action logging 100 lines must not freeze
+            // Excel for minutes.
+            using (var f = new Fixture())
+            using (var held = new Mutex(false, Logger.LockName(f.Paths.Logs)))
+            {
+                Assert.IsTrue(held.WaitOne(0));
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var writes = System.Threading.Tasks.Task.Run(() => { for (int i = 0; i < 5; i++) f.Logger.LogInfo("line " + i); });
+                Assert.IsTrue(writes.Wait(TimeSpan.FromSeconds(30)));
+                Assert.IsTrue(clock.Elapsed < Logger.LockTimeout + Logger.LockTimeout, $"5 writes took {clock.Elapsed}");
+                held.ReleaseMutex();
+                Assert.AreEqual(5, f.Lines().Count(l => Regex.IsMatch(l, @"\| line \d$")));
+            }
+        }
+
+        private sealed class BadLogsPaths : IPathProvider
+        {
+            public string Root => @"C:\bad|folder";
+            public string Logs => @"C:\bad|folder\Logs";
+            public string Temp => Root;
+            public string BrowserDataPath => Root;
+            public string UrlsFile => Root;
+            public string VersionsPath => Root;
+            public string SharedDependenciesPath => Root;
+            public string ManifestFile => Root;
+            public string ManifestDirectory => Root;
+            public string ReleaseHistoryFile => Root;
+            public string LatestVersion => null;
+            public string LatestReleaseDate => null;
+            public void Ensure() { }
+            public void Refresh() { }
+        }
+
+        [TestMethod]
+        public void Ctor_UnusableLogsFolder_DoesNotThrow()
+        {
+            // The add-in must start even when the log cannot be written: the failure is reported, never thrown.
+            using (var logger = new Logger(new FakeContext(new BadLogsPaths())))
+            {
+                logger.LogInfo("goes nowhere");
             }
         }
 

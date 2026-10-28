@@ -13,6 +13,9 @@ namespace XLEdge
     public partial class XLEdgeTaskPane : ADXExcelTaskPane
     {
         private IntPtr _content;
+        // The Excel window handle the content was asked for: the core's key for it. Kept, not re-read through WindowObj at
+        // teardown (WindowObj may already be gone, and a different value would close another pane's content).
+        private IntPtr _key;
 
         /// <summary>Set by the shell right before it shows a pane; Excel's own attempts to restore a pane are ignored.</summary>
         internal static bool ShowRequested { get; set; }
@@ -21,8 +24,28 @@ namespace XLEdge
         {
             InitializeComponent();
             HandleCreated += (s, e) => EmbedContent();
-            HandleDestroyed += (s, e) => _content = IntPtr.Zero;
+            HandleDestroyed += (s, e) => OnPaneDestroyed();
             Resize += (s, e) => PaneEmbedding.Resize(_content, ClientSize.Width, ClientSize.Height);
+        }
+
+        /// <summary>
+        /// The pane's window is going (its Excel window closed, or ADX recreates it): take the content out first - Windows
+        /// would destroy it as a child - and let the core dispose it with its WebView2; otherwise it stays alive in the core.
+        /// </summary>
+        private void OnPaneDestroyed()
+        {
+            IntPtr content = _content, key = _key;
+            _content = IntPtr.Zero;
+            _key = IntPtr.Zero;
+            try
+            {
+                PaneEmbedding.Release(content);
+                if (key != IntPtr.Zero) global::XLEdge.AddinModule.CurrentInstance?.Host?.Addin?.CloseTaskPaneContent(key);
+            }
+            catch (Exception ex)
+            {
+                global::XLEdge.AddinModule.CurrentInstance?.LogError("XLEdgeTaskPane: closing the content of a destroyed pane failed.", ex);
+            }
         }
 
         /// <summary>Handle of the Excel window this pane belongs to.</summary>
@@ -49,8 +72,21 @@ namespace XLEdge
             {
                 var addin = global::XLEdge.AddinModule.CurrentInstance?.Host?.Addin;
                 if (addin == null || !IsHandleCreated) return;
-                IntPtr content = addin.CreateTaskPaneContent(ExcelWindowHandle);
-                if (PaneEmbedding.Embed(content, Handle, ClientSize.Width, ClientSize.Height)) _content = content;
+                // Not readable yet (WindowObj unset): AfterTaskPaneShow tries again. A Zero key would be shared by every pane.
+                IntPtr key = ExcelWindowHandle;
+                if (key == IntPtr.Zero) return;
+                // Created under this pane's DPI awareness, or Windows refuses to parent it here.
+                IntPtr content = PaneEmbedding.CreateUnderDpiOf(Handle, () => addin.CreateTaskPaneContent(key));
+                if (PaneEmbedding.Embed(content, Handle, ClientSize.Width, ClientSize.Height, out int error))
+                {
+                    _content = content;
+                    _key = key;
+                }
+                else if (content != IntPtr.Zero)
+                {
+                    global::XLEdge.AddinModule.CurrentInstance?.LogError($"XLEdgeTaskPane: the content could not be placed in the pane (Win32 error {error}).", null);
+                    addin.CloseTaskPaneContent(key);
+                }
             }
             catch (Exception ex)
             {
@@ -64,12 +100,13 @@ namespace XLEdge
         /// </summary>
         internal void ReleaseContent(global::XLEdge.Contracts.IXLEdgeAddin core)
         {
-            IntPtr content = _content;
+            IntPtr content = _content, key = _key;
             _content = IntPtr.Zero;
+            _key = IntPtr.Zero;
             try
             {
                 PaneEmbedding.Release(content);
-                core?.CloseTaskPaneContent(ExcelWindowHandle);
+                if (key != IntPtr.Zero) core?.CloseTaskPaneContent(key);
             }
             catch (Exception ex)
             {

@@ -192,6 +192,16 @@ Open items for Stage 0e (from the Stage 0a review):
   `XLEdge.Contracts.dll` and `XLEdge.Shared.dll` but no loader.
 - Reload order: EndReleaseSession → core Shutdown → Unload → resolve → set Version/ReleaseDate/ActiveFolderName → Load →
   RememberLoaded. A staged reinstall of the just-unloaded release is accepted (already-extracted folder).
+- From Stage 1 (pane spike): the pane content is a **WinForms** `WebView2` (1.0.4022.49, today's control and version) in a
+  borderless WinForms `Form`, not the WPF `WebView2` §4 names — today's XLEdge pane moved to WinForms on 2026-08-20. One
+  content window per Excel window, keyed by that window's handle (never Zero), created under the pane's DPI awareness
+  context (Windows refuses SetParent across awareness contexts), destroyed when its pane is destroyed. Proven by tests
+  (CorePaneTests): after an unload (AppDomain.Unload on a pool thread while Excel's thread waits) no managed window and no
+  browser process of the core is left, including when the WebView2 is still starting.
+- The WebView2 environment options (`AllowSingleSignOnUsingOSPrimaryAccount = true`, nothing else) and the user data folder
+  must be identical in every core version: reloaded, rolled-back and other-process cores share them (else `0x8007139F`).
+- Stage 3: a page can navigate anywhere, and then any origin can set `document.title` — act on an `xledge:` command only
+  when `CoreWebView2.Source` is the instance's own origin.
 
 Not adopted (same as GLSense today): Authenticode check of the core DLL at load — SHA256 vs manifest only.
 Worth adding to both later.

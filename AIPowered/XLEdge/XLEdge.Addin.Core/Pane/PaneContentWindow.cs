@@ -25,6 +25,7 @@ namespace XLEdge.Addin.Core.Pane
         private readonly Func<Task<CoreWebView2Environment>> _environment;
         private readonly WebView2 _web;
         private bool _started;
+        private bool _handleCreatedOnce;
 
         public PaneContentWindow(IXLEdgeContext context, Func<Task<CoreWebView2Environment>> environment)
         {
@@ -73,17 +74,40 @@ namespace XLEdge.Addin.Core.Pane
                 if (IsDisposed) return;
                 CoreWebView2 core = _web.CoreWebView2;
                 core.Settings.AreDevToolsEnabled = true;
-                core.NavigationCompleted += (s, e) => Log(l => l.LogDebug(LogPrefix + $"navigation completed (success={e.IsSuccess}, status={e.WebErrorStatus})."));
-                core.DocumentTitleChanged += (s, e) => OnTitle(core.DocumentTitle);
-                core.ProcessFailed += (s, e) => Log(l => l.LogError(LogPrefix + $"WebView2 process failed: {e.ProcessFailedKind} ({e.Reason}).", null));
+                // WebView2 raises these on Excel's thread from native code: each handler catches its own exceptions.
+                core.NavigationCompleted += (s, e) => Guard("NavigationCompleted", () =>
+                    Log(l => l.LogDebug(LogPrefix + $"navigation completed (success={e.IsSuccess}, status={e.WebErrorStatus}).")));
+                core.DocumentTitleChanged += (s, e) => Guard("DocumentTitleChanged", () => OnTitle(core.DocumentTitle));
+                core.ProcessFailed += (s, e) => Guard("ProcessFailed", () =>
+                    Log(l => l.LogError(LogPrefix + $"WebView2 process failed: {e.ProcessFailedKind} ({e.Reason}).", null)));
                 Log(l => l.LogDebug(LogPrefix + $"WebView2 {environment.BrowserVersionString} ready."));
                 core.NavigateToString(SpikePage());
             }
             catch (Exception ex)
             {
+                // Closed while starting (reload, Excel closing, pane closed) is not a failure.
+                if (IsDisposed || Disposing) return;
                 // Typically the WebView2 Runtime is missing: the pane stays empty, Excel is unaffected.
                 Log(l => l.LogError(LogPrefix + "the WebView2 could not be started.", ex.ToString()));
             }
+        }
+
+        private void Guard(string handler, Action action)
+        {
+            try { action(); }
+            catch (Exception ex) { Log(l => l.LogError(LogPrefix + $"the {handler} handler failed.", ex.ToString())); }
+        }
+
+        /// <summary>
+        /// The shell made this form's window a child of its pane from outside WinForms. A property that makes WinForms recreate
+        /// the handle (ShowInTaskbar, FormBorderStyle, Opacity, TopMost, RightToLeft...) would create a new, detached, visible
+        /// top-level window - so none is changed after creation; a second handle is logged so it cannot go unnoticed.
+        /// </summary>
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            if (_handleCreatedOnce) Log(l => l.LogWarn(LogPrefix + "the content window was recreated; it is no longer in its pane."));
+            _handleCreatedOnce = true;
+            base.OnHandleCreated(e);
         }
 
         private void OnTitle(string title)
