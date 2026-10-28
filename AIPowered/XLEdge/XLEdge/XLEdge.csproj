@@ -121,10 +121,14 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Hosting\CoreHost.cs" />
+    <Compile Include="Hosting\HostSeams.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="..\XLEdgeSharedVersion.cs">
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>
+    <Compile Include="RibbonControlIds.cs" />
+    <Compile Include="XLEdgeContext.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="XLEdge.app.manifest" />

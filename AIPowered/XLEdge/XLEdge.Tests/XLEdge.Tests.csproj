@@ -55,6 +55,8 @@
   <ItemGroup>
     <Compile Include="AddinDomainLoaderTests.cs" />
     <Compile Include="ContractSurfaceTests.cs" />
+    <Compile Include="CoreHostTests.cs" />
+    <Compile Include="XLEdgeContextTests.cs" />
     <Compile Include="CorePackageTests.cs" />
     <Compile Include="LoaderBasicsTests.cs" />
     <Compile Include="RecordingLogger.cs" />
@@ -88,6 +90,10 @@
       <Project>{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}</Project>
       <Name>XLEdge.Addin.Core</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\XLEdge\XLEdge.csproj">
+      <Project>{98093E3C-A05D-4EE1-BF6D-AC742BE9F782}</Project>
+      <Name>XLEdge</Name>
     </ProjectReference>
     <ProjectReference Include="..\XLEdge.Shared\XLEdge.Shared.csproj">
       <Project>{29E7F086-11DD-40A5-B5B1-8E8358D4F6C3}</Project>
