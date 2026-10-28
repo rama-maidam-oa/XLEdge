@@ -44,8 +44,14 @@ namespace XLEdge.Contracts
         /// <summary>Destroys the task pane content created for that Excel window (window closed, logoff, or before a reload).</summary>
         void CloseTaskPaneContent(IntPtr excelWindowHandle);
 
+        /// <summary>The task pane of that Excel window has just been shown (ADX AfterTaskPaneShow), so the core can refresh its content.</summary>
+        void OnTaskPaneShown(IntPtr excelWindowHandle);
+
         /// <summary>GLSense logged in and passed its session to XLEdge (the shell's public InvokedFromGLSense COM method forwards here).</summary>
         void OnLoginFromGLSense(string instanceName, string loginUrl, string token, string userName, bool hasXLEdgePermission);
+
+        /// <summary>GLSense logged out and asks XLEdge to log out too (the shell's public LogoffFromAddin COM method forwards here).</summary>
+        void OnLogoutFromGLSense();
 
         LoginInfo GetLoginInfo();
 

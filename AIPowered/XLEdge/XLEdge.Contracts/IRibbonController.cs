@@ -18,7 +18,9 @@ namespace XLEdge.Contracts
         void SetControlVisible(string controlId, bool visible);
         void SetControlPressed(string controlId, bool pressed);
         bool GetControlPressed(string controlId);
+        bool GetControlVisible(string controlId);
         void SetControlLabel(string controlId, string label);
+        string GetControlLabel(string controlId);
         void EnableControls(string[] controlIds);
         void DisableControls(string[] controlIds);
 
@@ -30,5 +32,8 @@ namespace XLEdge.Contracts
         void ToggleTaskPane();
         void HideAllTaskPanes();
         bool IsTaskPaneVisible();
+
+        /// <summary>Sets the title of the XLEdge task panes (shown above the pane content).</summary>
+        void SetTaskPaneCaption(string caption);
     }
 }
