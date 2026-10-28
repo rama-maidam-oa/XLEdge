@@ -45,6 +45,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ContractInfo.cs" />
     <Compile Include="ILogger.cs" />
     <Compile Include="IPathProvider.cs" />
     <Compile Include="IRibbonController.cs" />

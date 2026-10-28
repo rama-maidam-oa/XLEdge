@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 
 namespace XLEdge.Contracts
 {
@@ -25,9 +24,6 @@ namespace XLEdge.Contracts
 
         /// <summary>Marks the end of a loaded core release in the log (shutdown and before a reload).</summary>
         void EndReleaseSession(string version, string releaseDate);
-
-        void LogMethodEntry([CallerMemberName] string methodName = "");
-        void LogMethodExit([CallerMemberName] string methodName = "");
 
         /// <summary>
         /// Opens a buffered log scope for one user action; disposing it writes everything logged

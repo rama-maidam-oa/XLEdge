@@ -28,6 +28,7 @@ namespace XLEdge.Contracts
         void InvalidateAll();
 
         // Task pane visibility is shell state (ADX task pane instances), one pane per Excel window.
+        // ShowTaskPane, ToggleTaskPane and IsTaskPaneVisible act on the active Excel window's pane.
         void ShowTaskPane();
         void ToggleTaskPane();
         void HideAllTaskPanes();

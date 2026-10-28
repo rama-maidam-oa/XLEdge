@@ -25,5 +25,8 @@ namespace XLEdge.Contracts
 
         /// <summary>Release zip name, "{FolderName}.zip".</summary>
         public string FileName { get; set; }
+
+        /// <summary>ContractInfo.Version the release was built against ("contractVersion"); 0 when unknown.</summary>
+        public int ContractVersion { get; set; }
     }
 }

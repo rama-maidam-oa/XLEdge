@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace XLEdge.Contracts
 {
     /// <summary>
@@ -17,8 +15,6 @@ namespace XLEdge.Contracts
         /// <summary>WebView2 user data folder.</summary>
         string BrowserDataPath { get; }
 
-        string LoginBrowserPath { get; }
-
         /// <summary>ORBIT_URLS.xml, the server list (shared with GLSense).</summary>
         string UrlsFile { get; }
 
@@ -29,22 +25,19 @@ namespace XLEdge.Contracts
         string ManifestDirectory { get; }
         string ReleaseHistoryFile { get; }
 
-        // Latest entry of manifest.json
+        /// <summary>
+        /// Version of the highest entry in the staged manifest.json, or null when there is none.
+        /// Describes what is staged for installation, not what is installed: the installed releases
+        /// are the release history entries whose folders exist.
+        /// </summary>
         string LatestVersion { get; }
+
         string LatestReleaseDate { get; }
-        string LatestDownloadUrl { get; }
-        string LatestChecksum { get; }
-        string LatestNotes { get; }
-        bool LatestMandatory { get; }
-        IReadOnlyList<VersionInfo> AllVersions { get; }
 
         /// <summary>Creates any missing folder.</summary>
         void Ensure();
 
-        /// <summary>Re-reads manifest.json and refreshes the Latest* properties.</summary>
+        /// <summary>Re-reads manifest.json and refreshes LatestVersion / LatestReleaseDate.</summary>
         void Refresh();
-
-        /// <summary>Overwrites manifest.json with this single entry, then calls Refresh.</summary>
-        void WriteManifest(VersionInfo info);
     }
 }

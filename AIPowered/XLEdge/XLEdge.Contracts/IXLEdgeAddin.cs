@@ -26,8 +26,8 @@ namespace XLEdge.Contracts
 
         /// <summary>
         /// Forwards an Excel application event: SheetSelectionChange, SheetActivate, WorkbookActivate,
-        /// SheetFollowHyperlink or SheetBeforeDelete. Returns false when the shell should cancel the
-        /// operation, for events that have a cancel flag; otherwise the return value is ignored.
+        /// SheetFollowHyperlink or SheetBeforeDelete. The return value is reserved for events that can be
+        /// cancelled (false = cancel); none of these five can, so the shell currently ignores it.
         /// </summary>
         bool OnExcelEvent(string eventName, object[] args);
 

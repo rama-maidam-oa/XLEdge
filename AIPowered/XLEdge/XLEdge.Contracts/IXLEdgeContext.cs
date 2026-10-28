@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace XLEdge.Contracts
 {
@@ -30,7 +29,6 @@ namespace XLEdge.Contracts
         /// <summary>Version of XLEdge.dll, the shell installed by the MSI (shown in About next to the core version).</summary>
         string ShellVersion { get; }
 
-        IReadOnlyList<VersionInfo> AllVersions { get; }
         void SetRibbonController(IRibbonController controller);
 
         /// <summary>

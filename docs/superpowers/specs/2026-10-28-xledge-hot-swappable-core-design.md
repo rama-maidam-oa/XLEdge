@@ -77,19 +77,37 @@ Existing `XLEdge\` keeps receiving 11.1.2 fixes until cutover; each fix is re-ap
 | `GLSense.Build` | `XLEdge.Build` | as-is, renamed | — |
 | — (not copied) | | `GLSense.LocalUpdateHost` (dead), `UpdateManager.cs` (unused), `GLSenseExcelFunctions` (UDF/XLL), SQLite + `sqlite_postbuild.cmd`, `RibbonComboPrimer` (XLEdge ribbon has no combos), cube/GL-specific views | |
 
-## 3. Contracts (GLSense members, XLEdge names)
+## 3. Contracts (as built in Stage 0b, `AIPowered\XLEdge\XLEdge.Contracts\`)
 
-`IXLEdgeAddin` (host → core): `Initialize(IXLEdgeContext)`, `OnRibbonAction(string action, object parameter)`,
-`bool OnExcelEvent(string eventName, object[] args)`, `Shutdown()`, pane bridge
-`IntPtr CreateTaskPaneContent()`, `RelaunchTaskPane(bool)`, `ResetTaskPaneReference()`, `CloseTaskPaneContent()`,
-`LoginInfo GetLoginInfo()`, `string[] GetOpenWindowTitles()` — plus XLEdge-only
-`InvokedFromGLSense(name, url, token, user, hasPermission)` and `bool IsBusy()` (report running → block reload).
+The code is the authority; this is the summary.
 
-`IXLEdgeContext` (core reads): `ExcelApp`, `ExcelHandle`, `Logger`, `Paths`, `RibbonController`, `DebugMode`,
-`Version`, `ReleaseDate`, `ActiveFolderName`, `AllVersions`, `SetRibbonController`, and
-`GetGLSenseAddinInstance()` (mirror of GLSense's `GetEdgeAddinInstance()`).
+`IXLEdgeAddin` (shell → core): `Initialize(IXLEdgeContext)`, `OnRibbonAction(string action, object parameter)`,
+`bool OnExcelEvent(string eventName, object[] args)`, `Shutdown()`, per-window pane bridge
+`IntPtr CreateTaskPaneContent(IntPtr excelWindowHandle)`, `CloseTaskPaneContent(IntPtr)`, `OnTaskPaneShown(IntPtr)`,
+GLSense sync `OnLoginFromGLSense(instanceName, loginUrl, token, userName, hasXLEdgePermission)` and
+`OnLogoutFromGLSense()` (the shell's public COM methods `InvokedFromGLSense` / `LogoffFromAddin` forward to them),
+`LoginInfo GetLoginInfo()`, `string[] GetOpenWindowTitles()`, `bool IsBusy()` (report running → block reload).
 
-`IRibbonController`, `ILogger`, `IPathProvider`, `LoginInfo`, `VersionInfo`: same members as GLSense.
+`IXLEdgeContext` (core reads): `ExcelApp`, `Logger`, `Paths`, `RibbonController`, `ExcelHandle`, `DebugMode`,
+`Version`, `ReleaseDate`, `ActiveFolderName` (loaded core), `ShellVersion` (MSI), `AllVersions`,
+`SetRibbonController`, `GetGLSenseAddinInstance()`.
+
+`IRibbonController`: execute action, named state, enabled / visible / pressed / label setters, pressed / visible /
+label getters, enable/disable many (`string[]`), invalidate, task pane show / toggle / hide all / is visible /
+caption. No combo, cube or configurator members; no `RegisterAction(string, Action)`.
+
+`ILogger`: GLSense's member set, except exceptions are passed as text (`LogError(message, exceptionDetails)`,
+`LogException(exceptionDetails, context)`) because core-only exception types cannot cross into the shell's domain.
+
+`IPathProvider`: XLEdge data folders (`Root`, `Logs`, `Temp`, `BrowserDataPath`, `LoginBrowserPath`, `UrlsFile`)
++ GLSense's hot-reload paths and manifest members. `LoginInfo` adds `LoginUserName`. `VersionInfo` as GLSense.
+
+**Contract version** (decided 2026-10-28, replaces a byte-equality check): `XLEdge.Contracts.ContractInfo.Version`
+(`int`, starts at `1`) is incremented on every contract change, and every contract change ships with a new MSI.
+Each core release records the contract version it was built against (`contractVersion` in its manifest.json and
+release-history entry, written by the core's post-build). The loader (Stage 0d) loads a release only if its
+contract version is `<=` the shell's; a newer one is refused ("needs a newer XLEdge installer"). Older cores are
+allowed (Release History rollback), and the shell calls members added after the core's version inside try/catch.
 
 Events forwarded (primitives only): SheetSelectionChange, SheetActivate, WorkbookActivate,
 SheetFollowHyperlink (sheet, cell address, ScreenTip, SubAddress, text), SheetBeforeDelete.
@@ -136,10 +154,13 @@ phase 2 (carving `AddinModule`) and phases 1/3 (the WebView2 pane in the core).
    Contracts, Shared and Loader.Core still **ship inside the core zip** (the core's AppDomain resolves
    from its release folder, so it needs them there). Because the identity no longer changes, a core built
    against different contracts would load silently and fail only at call time. So:
-   - contract changes are additive only and always ship with a new MSI (the shell must know them too);
-   - **Stage 0d:** before creating the AppDomain, the loader compares the release folder's
-     `XLEdge.Contracts.dll` (and `XLEdge.Shared.dll`) with the shell's copies by SHA256 and refuses
-     the release with a clear log line and message if they differ.
+   - contract changes are additive only, bump `ContractInfo.Version` and always ship with a new MSI;
+   - **Stage 0d:** the loader refuses a release whose contract version is newer than the shell's (§3,
+     "Contract version"). (An earlier draft compared the DLL bytes by SHA256; dropped 2026-10-28 because it
+     blocked Release History rollback and every build changes the file version anyway.)
+
+**Tests:** an `XLEdge.Tests` MSTest project in the solution (developer decision 2026-10-28; not shipped,
+not referenced by any shipped project) holds the unit tests for Shared, Loader.Core and later the core.
 2. **`AppDomainSetup.ApplicationName` set**, so `CachePath` (shadow cache) is honoured.
 3. **Shell referenced as a plain File in the vdproj** from the start (GLSense CLAUDE.md §67/§68 lesson).
 4. No UDF/XLL module, no SQLite, no ribbon combo primer — XLEdge doesn't use them.
