@@ -130,6 +130,7 @@
     <Compile Include="Hosting\CoreHost.cs" />
     <Compile Include="Hosting\HostSeams.cs" />
     <Compile Include="Hosting\PaneEmbedding.cs" />
+    <Compile Include="Hosting\PaneFocus.cs" />
     <Compile Include="Hosting\ShellAdapters.cs" />
     <Compile Include="Hosting\WpfHostUi.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -357,6 +358,16 @@ namespace XLEdge
 
         private void adxExcelAppEvents1_SheetSelectionChange(object sender, object sheet, object range)
         {
+            // A click on a cell while the keyboard is in a pane's WebView2 must give the keyboard back to the worksheet.
+            try
+            {
+                if (PaneFocus.ReturnToGridAfterClick(AllPanes().Where(p => p.IsHandleCreated).Select(p => p.Handle)))
+                    _context?.Logger.LogDebug("AddinModule: keyboard focus returned from the task pane to the worksheet.");
+            }
+            catch (Exception ex)
+            {
+                LogError("AddinModule: returning the keyboard focus to the worksheet failed.", ex);
+            }
             var target = range as Excel.Range;
             ForwardEvent("SheetSelectionChange", () => new object[] { SheetName(sheet), Address(target), CellCount(target) });
         }

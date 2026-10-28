@@ -76,6 +76,7 @@
     <Compile Include="LoggerTests.cs" />
     <Compile Include="OfflineReleaseScannerTests.cs" />
     <Compile Include="PaneEmbeddingTests.cs" />
+    <Compile Include="PaneFocusTests.cs" />
     <Compile Include="PathProviderTests.cs" />
     <Compile Include="ReleaseHistoryRowsTests.cs" />
     <Compile Include="ReleaseHistoryStoreTests.cs" />

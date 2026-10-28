@@ -135,6 +135,34 @@ namespace XLEdge.Tests
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetActiveWindow();
+        [DllImport("user32.dll")] public static extern IntPtr GetFocus();
+
+        /// <summary>A hidden window of a class registered here under <paramref name="className"/> (e.g. Excel's "EXCEL7").</summary>
+        public static IntPtr CreateWindowOfClass(string className)
+        {
+            var wc = new WNDCLASS { lpfnWndProc = DefWindowProcPointer, hInstance = GetModuleHandle(null), lpszClassName = className };
+            RegisterClass(ref wc); // fails harmlessly when already registered by an earlier test
+            return CreateWindowEx(0, className, "", 0, 0, 0, 10, 10, IntPtr.Zero, IntPtr.Zero, wc.hInstance, IntPtr.Zero);
+        }
+
+        private static readonly IntPtr DefWindowProcPointer = GetProcAddress(GetModuleHandle("user32.dll"), "DefWindowProcW");
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct WNDCLASS
+        {
+            public uint style;
+            public IntPtr lpfnWndProc;
+            public int cbClsExtra, cbWndExtra;
+            public IntPtr hInstance, hIcon, hCursor, hbrBackground;
+            public string lpszMenuName, lpszClassName;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern ushort RegisterClass(ref WNDCLASS wc);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr CreateWindowEx(int exStyle, string className, string title, int style, int x, int y, int w, int h,
+            IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string name);
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] private static extern IntPtr GetProcAddress(IntPtr module, string name);
 
         public static readonly IntPtr DPI_AWARENESS_CONTEXT_UNAWARE = new IntPtr(-1);
         public static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
