@@ -3,9 +3,14 @@ using XLEdge.Contracts;
 
 namespace XLEdge.Tests
 {
-    /// <summary>Test-only IXLEdgeContext: real paths, settable DebugMode, no Excel.</summary>
-    internal sealed class FakeContext : IXLEdgeContext
+    /// <summary>
+    /// Test-only IXLEdgeContext: real paths, settable DebugMode, no Excel. MarshalByRefObject like the shell's real
+    /// context, so the core's AppDomain receives a proxy (its release folder has no copy of this test assembly).
+    /// </summary>
+    internal sealed class FakeContext : MarshalByRefObject, IXLEdgeContext
     {
+        public override object InitializeLifetimeService() => null;
+
         public FakeContext(IPathProvider paths) { Paths = paths; }
 
         public object ExcelApp { get; set; }
