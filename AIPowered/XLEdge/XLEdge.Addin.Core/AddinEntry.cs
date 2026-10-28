@@ -2,6 +2,7 @@ using System;
 using XLEdge.Addin.Core.Infrastructure;
 using XLEdge.Addin.Core.Pane;
 using XLEdge.Contracts;
+using XLEdge.Helpers;
 
 namespace XLEdge.Addin.Core
 {
@@ -24,6 +25,8 @@ namespace XLEdge.Addin.Core
             {
                 _context = context;
                 CoreServices.Initialize(context);
+                // XLEdge 11.1.2 code reaches the ribbon through XLEdgeRibbonHelper.Current.
+                _ = new XLEdgeRibbonHelper(context.RibbonController);
                 _panes = new TaskPaneContentHost(context);
                 Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
             }

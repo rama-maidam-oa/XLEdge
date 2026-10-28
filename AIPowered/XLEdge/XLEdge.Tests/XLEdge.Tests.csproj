@@ -71,6 +71,7 @@
     <Compile Include="CorePackageTests.cs" />
     <Compile Include="CorePaneTests.cs" />
     <Compile Include="CoreProbe.cs" />
+    <Compile Include="CoreRibbonFacadeTests.cs" />
     <Compile Include="HostWindowsTests.cs" />
     <Compile Include="LoaderBasicsTests.cs" />
     <Compile Include="RecordingLogger.cs" />

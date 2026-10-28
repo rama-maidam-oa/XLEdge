@@ -35,6 +35,46 @@ namespace XLEdge.Tests
             return Unwrap(() => property.GetValue(null));
         }
 
+        /// <summary>Whether a static member is non-null (for members whose value cannot cross the domain boundary).</summary>
+        public bool HasStatic(string typeName, string member) => CallStatic(typeName, member) != null;
+
+        private readonly System.Collections.Generic.List<object> _instances = new System.Collections.Generic.List<object>();
+
+        /// <summary>Creates an instance of a core type in this domain; returns a handle for <see cref="CallOnInstance"/>.</summary>
+        public int CreateInstance(string typeName, params object[] args)
+        {
+            // By parameter count and Invoke: the binder behind Activator.CreateInstance does not see a remoting proxy as the
+            // interface it implements, Invoke checks it at the call.
+            ConstructorInfo ctor = CoreType(typeName).GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                                       .FirstOrDefault(c => c.GetParameters().Length == (args?.Length ?? 0))
+                                   ?? throw new MissingMethodException(typeName, ".ctor");
+            object instance = Unwrap(() => ctor.Invoke(args));
+            _instances.Add(instance);
+            return _instances.Count - 1;
+        }
+
+        /// <summary>Calls an instance method (matched by name and argument count) of an object made by <see cref="CreateInstance"/>.</summary>
+        public object CallOnInstance(int handle, string method, params object[] args)
+        {
+            object instance = _instances[handle];
+            MethodInfo info = instance.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                                  .FirstOrDefault(m => m.Name == method && m.GetParameters().Length == (args?.Length ?? 0))
+                              ?? throw new MissingMethodException(instance.GetType().FullName, method);
+            return Unwrap(() => info.Invoke(instance, args));
+        }
+
+        /// <summary>WPF in this domain: creates the Application through WpfAppManager and runs a call through UiDispatcher.</summary>
+        public string BootWpfAndRunOnTheDispatcher()
+        {
+            CallStatic("XLEdge.Utilities.WpfAppManager", "EnsureApplication");
+            CallStatic("XLEdge.Utilities.WpfAppManager", "EnsureApplication");
+            int sameThread = -1;
+            Action action = () => sameThread = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            CallStatic("XLEdge.Utilities.UiDispatcher", "Run", action);
+            bool hasApp = System.Windows.Application.Current != null;
+            return $"app={hasApp} thread={(sameThread == System.Threading.Thread.CurrentThread.ManagedThreadId ? "caller" : sameThread.ToString())}";
+        }
+
         /// <summary>Reads or (with one argument) sets a property of a singleton reached through a static member (e.g. Instance).</summary>
         public object OnSingleton(string typeName, string instanceMember, string property, params object[] args)
         {
