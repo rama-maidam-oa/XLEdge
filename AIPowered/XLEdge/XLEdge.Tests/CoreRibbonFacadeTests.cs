@@ -141,6 +141,22 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void NoPermission_IsTodaysSequence_AndTurnsDebugOff()
+        {
+            // XLEdge 11.1.2's constant spelling ("NoXLEdePermission"); the shell's SetState spells it "NoXLEdgePermission".
+            using (var core = new Core())
+            {
+                core.Context.DebugMode = true;
+                core.Call("ApplyState", "NoXLEdePermission");
+                var expected = new[] { "Pressed:RibEdgeIncludeOutputData=False", "Pressed:RibEdgeDebug=False" }
+                    .Concat(Feature8.Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }).Select(id => $"Enabled:{id}=False"))
+                    .Concat(new[] { "InvalidateAll" }).ToArray();
+                CollectionAssert.AreEqual(expected, core.Ribbon.Calls);
+                Assert.IsFalse(core.Context.DebugMode, "an un-pressed Debug button means debug logging is off");
+            }
+        }
+
+        [TestMethod]
         public void LoggedIn_ShowsLogoutWithTheInstanceName()
         {
             using (var core = new Core())
@@ -168,38 +184,67 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void Current_IsTheHelperTheCoreMadeLast()
+        public void Initialize_MakesTheRibbonHelperTalkToTheShellsController()
         {
+            // Ported code reaches the ribbon through XLEdgeRibbonHelper.Current; AddinEntry.Initialize must create it.
             using (var core = new Core())
             {
-                Assert.IsTrue(core.Probe.HasStatic(Ribbon, "Current"));
+                core.Ribbon.Clear();
+                core.Probe.InitializeTheEntryAndDisableThroughTheRibbonHelper(core.Context, "RibEdgeRefresh");
+                CollectionAssert.Contains(core.Ribbon.Calls, "Enabled:RibEdgeRefresh=False");
             }
         }
 
         [TestMethod]
-        public void Wpf_RunsInTheCoresDomain_AndLeavesNothingAfterUnload()
+        public void Wpf_RunsOnTheCallersThread()
         {
+            Win32Test.OnSta(() =>
+            {
+                var (domain, probe) = CoreProbe.Create("CoreWpf");
+                try { Assert.AreEqual("app=True thread=caller", probe.BootWpfAndRunOnTheDispatcher()); }
+                finally { AppDomain.Unload(domain); }
+            });
+        }
+
+        [TestMethod]
+        public void CoreShutdown_ClosesWpfsDispatcherWindow_AndTheUnloadLeavesNothing()
+        {
+            // WPF's dispatcher window (a message-only HwndWrapper) has its window procedure in the core's domain.
             Win32Test.OnSta(() =>
             {
                 // Pumping (Application.DoEvents) creates WinForms' hidden thread window in this test's own AppDomain:
                 // do it before the snapshot so it is not mistaken for a window of the core.
                 Win32Test.Pump(TimeSpan.FromMilliseconds(50));
                 var before = Win32Test.ProcessWindows();
-                var (domain, probe) = CoreProbe.Create("CoreWpf");
-                try
-                {
-                    Assert.AreEqual("app=True thread=caller", probe.BootWpfAndRunOnTheDispatcher());
-                }
-                finally
-                {
-                    AppDomain.Unload(domain);
-                }
                 bool Managed(string cls) => cls.StartsWith("HwndWrapper", StringComparison.Ordinal) || cls.StartsWith("WindowsForms10.", StringComparison.Ordinal)
                                             || cls.StartsWith(".NET-", StringComparison.Ordinal);
-                Win32Test.PumpUntil(() => !Win32Test.ProcessWindows().Any(w => !before.ContainsKey(w.Key) && Managed(w.Value)), TimeSpan.FromSeconds(5));
-                var left = Win32Test.ProcessWindows().Where(w => !before.ContainsKey(w.Key) && Managed(w.Value)).Select(w => w.Value).ToList();
-                Assert.AreEqual(0, left.Count, "managed windows left: " + string.Join(", ", left));
-                Win32Test.Pump(TimeSpan.FromSeconds(2));
+                System.Collections.Generic.List<string> Added() =>
+                    Win32Test.ProcessWindows().Where(w => !before.ContainsKey(w.Key) && Managed(w.Value)).Select(w => w.Value).ToList();
+
+                using (var t = new TempFolder())
+                {
+                    var context = new FakeContext(new PathProvider(t.Combine("inst"), t.Combine("data"))) { Logger = new RecordingLogger() };
+                    context.SetRibbonController(new FakeRibbon());
+                    var (domain, probe) = CoreProbe.Create("CoreWpfShutdown");
+                    try
+                    {
+                        probe.InitializeTheEntryWithWpf(context);
+                        Assert.IsTrue(Added().Any(c => c.StartsWith("HwndWrapper", StringComparison.Ordinal)),
+                            "precondition: the core's WPF dispatcher window exists: " + string.Join(", ", Added()));
+                        probe.ShutDownTheEntry();
+                        Win32Test.PumpUntil(() => !Added().Any(), TimeSpan.FromSeconds(5));
+                        Assert.AreEqual(0, Added().Count, "AddinEntry.Shutdown closes WPF: " + string.Join(", ", Added()));
+                    }
+                    finally
+                    {
+                        // As the loader does it: on a pool thread while Excel's thread (this one) keeps pumping.
+                        var unload = System.Threading.Tasks.Task.Run(() => AppDomain.Unload(domain));
+                        Win32Test.PumpUntil(() => unload.IsCompleted, TimeSpan.FromSeconds(10));
+                        unload.Wait();
+                    }
+                }
+                Win32Test.Pump(TimeSpan.FromSeconds(1));
+                Assert.AreEqual(0, Added().Count, "managed windows left after the unload: " + string.Join(", ", Added()));
             });
         }
     }

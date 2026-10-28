@@ -77,6 +77,48 @@ namespace XLEdge.Tests
             }
         }
 
+        /// <summary>Folders that cannot be created (a character Windows does not allow in a path).</summary>
+        private sealed class UncreatablePaths : MarshalByRefObject, XLEdge.Contracts.IPathProvider
+        {
+            public override object InitializeLifetimeService() => null;
+            public string Root => @"C:\bad|folder";
+            public string Logs => Root + @"\Logs";
+            public string Temp => Root + @"\Temp";
+            public string BrowserDataPath => Root + @"\BrowserLogs";
+            public string UrlsFile => @"C:\bad|folder\ORBIT_URLS.xml";
+            public string VersionsPath => Root;
+            public string SharedDependenciesPath => Root;
+            public string ManifestFile => Root;
+            public string ManifestDirectory => Root;
+            public string ReleaseHistoryFile => Root;
+            public string LatestVersion => null;
+            public string LatestReleaseDate => null;
+            public void Ensure() { }
+            public void Refresh() { }
+        }
+
+        [TestMethod]
+        public void Paths_ThatCannotBeCreated_AreReturnedAndLogged_AsToday()
+        {
+            using (var t = new TempFolder())
+            {
+                var logger = new RecordingLogger();
+                var context = new FakeContext(new UncreatablePaths()) { Logger = logger };
+                var (domain, probe) = CoreProbe.Create("CorePathsBad");
+                try
+                {
+                    probe.CallStatic(CoreServices, "Initialize", context);
+                    Assert.AreEqual(@"C:\bad|folder\Logs", (string)probe.CallStatic(Paths, "LogFolder"));
+                    Assert.IsTrue(logger.Lines.Any(l => l.StartsWith("WARN | EnsureDirectoryExists: failed to create directory 'C:\\bad|folder\\Logs'")), logger.Dump());
+                    probe.CallStatic(CoreServices, "Shutdown");
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
+        }
+
         [TestMethod]
         public void LogUtility_WritesThroughTheShellLogger()
         {

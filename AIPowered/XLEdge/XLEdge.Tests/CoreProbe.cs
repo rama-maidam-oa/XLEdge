@@ -116,7 +116,48 @@ namespace XLEdge.Tests
             return excel.GetType().InvokeMember(member, BindingFlags.InvokeMethod | BindingFlags.GetProperty, null, excel, args);
         }
 
-        /// <summary>The real entry point in this domain: Initialize, make the core take Excel, then Shutdown.</summary>
+        private object _kept;
+
+        /// <summary>Holds the core's current Excel object the way ported code does (var app = XLApp.App).</summary>
+        public void KeepExcel() => _kept = CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "ExcelApp");
+
+        /// <summary>Calls a property or method on the object <see cref="KeepExcel"/> holds.</summary>
+        public object InvokeOnKept(string member) =>
+            _kept.GetType().InvokeMember(member, BindingFlags.InvokeMethod | BindingFlags.GetProperty, null, _kept, null);
+
+        /// <summary>XLEdge 11.1.2's AddinBeginShutdown sequence (AddinModule.cs:1827-1831), then the core's own Shutdown.</summary>
+        public void RunTodaysShutdownSequence()
+        {
+            object cached = OnSingleton("XLEdge.XLEdgeAppState", "Instance", "ExcelAppUnsafe");
+            if (cached != null) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(cached);
+            object state = CallStatic("XLEdge.XLEdgeAppState", "Instance");
+            state.GetType().GetMethod("ClearExcelApplicationUnsafe", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Invoke(state, null);
+            CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "Shutdown");
+        }
+
+        /// <summary>The real entry point: after Initialize, XLEdgeRibbonHelper.Current talks to the context's ribbon controller.</summary>
+        public void InitializeTheEntryAndDisableThroughTheRibbonHelper(IXLEdgeContext context, string controlId)
+        {
+            var entry = (IXLEdgeAddin)Activator.CreateInstance(CoreType("XLEdge.Addin.Core.AddinEntry"));
+            entry.Initialize(context);
+            object helper = CallStatic("XLEdge.Helpers.XLEdgeRibbonHelper", "Current");
+            helper.GetType().GetMethod("SetControlEnabled").Invoke(helper, new object[] { controlId, false });
+            entry.Shutdown();
+        }
+
+        private IXLEdgeAddin _entry;
+
+        /// <summary>The real entry point with WPF booted in this domain (as the ported windows will do); see <see cref="ShutDownTheEntry"/>.</summary>
+        public void InitializeTheEntryWithWpf(IXLEdgeContext context)
+        {
+            _entry = (IXLEdgeAddin)Activator.CreateInstance(CoreType("XLEdge.Addin.Core.AddinEntry"));
+            _entry.Initialize(context);
+            CallStatic("XLEdge.Utilities.WpfAppManager", "EnsureApplication");
+        }
+
+        public void ShutDownTheEntry() => _entry?.Shutdown();
+
+        /// <summary>The real entry point: Initialize, make the core take Excel, then Shutdown.</summary>
         public void InitializeUseAndShutDownTheEntry(IXLEdgeContext context)
         {
             var entry = (IXLEdgeAddin)Activator.CreateInstance(CoreType("XLEdge.Addin.Core.AddinEntry"));

@@ -262,6 +262,8 @@ namespace XLEdge.Helpers
             {
                 SetControlPressed(RibEdgeIncludeOutputData, false);
                 SetControlPressed(RibEdgeDebug, false);
+                // Fixed in the core, as for LoggedOut: the Debug button is un-pressed, so debug logging goes off too.
+                XLEdgeAppState.Instance.DebugLogs = false;
                 DisableControls(NoPermissionDisabledControls);
             }
             catch (Exception ex)

@@ -62,11 +62,32 @@ namespace XLEdge.Addin.Core
                 // Every window of this AppDomain goes before the domain is unloaded.
                 _panes?.CloseAll();
                 _panes = null;
+                ShutDownWpf();
                 // Last: everything above may still use Excel; the core's Excel reference must not outlive it.
                 CoreServices.Shutdown();
                 Logger?.LogInfo("AddinEntry.Shutdown: XLEdge core shut down.");
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Shutdown"); }
+        }
+
+        /// <summary>
+        /// Closes WPF in this AppDomain (the Application the ported windows run on, and its dispatcher's message window, whose
+        /// window procedure lives here) - on its own thread, which is Excel's: the shell calls Shutdown there.
+        /// </summary>
+        private void ShutDownWpf()
+        {
+            try
+            {
+                System.Windows.Application app = System.Windows.Application.Current;
+                if (app == null) return;
+                System.Windows.Threading.Dispatcher dispatcher = app.Dispatcher;
+                if (dispatcher.CheckAccess()) dispatcher.InvokeShutdown();
+                else dispatcher.Invoke(new Action(dispatcher.InvokeShutdown));
+            }
+            catch (Exception ex)
+            {
+                Log(ex, "AddinEntry.Shutdown (WPF)");
+            }
         }
 
         public IntPtr CreateTaskPaneContent(IntPtr excelWindowHandle)

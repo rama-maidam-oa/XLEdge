@@ -33,7 +33,8 @@ namespace XLEdge
             {
                 lock (_excelSyncRoot)
                 {
-                    return CoreServices.ExcelApp as Excel.Application;
+                    // Never creates one: today's callers (the shutdown sequence) only want an existing reference.
+                    return CoreServices.ExcelAppIfCreated as Excel.Application;
                 }
             }
         }
@@ -48,11 +49,20 @@ namespace XLEdge
                 lock (_excelSyncRoot)
                 {
                     Excel.Application app = CoreServices.ExcelApp as Excel.Application;
-                    if (app == null || IsUsable(app)) return app;
-                    // A disconnected RCW (RPC_E_DISCONNECTED and the like): drop it and ask the shell again.
-                    CoreServices.ResetExcel();
-                    app = CoreServices.ExcelApp as Excel.Application;
-                    return app != null && IsUsable(app) ? app : null;
+                    if (app == null) return null;
+                    switch (Probe(app))
+                    {
+                        case ExcelProbe.Usable:
+                            return app;
+                        case ExcelProbe.Disconnected:
+                            // Dropped (not released: callers may hold it) and asked for again from the shell.
+                            CoreServices.ResetExcel();
+                            app = CoreServices.ExcelApp as Excel.Application;
+                            return app != null && Probe(app) == ExcelProbe.Usable ? app : null;
+                        default:
+                            // Busy (cell edit, dialog) or no window: today's TryUseApplication answer - no usable Excel now.
+                            return null;
+                    }
                 }
             }
             set
@@ -100,7 +110,10 @@ namespace XLEdge
             _ = ExcelApp;
         }
 
-        /// <summary>At shutdown: drops the core's Excel reference without asking the shell for a new one.</summary>
+        /// <summary>
+        /// At shutdown, after today's caller released the RCW itself: stops using it without releasing it again (CoreServices
+        /// releases whatever is left at the core's Shutdown).
+        /// </summary>
         internal void ClearExcelApplicationUnsafe()
         {
             lock (_excelSyncRoot)
@@ -109,17 +122,20 @@ namespace XLEdge
             }
         }
 
-        /// <summary>Today's ExcelApplicationHelper.TryUseApplication probe: a live Excel has a window handle.</summary>
-        private static bool IsUsable(Excel.Application app)
+        private enum ExcelProbe { Usable, Unavailable, Disconnected }
+
+        /// <summary>Today's ExcelApplicationHelper.TryUseApplication probe (a live Excel has a window handle), telling a
+        /// disconnected RCW apart from a busy Excel.</summary>
+        private static ExcelProbe Probe(Excel.Application app)
         {
             try
             {
-                return app.Hwnd != 0;
+                return app.Hwnd != 0 ? ExcelProbe.Usable : ExcelProbe.Unavailable;
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex);
-                return false;
+                return CoreServices.IsDisconnected(ex) ? ExcelProbe.Disconnected : ExcelProbe.Unavailable;
             }
         }
 

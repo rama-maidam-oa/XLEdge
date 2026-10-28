@@ -52,16 +52,30 @@ namespace XLEdge
         /// <summary>...\BrowserLogs\Login</summary>
         public static string LoginBrowserLogsPath => Folder(Path.Combine(BrowserLogsFolder, "Login"));
 
+        private static readonly object CacheGate = new object();
+        private static readonly System.Collections.Generic.Dictionary<string, bool> Ensured =
+            new System.Collections.Generic.Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Today's EnsureDirectoryExists (once per folder, as today's Lazy values did); the path is always returned.</summary>
         private static string Folder(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return path;
-            try
+            lock (CacheGate)
             {
-                if (!Directory.Exists(path)) Directory.CreateDirectory(path);
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-            {
-                // Today's behaviour: the path is still returned; the first write to it reports the problem.
+                if (Ensured.ContainsKey(path)) return path;
+                if (!Directory.Exists(path))
+                {
+                    try { Directory.CreateDirectory(path); }
+                    catch (Exception ex)
+                    {
+                        // Worth investigating if this recurs - a required app folder couldn't be created
+                        // (e.g. permissions issue), which could break logging/temp-file storage downstream.
+                        System.Diagnostics.Debug.WriteLine($"EnsureDirectoryExists: failed to create directory '{path}' - {ex.Message}");
+                        XLEdge.Utilities.LogUtility.LogWarn($"EnsureDirectoryExists: failed to create directory '{path}' - {ex.Message}");
+                        return path;
+                    }
+                }
+                Ensured[path] = true;
             }
             return path;
         }

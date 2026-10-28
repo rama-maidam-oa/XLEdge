@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using XLEdge.Utilities;
 using Excel = Microsoft.Office.Interop.Excel;
 

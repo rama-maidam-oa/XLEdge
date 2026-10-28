@@ -17,10 +17,12 @@ namespace XLEdge.Tests
         /// <summary>A context whose Excel is a real COM object, handed out the way the shell does (AddRef'ed IDispatch).</summary>
         private sealed class ComContext : MarshalByRefObject, IXLEdgeContext
         {
-            private readonly object _com;
+            private object _com;
             public ComContext(IPathProvider paths, object com) { Paths = paths; _com = com; Logger = new RecordingLogger(); }
             public override object InitializeLifetimeService() => null;
             public object ExcelApp => _com;
+            /// <summary>From now on hand out another object (what a reconnected Excel gives after a disconnect).</summary>
+            public void SwitchTo(object com) => _com = com;
             public IntPtr GetExcelDispatch() => _com == null ? IntPtr.Zero : Marshal.GetIDispatchForObject(_com);
             public ILogger Logger { get; }
             public IPathProvider Paths { get; }
@@ -101,6 +103,142 @@ namespace XLEdge.Tests
                 {
                     AppDomain.Unload(domain);
                 }
+            }
+        }
+
+        /// <summary>The shell's real context (XLEdgeContext), whose GetExcelDispatch the core relies on.</summary>
+        private static XLEdgeContext ShellContext(TempFolder t, object excel) => new XLEdgeContext(excel, new PathProvider(t.Combine("inst"), t.Combine("data")));
+
+        [TestMethod]
+        public void ShellContext_HandsOutAnAddRefedPointer_ThatTheCoreReleases()
+        {
+            // A non-AddRef'ed pointer from the shell would make the core over-release Excel's Application (crashes Excel).
+            using (var t = new TempFolder())
+            using (var context = ShellContext(t, NewDictionary()))
+            {
+                object dictionary = context.ExcelApp;
+                int before = RefCount(dictionary);
+                var (domain, probe) = CoreProbe.Create("ShellContextDispatch");
+                try
+                {
+                    probe.CallStatic(CoreServices, "Initialize", context);
+                    Assert.AreEqual("com", probe.DescribeExcel());
+                    probe.CallStatic(CoreServices, "Shutdown");
+                    Assert.AreEqual(before, RefCount(dictionary));
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void ShellContext_WithoutACOMExcel_HandsOutNothing()
+        {
+            using (var t = new TempFolder())
+            using (var context = ShellContext(t, new object()))
+            {
+                Assert.AreEqual(IntPtr.Zero, context.GetExcelDispatch());
+            }
+        }
+
+        [TestMethod]
+        public void Initialize_TakesExcelAtOnce_OnTheCallingThread()
+        {
+            // Initialize runs on Excel's main thread; an RCW made later on another thread would be bound to that thread.
+            using (var t = new TempFolder())
+            {
+                var context = new ComContext(new PathProvider(t.Combine("inst"), t.Combine("data")), NewDictionary());
+                var (domain, probe) = CoreProbe.Create("CoreExcelEager");
+                try
+                {
+                    probe.CallStatic(CoreServices, "Initialize", context);
+                    Assert.IsTrue(probe.HasStatic(CoreServices, "ExcelAppIfCreated"), "created by Initialize, not on first use");
+                    probe.CallStatic(CoreServices, "Shutdown");
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void ResetExcel_KeepsReferencesPortedCodeHolds_AndShutdownStillReleasesEverything()
+        {
+            // Ported code keeps "var app = XLApp.App" locals; dropping a disconnected RCW must not destroy them.
+            using (var t = new TempFolder())
+            {
+                object dictionary = NewDictionary();
+                int before = RefCount(dictionary);
+                var context = new ComContext(new PathProvider(t.Combine("inst"), t.Combine("data")), dictionary);
+                var (domain, probe) = CoreProbe.Create("CoreExcelReset");
+                try
+                {
+                    probe.CallStatic(CoreServices, "Initialize", context);
+                    probe.KeepExcel();
+                    object reconnected = NewDictionary();
+                    int reconnectedBefore = RefCount(reconnected);
+                    context.SwitchTo(reconnected);
+                    probe.CallStatic(CoreServices, "ResetExcel");
+                    Assert.AreEqual(0, (int)probe.InvokeOnKept("Count"), "a reference taken before the reset still works");
+                    Assert.AreEqual("com", probe.DescribeExcel(), "the core asks the shell again");
+                    probe.InvokeOnExcel("Add", "k", "v");
+                    Assert.AreEqual(1, (int)reconnected.GetType().InvokeMember("Count", System.Reflection.BindingFlags.GetProperty, null, reconnected, null),
+                        "the core now works on the object the shell hands out");
+                    probe.CallStatic(CoreServices, "Shutdown");
+                    Assert.AreEqual(before, RefCount(dictionary), "the dropped RCW is released at Shutdown too");
+                    Assert.AreEqual(reconnectedBefore, RefCount(reconnected), "and the current one");
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TodaysShutdownSequence_DoesNotDoubleRelease()
+        {
+            using (var t = new TempFolder())
+            {
+                object dictionary = NewDictionary();
+                int before = RefCount(dictionary);
+                var context = new ComContext(new PathProvider(t.Combine("inst"), t.Combine("data")), dictionary);
+                var (domain, probe) = CoreProbe.Create("CoreExcelTodaysShutdown");
+                try
+                {
+                    probe.CallStatic(CoreServices, "Initialize", context);
+                    probe.RunTodaysShutdownSequence();
+                    Assert.AreEqual(before, RefCount(dictionary));
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void OnlyRealDisconnects_CountAsADeadExcel()
+        {
+            // Excel rejects calls while a cell is edited or a dialog is open; that is not a dead Excel.
+            var (domain, probe) = CoreProbe.Create("CoreExcelDisconnect");
+            try
+            {
+                bool Dead(Exception ex) => (bool)probe.CallStatic(CoreServices, "IsDisconnected", ex);
+                Assert.IsTrue(Dead(new COMException("disconnected", unchecked((int)0x80010108))), "RPC_E_DISCONNECTED");
+                Assert.IsTrue(Dead(new COMException("server unavailable", unchecked((int)0x800706BA))), "RPC_S_SERVER_UNAVAILABLE");
+                Assert.IsTrue(Dead(new COMException("not connected", unchecked((int)0x800401FD))), "CO_E_OBJNOTCONNECTED");
+                Assert.IsTrue(Dead(new InvalidComObjectException("separated")));
+                Assert.IsFalse(Dead(new COMException("rejected", unchecked((int)0x80010001))), "RPC_E_CALL_REJECTED (busy)");
+                Assert.IsFalse(Dead(new COMException("retry later", unchecked((int)0x8001010A))), "RPC_E_SERVERCALL_RETRYLATER");
+                Assert.IsFalse(Dead(new InvalidOperationException("other")));
+            }
+            finally
+            {
+                AppDomain.Unload(domain);
             }
         }
 

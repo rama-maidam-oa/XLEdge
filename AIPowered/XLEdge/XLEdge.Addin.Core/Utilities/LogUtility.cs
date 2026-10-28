@@ -28,7 +28,7 @@ namespace XLEdge.Utilities
 
         public static void LogDebug(string message)
         {
-            // Today's check, so a disabled debug line costs nothing (not even the cross-domain call).
+            // Today's check, so a disabled debug line is not formatted or sent (DebugMode itself is one call to the shell).
             if (!DebugMode) return;
             Write(l => l.LogDebug(message));
         }
