@@ -203,6 +203,93 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Warn_InsideScope_EarlierDebugLinesComeFirst()
+        {
+            using (var f = new Fixture())
+            {
+                using (f.Logger.BeginLogScope("Run"))
+                {
+                    f.Logger.LogDebug("before");
+                    f.Logger.LogWarn("careful");
+                    f.Logger.LogError("broken");
+                    f.Logger.LogDebug("between");
+                    f.Logger.LogException("boom", "ctx");
+                }
+                string text = f.Text();
+                int before = text.IndexOf("| before", StringComparison.Ordinal), careful = text.IndexOf("| careful", StringComparison.Ordinal);
+                int between = text.IndexOf("| between", StringComparison.Ordinal), exception = text.IndexOf("========== Exception", StringComparison.Ordinal);
+                Assert.IsTrue(before >= 0 && before < careful, "debug line logged before the warning must come first:\n" + text);
+                Assert.IsTrue(between >= 0 && between < exception, "debug line logged before the exception must come first:\n" + text);
+            }
+        }
+
+        [TestMethod]
+        public void ConcurrentFlushes_KeepLineOrder()
+        {
+            using (var f = new Fixture())
+            {
+                using (f.Logger.BeginLogScope("Busy"))
+                {
+                    using (var stop = new ManualResetEventSlim())
+                    {
+                        ThreadStart flusher = () => { while (!stop.IsSet) f.Logger.FlushDebugLogs("tick"); };
+                        var t1 = new Thread(flusher); var t2 = new Thread(flusher);
+                        t1.Start(); t2.Start();
+                        for (int i = 0; i < 2000; i++) f.Logger.LogDebug("n" + i.ToString("D5"));
+                        stop.Set(); t1.Join(); t2.Join();
+                    }
+                }
+                var numbers = f.Lines().Select(l => Regex.Match(l, @"\| n(\d{5})$")).Where(m => m.Success).Select(m => int.Parse(m.Groups[1].Value)).ToList();
+                Assert.AreEqual(2000, numbers.Count);
+                for (int i = 1; i < numbers.Count; i++)
+                    Assert.IsTrue(numbers[i] > numbers[i - 1], $"line n{numbers[i]:D5} written after n{numbers[i - 1]:D5}");
+            }
+        }
+
+        [TestMethod]
+        public void Timestamps_AreInvariantUnderFiFIAndThai()
+        {
+            var previous = Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                foreach (var culture in new[] { "fi-FI", "th-TH" })
+                {
+                    Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+                    using (var f = new Fixture())
+                    {
+                        f.Logger.LogInfo("hello");
+                        using (f.Logger.BeginLogScope("Scope")) f.Logger.LogDebug("x");
+                        string text = f.Text();
+                        Assert.IsTrue(Regex.IsMatch(text, @"\|INFO  \| \d\d:\d\d:\d\d \| hello"), culture + ":\n" + text);
+                        Assert.IsTrue(Regex.IsMatch(text, @"===== Scope \| " + DateTime.Now.Year + @"-\d\d-\d\d \d\d:\d\d:\d\d ====="), culture + ":\n" + text);
+                    }
+                }
+            }
+            finally
+            {
+                Thread.CurrentThread.CurrentCulture = previous;
+            }
+        }
+
+        [TestMethod]
+        public void Ctor_NullPaths_ThrowsArgumentException()
+        {
+            Assert.ThrowsExactly<ArgumentException>(() => new Logger(new FakeContext(null)));
+        }
+
+        [TestMethod]
+        public void ReleaseSession_SameReleaseAfterEnd_StartsNewSection()
+        {
+            using (var f = new Fixture())
+            {
+                f.Logger.BeginReleaseSession("11.1.2.0", "d");
+                f.Logger.EndReleaseSession("11.1.2.0", "d");
+                f.Logger.BeginReleaseSession("11.1.2.0", "d");
+                Assert.AreEqual(2, Regex.Matches(f.Text(), "Start of XLEdge version 11.1.2.0").Count);
+            }
+        }
+
+        [TestMethod]
         public void Scope_NestedReusesBuffer()
         {
             using (var f = new Fixture())

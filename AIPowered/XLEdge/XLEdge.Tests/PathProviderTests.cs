@@ -113,6 +113,37 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Refresh_ConcurrentReader_NeverSeesNullOrMixedPair()
+        {
+            using (var t = new TempFolder())
+            {
+                var p = new PathProvider(t.Combine("inst"), t.Combine("data"));
+                p.Ensure();
+                File.WriteAllText(p.ManifestFile, "[{\"version\":\"11.1.1\",\"releaseDate\":\"a\"}]");
+                p.Refresh();
+                string bad = null;
+                using (var stop = new System.Threading.ManualResetEventSlim())
+                {
+                    var reader = new System.Threading.Thread(() =>
+                    {
+                        while (!stop.IsSet && bad == null)
+                        {
+                            string v = p.LatestVersion, d = p.LatestReleaseDate;
+                            if (!((v == "11.1.1" && d == "a") || (v == "11.1.1" && d == "a") || (v == null && d == null)))
+                                bad = v + "/" + d;
+                            if (v == null) bad = "null while a valid manifest exists";
+                        }
+                    });
+                    reader.Start();
+                    for (int i = 0; i < 300 && bad == null; i++) p.Refresh();
+                    stop.Set();
+                    reader.Join();
+                }
+                Assert.IsNull(bad, bad);
+            }
+        }
+
+        [TestMethod]
         public void Ctor_BlankInstallRoot_Throws()
         {
             Assert.ThrowsExactly<ArgumentException>(() => new PathProvider(null));

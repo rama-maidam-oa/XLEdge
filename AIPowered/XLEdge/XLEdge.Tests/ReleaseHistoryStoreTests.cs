@@ -184,6 +184,35 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void ResolveReleaseFolder_RejectsPathsOutsideOrAtTheVersionsRoot()
+        {
+            // The last line of defence in Delete, behind IsSafeFolderName.
+            using (var t = new TempFolder())
+            {
+                string versions = t.Combine("Versions");
+                Assert.AreEqual(Path.Combine(versions, "v1"), ReleaseHistoryStore.ResolveReleaseFolder(versions, "v1"));
+                foreach (var bad in new[] { "..", @"..\x", "...", ".", "", @"C:\x", ". ." })
+                    Assert.IsNull(ReleaseHistoryStore.ResolveReleaseFolder(versions, bad), "'" + bad + "'");
+            }
+        }
+
+        [TestMethod]
+        public void Write_TargetBrieflyReadOnly_StillSucceeds()
+        {
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json");
+                ReleaseHistoryStore.Append(file, Entry("v1"));
+                File.SetAttributes(file, FileAttributes.ReadOnly);
+                var clearer = new Thread(() => { Thread.Sleep(150); File.SetAttributes(file, FileAttributes.Normal); });
+                clearer.Start();
+                try { ReleaseHistoryStore.Append(file, Entry("v2")); }
+                finally { clearer.Join(); }
+                Assert.AreEqual(2, ReleaseHistoryStore.ReadAll(file).Count);
+            }
+        }
+
+        [TestMethod]
         public void Delete_LockedFolder_ReportsFolderDeleteFailed()
         {
             using (var t = new TempFolder())

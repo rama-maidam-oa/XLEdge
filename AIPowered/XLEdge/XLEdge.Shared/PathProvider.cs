@@ -54,8 +54,19 @@ namespace XLEdge.Shared
         public string ManifestFile { get; }
         public string ManifestDirectory { get; }
         public string ReleaseHistoryFile { get; }
-        public string LatestVersion { get; private set; }
-        public string LatestReleaseDate { get; private set; }
+        // Version and date are published together as one object, so a reader (possibly through the remoting
+        // proxy, on another thread) never sees one without the other or a half-refreshed pair.
+        private volatile LatestEntry _latest;
+
+        private sealed class LatestEntry
+        {
+            public LatestEntry(string version, string releaseDate) { Version = version; ReleaseDate = releaseDate; }
+            public string Version { get; }
+            public string ReleaseDate { get; }
+        }
+
+        public string LatestVersion => _latest?.Version;
+        public string LatestReleaseDate => _latest?.ReleaseDate;
 
         public void Ensure()
         {
@@ -68,15 +79,15 @@ namespace XLEdge.Shared
         /// the file is never created here (a default manifest once pointed the loader at a release that
         /// did not exist).
         /// </summary>
-        public void Refresh()
+        public void Refresh() => _latest = ReadLatest();
+
+        private LatestEntry ReadLatest()
         {
-            LatestVersion = null;
-            LatestReleaseDate = null;
             try
             {
-                if (!File.Exists(ManifestFile)) return;
+                if (!File.Exists(ManifestFile)) return null;
                 string json = File.ReadAllText(ManifestFile);
-                if (string.IsNullOrWhiteSpace(json)) return;
+                if (string.IsNullOrWhiteSpace(json)) return null;
 
                 var entries = JsonSerializer.Deserialize<List<VersionInfo>>(json, ManifestJsonOptions);
                 var latest = entries?
@@ -85,14 +96,11 @@ namespace XLEdge.Shared
                     .OrderByDescending(x => x.Parsed)
                     .Select(x => x.Entry)
                     .FirstOrDefault();
-                if (latest == null) return;
-
-                LatestVersion = latest.Version;
-                LatestReleaseDate = latest.ReleaseDate;
+                return latest == null ? null : new LatestEntry(latest.Version, latest.ReleaseDate);
             }
-            catch (JsonException) { }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (JsonException) { return null; }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
         }
 
         public override object InitializeLifetimeService() => null;

@@ -86,21 +86,11 @@ namespace XLEdge.Shared
                 if (!IsSafeFolderName(folderName))
                     return ReleaseDeleteResult.InvalidFolderName;
 
-                string root, target, active = null;
-                try
-                {
-                    root = Path.GetFullPath(versionsPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                    target = Path.GetFullPath(Path.Combine(versionsPath, folderName));
-                    if (!string.IsNullOrWhiteSpace(activeFolderName) && IsSafeFolderName(activeFolderName))
-                        active = Path.GetFullPath(Path.Combine(versionsPath, activeFolderName));
-                }
-                catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is PathTooLongException)
-                {
+                string target = ResolveReleaseFolder(versionsPath, folderName);
+                if (target == null)
                     return ReleaseDeleteResult.InvalidFolderName;
-                }
-                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase) || target.Length <= root.Length)
-                    return ReleaseDeleteResult.InvalidFolderName;
-                if (active != null && string.Equals(target.TrimEnd(Path.DirectorySeparatorChar), active.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                string active = ResolveReleaseFolder(versionsPath, activeFolderName);
+                if (active != null && string.Equals(target, active, StringComparison.OrdinalIgnoreCase))
                     return ReleaseDeleteResult.ActiveRelease;
 
                 try
@@ -147,6 +137,27 @@ namespace XLEdge.Shared
             if (folderName.IndexOf('\\') >= 0 || folderName.IndexOf('/') >= 0) return false;
             if (folderName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
             return !Path.IsPathRooted(folderName) && Path.GetFileName(folderName) == folderName;
+        }
+
+        /// <summary>
+        /// Full path of a release folder directly inside <paramref name="versionsPath"/>, or null when the name
+        /// is unusable or resolves anywhere else (outside the versions folder, or the versions folder itself).
+        /// </summary>
+        internal static string ResolveReleaseFolder(string versionsPath, string folderName)
+        {
+            if (string.IsNullOrWhiteSpace(folderName)) return null;
+            try
+            {
+                string root = Path.GetFullPath(versionsPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                string target = Path.GetFullPath(Path.Combine(versionsPath, folderName)).TrimEnd(Path.DirectorySeparatorChar);
+                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase) || target.Length <= root.Length) return null;
+                if (target.IndexOf(Path.DirectorySeparatorChar, root.Length) >= 0) return null; // nested, not a release folder
+                return target;
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is PathTooLongException)
+            {
+                return null;
+            }
         }
 
         /// <summary>
@@ -233,7 +244,7 @@ namespace XLEdge.Shared
             }
 
             // Antivirus and indexers open a freshly written file for a moment; File.Replace then fails with a
-            // sharing violation. Retry briefly before giving up (the temp file is still complete on failure).
+            // sharing violation or access denied. Retry briefly while the (complete) temp file is still there.
             for (int attempt = 1; ; attempt++)
             {
                 try
@@ -242,7 +253,7 @@ namespace XLEdge.Shared
                     else File.Move(tmp, file);
                     return;
                 }
-                catch (IOException) when (attempt < ReplaceAttempts)
+                catch (Exception ex) when ((ex is IOException || ex is UnauthorizedAccessException) && attempt < ReplaceAttempts && File.Exists(tmp))
                 {
                     Thread.Sleep(ReplaceRetryDelay);
                 }

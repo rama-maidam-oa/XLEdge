@@ -1,0 +1,7 @@
+<Project>
+  <!-- Read for the solution itself: the solution-level restore decides here whether packages.config projects
+       (XLEdge.Shared) are restored. Directory.Build.props sets the same for project-level restores. -->
+  <PropertyGroup>
+    <RestorePackagesConfig>true</RestorePackagesConfig>
+  </PropertyGroup>
+</Project>

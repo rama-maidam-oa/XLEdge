@@ -15,9 +15,12 @@
     <Deterministic>true</Deterministic>
     <ProjectTypeGuids>{3AC096D0-A1C2-E12C-1390-A8335801FDAB};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <IsTestProject>true</IsTestProject>
-    <!-- Test-only key: XLEdge.Shared is strong-named, so InternalsVisibleTo needs a signed friend assembly. -->
+    <!-- XLEdge.Shared is strong-named, so InternalsVisibleTo needs a friend assembly with a public key.
+         Public-signed with a public-key-only file: no private key exists anywhere (full-trust .NET Framework
+         skips strong-name verification, so the test assembly still loads). -->
     <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>XLEdge.Tests.snk</AssemblyOriginatorKeyFile>
+    <PublicSign>true</PublicSign>
+    <AssemblyOriginatorKeyFile>XLEdge.Tests.PublicKey.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -59,7 +62,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="XLEdge.Tests.snk" />
+    <None Include="XLEdge.Tests.PublicKey.snk" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\XLEdge.Contracts\XLEdge.Contracts.csproj">

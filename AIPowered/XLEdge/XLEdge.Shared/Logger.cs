@@ -54,6 +54,7 @@ namespace XLEdge.Shared
             public readonly Guid Id = Guid.NewGuid();
             public readonly List<string> Lines = new List<string>();
             public readonly object Lock = new object();
+            public readonly object WriteLock = new object();
             public string RootScopeName;
             public int Depth;
             public DateTime? OldestUnflushedAtUtc;
@@ -62,6 +63,8 @@ namespace XLEdge.Shared
         public Logger(IXLEdgeContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            if (context.Paths == null || string.IsNullOrWhiteSpace(context.Paths.Logs))
+                throw new ArgumentException("The context has no logs folder (Paths.Logs).", nameof(context));
             _logsFolder = context.Paths.Logs;
             try
             {
@@ -101,16 +104,16 @@ namespace XLEdge.Shared
 
         public void LogWarn(string message)
         {
-            WriteImmediate(Format("WARN  ", message));
             FlushCurrent("warning logged");
+            WriteImmediate(Format("WARN  ", message));
         }
 
         public void LogError(string message, string exceptionDetails = null)
         {
             string line = Format("ERROR ", message);
             if (!string.IsNullOrEmpty(exceptionDetails)) line += "|" + exceptionDetails;
-            WriteImmediate(line);
             FlushCurrent("error logged");
+            WriteImmediate(line);
         }
 
         public void LogDebug(string message)
@@ -139,8 +142,8 @@ namespace XLEdge.Shared
             foreach (string line in SplitLines(string.IsNullOrEmpty(exceptionDetails) ? "<no details>" : exceptionDetails))
                 block.AppendLine().Append(indent).Append(line);
             block.AppendLine().Append(indent).Append("============================");
-            WriteImmediate(block.ToString());
             FlushCurrent("exception logged");
+            WriteImmediate(block.ToString());
         }
 
         public void LogRawJson(string context, string rawJson)
@@ -275,18 +278,22 @@ namespace XLEdge.Shared
 
         private void FlushBuffer(ActionBuffer buffer, string label)
         {
-            string[] lines;
-            lock (buffer.Lock)
+            // WriteLock keeps snapshot + write together, so two flushers cannot write their blocks out of order.
+            lock (buffer.WriteLock)
             {
-                if (buffer.Lines.Count == 0) return;
-                lines = buffer.Lines.ToArray();
-                buffer.Lines.Clear();
-                buffer.OldestUnflushedAtUtc = null;
+                string[] lines;
+                lock (buffer.Lock)
+                {
+                    if (buffer.Lines.Count == 0) return;
+                    lines = buffer.Lines.ToArray();
+                    buffer.Lines.Clear();
+                    buffer.OldestUnflushedAtUtc = null;
+                }
+                string header = $"===== {label} | {Now("yyyy-MM-dd HH:mm:ss")} =====";
+                string dashes = new string('-', header.Length);
+                string nl = Environment.NewLine;
+                WriteImmediate(header + nl + dashes + nl + string.Join(nl, lines) + nl + dashes);
             }
-            string header = $"===== {label} | {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====";
-            string dashes = new string('-', header.Length);
-            string nl = Environment.NewLine;
-            WriteImmediate(header + nl + dashes + nl + string.Join(nl, lines) + nl + dashes);
         }
 
         private void EnsureSafetyNetTimer()
@@ -320,7 +327,10 @@ namespace XLEdge.Shared
 
         // ---- writing ----------------------------------------------------------------
 
-        private string Format(string level, string message) => $"{Indent()}{level}| {DateTime.Now:HH:mm:ss} | {message}";
+        private string Format(string level, string message) => $"{Indent()}{level}| {Now("HH:mm:ss")} | {message}";
+
+        // Log timestamps never follow the user's culture (separators, calendars).
+        private static string Now(string format) => DateTime.Now.ToString(format, CultureInfo.InvariantCulture);
 
         private void WriteImmediate(string text)
         {
@@ -451,14 +461,14 @@ namespace XLEdge.Shared
 
         private void WriteInitFailure(Exception ex)
         {
-            string text = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}|ERROR|Logger initialization failed: {ex.Message}|{ex}";
+            string text = $"{Now("yyyy-MM-dd HH:mm:ss")}|ERROR|Logger initialization failed: {ex.Message}|{ex}";
             try
             {
                 File.WriteAllText(Path.Combine(_logsFolder, "XLEdge_Error_" + DateTime.Now.ToString("dd-MMM-yyyy", English) + ".log"), text);
             }
             catch (Exception)
             {
-                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), $"XLEdge_Error_{DateTime.Now:yyyyMMdd_HHmmss}.log"), text); }
+                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), $"XLEdge_Error_{Now("yyyyMMdd_HHmmss")}.log"), text); }
                 catch (Exception) { }
             }
         }

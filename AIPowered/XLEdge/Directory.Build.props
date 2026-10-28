@@ -1,0 +1,7 @@
+<Project>
+  <!-- Imported by every project in this folder. XLEdge.Shared uses packages.config; without this a plain
+       "msbuild XLEdge.sln -t:Restore" (or a clean clone) restores nothing into packages\ and the build fails. -->
+  <PropertyGroup>
+    <RestorePackagesConfig>true</RestorePackagesConfig>
+  </PropertyGroup>
+</Project>
