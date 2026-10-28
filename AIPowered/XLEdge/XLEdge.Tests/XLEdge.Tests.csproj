@@ -54,6 +54,7 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Management" />
+    <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MSTest.TestFramework" Version="3.11.1" />
@@ -82,6 +83,8 @@
     <Compile Include="FakeContext.cs" />
     <Compile Include="GoldenCases.cs" />
     <Compile Include="GoldenValues.cs" />
+    <!-- Regenerates GoldenValues.cs from XLEdge 11.1.2's build; run by hand (see its header), never compiled into the tests. -->
+    <None Include="Tools\GoldenValuesGenerator.cs" />
     <Compile Include="LoggerTests.cs" />
     <Compile Include="OfflineReleaseScannerTests.cs" />
     <Compile Include="PaneEmbeddingTests.cs" />

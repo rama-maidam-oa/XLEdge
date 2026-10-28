@@ -39,10 +39,13 @@ namespace XLEdge.Tests
                                                             ("10/28/2026 14:05:00", "DATETIME"), ("12:30", "TIME"), ("abc", "NUMBER"), ("007", "STRING"),
                                                             ("-5", "NUMBER"), ("1E3", "NUMBER"), ("", "NUMBER"), (42, "NUMBER") })
                 yield return C(F, "ToExcelCellValue", true, v, t);
-            foreach (object v in new object[] { "2026-10-28", "123", "12.5", "abc", "", null, "28/10/2026", "TRUE", "1,234" })
+            foreach (object v in new object[] { "2026-10-28", "123", "12.5", "abc", "", null, "28/10/2026", "TRUE", "1,234", "123456789012345678901234", "2147483648" })
                 yield return C(F, "InferDrilldownDataType", true, v);
             foreach (var (v, t) in new (object, string)[] { ("2026-10-28", "DATE"), ("2026-10-28T10:00:00", "DATETIME"), ("1,234", "NUMBER"), ("abc", "STRING"),
-                                                            (null, "STRING"), ("12.50", "NUMBER"), ("28/10/2026", "DATE") })
+                                                            (null, "STRING"), ("12.50", "NUMBER"), ("28/10/2026", "DATE"),
+                                                            ("42", "INTEGER"), ("1,234", "INTEGER"), ("-7", "integer"), ("12.50", "DECIMAL"),
+                                                            ("123456789012345678901234", "NUMERIC"), ("1e3", "NUMERIC"), ("12.5", "NUMERIC"),
+                                                            ("1,234.5", "DECIMAL"), ("abc", "NUMERIC"), ("12.5", "DATE"), ("1,234", "DATE"), ("3.75", "DATE") })
                 yield return C(F, "FormatDrilldownValue", true, v, t);
             foreach (string v in new[] { "12", "12.5", "1,234", "-3", "abc", "", "1e5", " 7 " })
                 yield return C(F, "IsNumeric", true, v);
@@ -60,13 +63,20 @@ namespace XLEdge.Tests
             }
 
             const string A = "XLEdge.Helpers.AttachmentLinkHelper";
-            foreach (string cell in new[] { "<a href='https://host/rest/secure/attachment?id=1'>file.pdf</a>", "<a href=\"https://h/x\">doc.xlsx</a>",
+            foreach (string cell in new[] {
+                                            "<a href='#' onclick='fileDownLoadByHref(event,\"get-fusion-file\",{documentId:12,businessObjectId:34});'>a.pdf</a>",
+                                            "<a href='#' onclick='fileDownLoadByHref(event,\"get-oracle-lob-file\",{businessObjectId:5, fileId:{77}});'>b.txt</a>",
+                                            "<a href='#' onclick='fileDownLoadByHref(event,\"get-fusion-file\",{documentId:12,businessObjectId:34});'></a>",
+                                            "<a href='https://host/rest/secure/attachment?id=1'>file.pdf</a>", "<a href=\"https://h/x\">doc.xlsx</a>",
                                             "<a href=''></a>", "<a href=\"\"></a>", "<a href='u'></a>", "<a></a>", "plain value", "", null })
             {
                 yield return C(A, "TryParseAttachmentLink", false, cell, null, null);
                 yield return C(A, "IsEmptyAttachmentAnchor", false, cell);
             }
-            foreach (var (tip, url) in new[] { ("/rest/secure/attachment?id=1", "https://host"), ("rest/x", "https://host/"), ("https://abs/x", "https://host"),
+            foreach (var (tip, url) in new[] { ("ATTACHMENT|businessObjectId=34|documentId=12|get-fusion-file", "https://host/"),
+                                               ("ATTACHMENT|businessObjectId=5|fileId=77|", "https://host"), ("ATTACHMENT|businessObjectId=5|fileId=77", "https://host"),
+                                               ("ATTACHMENT|only", "https://host"),
+                                               ("/rest/secure/attachment?id=1", "https://host"), ("rest/x", "https://host/"), ("https://abs/x", "https://host"),
                                                ("", "https://host"), ("/x", ""), (null, null) })
                 yield return C(A, "BuildDownloadUrl", false, tip, url);
 
@@ -74,13 +84,15 @@ namespace XLEdge.Tests
                 yield return C("XLEdge.Helpers.EdgeRequestParser", "Parse", false, v);
 
             foreach (Exception ex in new Exception[] { new TimeoutException("t"), new System.Net.Http.HttpRequestException("h"), new InvalidOperationException("i"),
-                                                       new System.Threading.Tasks.TaskCanceledException(), new System.Net.WebException("w"), new UnauthorizedAccessException("u") })
+                                                       new System.Threading.Tasks.TaskCanceledException(), new System.Net.WebException("w"), new UnauthorizedAccessException("u"),
+                                                       new Exception("outer", new Exception("inner")), null })
                 yield return C("XLEdge.Helpers.ExceptionHelper", "GetFriendlyErrorMessage", false, ex);
 
             yield return C("XLEdge.Helpers.XLEdgeOperatorMappings", "Map", false);
             // The preferences file format: XLEdgeUserPreferences through SerializationHelper (all false, all true, today's defaults).
             foreach (string flags in new[] { "0000000", "1111111", "1000010", "0111101", "0000010", "1000000" })
                 yield return C("PREFS", "Serialize", false, flags);
+            yield return C("JSONW", "RequestBody", true);
             yield return C("JSON", "RoundTrip", true,
                 "{\"a\":1,\"b\":1.50,\"c\":\"2\",\"d\":null,\"e\":true,\"f\":12345678901234567890,\"g\":[1,2.5],\"h\":{\"x\":\"y\"},\"i\":-0.0001}");
         }
@@ -92,9 +104,11 @@ namespace XLEdge.Tests
         public static string[] Run(Assembly xledge)
         {
             var lines = new List<string>();
-            CultureInfo saved = Thread.CurrentThread.CurrentCulture;
+            CultureInfo saved = Thread.CurrentThread.CurrentCulture, savedUi = Thread.CurrentThread.CurrentUICulture;
             try
             {
+                // Framework messages (e.g. TaskCanceledException's) follow the UI language: pin it so the table is not per machine.
+                Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
                 foreach (Case c in All())
                 {
                     foreach (string culture in c.PerCulture ? Cultures : new[] { "en-US" })
@@ -107,6 +121,7 @@ namespace XLEdge.Tests
             finally
             {
                 Thread.CurrentThread.CurrentCulture = saved;
+                Thread.CurrentThread.CurrentUICulture = savedUi;
             }
             return lines.ToArray();
         }
@@ -117,6 +132,7 @@ namespace XLEdge.Tests
             {
                 if (c.Type == "JSON") return RoundTrip(xledge, (string)c.Args[0]);
                 if (c.Type == "PREFS") return SerializePreferences(xledge, (string)c.Args[0]);
+                if (c.Type == "JSONW") return SerializeRequestBody(xledge);
                 Type type = xledge.GetType(c.Type, throwOnError: true);
                 FieldInfo field = type.GetField(c.Member, BindingFlags.Public | BindingFlags.Static);
                 if (field != null) return Describe(field.GetValue(null));
@@ -147,6 +163,28 @@ namespace XLEdge.Tests
             return Describe(value) + " -> " + (string)serialize.Invoke(null, new object[] { value, typeof(Dictionary<string, object>), options });
         }
 
+        /// <summary>
+        /// A request body as the report code builds it - Dictionary&lt;string, object&gt; serialized as object - so
+        /// NumericJsonConverter.WriteDictionary runs: the ORACLE_* always-string keys, numeric-looking strings, typed numbers
+        /// (BigInteger written raw), and a nested dictionary.
+        /// </summary>
+        private static string SerializeRequestBody(Assembly xledge)
+        {
+            var body = new Dictionary<string, object>
+            {
+                { "ORACLE_RESP_ID", 50559 }, { "ORACLE_GL_SEGMENT_VALUES", "01.000" }, { "ORACLE_RESP_DISPLAY_VALUE", 123.5 },
+                { "ORACLE_GL_SEGMENT_DISPLAY_VALUES", null }, { "count", "2" }, { "rate", "1.5" }, { "code", "007" }, { "version", "1.2.3" },
+                { "name", "abc" }, { "i", 7 }, { "l", 8L }, { "m", 1.25m }, { "d", 2.5d }, { "big", System.Numerics.BigInteger.Parse("123456789012345678901234") },
+                { "b", true }, { "n", null }, { "nested", new Dictionary<string, object> { { "x", "5" }, { "ORACLE_RESP_ID", "9" } } },
+                { "list", new List<object> { "1", 2, "x", System.Numerics.BigInteger.Parse("98765432109876543210"), 3.5m } },
+            };
+            object options = xledge.GetType("XLEdge.Helpers.JsonGlobals", true).GetProperty("Options").GetValue(null);
+            Type serializer = options.GetType().Assembly.GetType("System.Text.Json.JsonSerializer", true);
+            MethodInfo serialize = serializer.GetMethods().Single(m => m.Name == "Serialize" && !m.IsGenericMethod &&
+                m.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { typeof(object), typeof(Type), options.GetType() }));
+            return "s:" + (string)serialize.Invoke(null, new object[] { body, typeof(object), options });
+        }
+
         /// <summary>XLEdgeUserPreferences with its seven flags in declaration order set from "0"/"1", serialized as the file is written.</summary>
         private static string SerializePreferences(Assembly xledge, string flags)
         {
@@ -173,6 +211,7 @@ namespace XLEdge.Tests
                 case int i: return "i:" + i.ToString(CultureInfo.InvariantCulture);
                 case long l: return "l:" + l.ToString(CultureInfo.InvariantCulture);
                 case DateTime dt: return "t:" + dt.ToString("o", CultureInfo.InvariantCulture);
+                case System.Numerics.BigInteger bi: return "bi:" + bi.ToString(CultureInfo.InvariantCulture);
                 case IDictionary dict:
                     return "{" + string.Join(";", dict.Keys.Cast<object>().Select(k => Convert.ToString(k, CultureInfo.InvariantCulture) + ":" + Describe(dict[k]))
                         .OrderBy(x => x, StringComparer.Ordinal)) + "}";

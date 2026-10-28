@@ -38,6 +38,14 @@ namespace XLEdge.Tests
             Assert.IsTrue(lines.Any(l => l.StartsWith("AttachmentLinkHelper.IsEmptyAttachmentAnchor(\"<a href=''></a>\") = b:True", StringComparison.Ordinal)),
                 "OISR-22767 empty anchor case");
             Assert.IsTrue(lines.Any(l => l.StartsWith("ApiErrorMessageExtractor.IsHtmlResponse(\"<!DOCTYPE html>", StringComparison.Ordinal) && l.EndsWith("b:True")));
+            // The request writer (NumericJsonConverter.WriteDictionary: ORACLE_* always strings, numeric-looking strings).
+            Assert.IsTrue(lines.Any(l => l.StartsWith("en-US JSONW.RequestBody() = s:{\"ORACLE_RESP_ID\":\"50559\"", StringComparison.Ordinal)), "request body case");
+            // Real EBS/Fusion attachment cells and download URLs.
+            Assert.IsTrue(lines.Any(l => l.Contains("linkValue=s:ATTACHMENT|businessObjectId=34|documentId=12|get-fusion-file")), "attachment link parse");
+            Assert.IsTrue(lines.Any(l => l.EndsWith("= s:https://host/web/secure/get-fusion-file?businessObjectId=34&documentId=12")), "download URL");
+            // The numeric drilldown branches (int, decimal, BigInteger).
+            foreach (string kind in new[] { "= i:42", "= m:12.50", "= bi:123456789012345678901234" })
+                Assert.IsTrue(lines.Any(l => l.StartsWith("en-US XLEdgeValueFormatter.FormatDrilldownValue(", StringComparison.Ordinal) && l.EndsWith(kind)), kind);
         }
     }
 }

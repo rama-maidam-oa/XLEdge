@@ -70,6 +70,22 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void BuiltPackage_CarriesTheJsonDependencies()
+        {
+            // The ported helpers use System.Text.Json; the tests run from bin\, so only this catches a release zip without them.
+            using (var archive = new ZipArchive(File.OpenRead(Directory.GetFiles(PackageFolder, "*.zip").Single())))
+            {
+                var names = archive.Entries.Select(e => e.FullName).ToList();
+                CollectionAssert.IsSubsetOf(new[]
+                {
+                    "System.Text.Json.dll", "System.Text.Encodings.Web.dll", "System.Memory.dll", "System.Buffers.dll", "System.IO.Pipelines.dll",
+                    "System.Numerics.Vectors.dll", "System.Runtime.CompilerServices.Unsafe.dll", "System.Threading.Tasks.Extensions.dll",
+                    "Microsoft.Bcl.AsyncInterfaces.dll",
+                }, names, string.Join(", ", names));
+            }
+        }
+
+        [TestMethod]
         public void ShellBuild_StagesExactlyTheCorePackage_AndNoCoreNextToTheShell()
         {
             string coreBin = ReleaseFolders.CoreBuildFolder;
