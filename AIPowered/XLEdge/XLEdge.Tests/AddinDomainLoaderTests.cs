@@ -50,11 +50,16 @@ namespace XLEdge.Tests
             using (var f = new Fixture())
             {
                 var loadedHere = new List<string>();
+                var resolveRequests = new List<string>();
                 AssemblyLoadEventHandler onLoad = (s, e) => { lock (loadedHere) loadedHere.Add(e.LoadedAssembly.GetName().Name); };
+                ResolveEventHandler onResolve = (s, e) => { lock (resolveRequests) resolveRequests.Add(e.Name); return null; };
                 AppDomain.CurrentDomain.AssemblyLoad += onLoad;
+                AppDomain.CurrentDomain.AssemblyResolve += onResolve;
                 try
                 {
                     var addin = f.Loader.Load(f.Context, f.Stage("v1"));
+                    // The shell holds a proxy of the loader's own type, never of a core type.
+                    Assert.AreEqual(typeof(RemoteLoader.RemoteAddinProxy), addin.GetType());
                     Assert.IsNotNull(addin.GetLoginInfo());
                     Assert.IsFalse(addin.IsBusy());
                     Assert.AreEqual(0, addin.GetOpenWindowTitles().Length);
@@ -62,11 +67,14 @@ namespace XLEdge.Tests
                 finally
                 {
                     AppDomain.CurrentDomain.AssemblyLoad -= onLoad;
+                    AppDomain.CurrentDomain.AssemblyResolve -= onResolve;
                 }
 
                 Assert.AreEqual("XLEdgeCore_v1", f.Loader.CurrentDomainName);
                 Assert.IsTrue(f.Log.Contains("XLEdge core initialized in AppDomain 'XLEdgeCore_v1' from '" + Path.Combine(f.Paths.VersionsPath, "v1")), f.Log.Dump());
                 CollectionAssert.DoesNotContain(loadedHere, "XLEdge.Addin.Core", "the shell domain must never load the core assembly");
+                Assert.IsFalse(resolveRequests.Any(r => r.StartsWith("XLEdge.Addin.Core", StringComparison.OrdinalIgnoreCase)),
+                    "the shell domain must never even ask for the core assembly: " + string.Join("; ", resolveRequests));
             }
         }
 
@@ -94,6 +102,18 @@ namespace XLEdge.Tests
                 var release = new ResolvedRelease { Version = "1.0", FolderName = "empty", ContractVersion = 1 };
                 Assert.ThrowsExactly<FileNotFoundException>(() => f.Loader.Load(f.Context, release));
                 Assert.IsNull(f.Loader.CurrentDomainName);
+                Assert.IsFalse(f.Log.Contains("created AppDomain"), f.Log.Dump());
+            }
+        }
+
+        [TestMethod]
+        public void Load_UnsafeFolderName_RefusedAndLogged()
+        {
+            using (var f = new Fixture())
+            {
+                var release = new ResolvedRelease { Version = "1.0", FolderName = "..", ContractVersion = 1 };
+                Assert.ThrowsExactly<InvalidOperationException>(() => f.Loader.Load(f.Context, release));
+                Assert.IsTrue(f.Log.Contains("AddinDomainLoader.Load: invalid release folder name '..'"), f.Log.Dump());
             }
         }
 
@@ -162,46 +182,66 @@ namespace XLEdge.Tests
             }
         }
 
-        // ---- resolver --------------------------------------------------------------
+        // ---- resolver (run in a throwaway AppDomain: it loads files and must not pollute the test domain) ----
 
-        private static string PackageDll(string package, string dll)
+        private static void InProbeDomain(Action<ResolverProbe> test)
+        {
+            var domain = AppDomain.CreateDomain("ResolverProbe", null, new AppDomainSetup { ApplicationBase = Path.GetDirectoryName(typeof(ResolverProbe).Assembly.Location) });
+            try
+            {
+                test((ResolverProbe)domain.CreateInstanceAndUnwrap(typeof(ResolverProbe).Assembly.FullName, typeof(ResolverProbe).FullName));
+            }
+            finally
+            {
+                AppDomain.Unload(domain);
+            }
+        }
+
+        private static string PackageDll(string packageId, string dll)
         {
             string testBin = Path.GetDirectoryName(typeof(AddinDomainLoaderTests).Assembly.Location);
-            return Path.GetFullPath(Path.Combine(testBin, @"..\..\..\packages", package, @"lib\net462", dll));
+            string packages = Path.GetFullPath(Path.Combine(testBin, @"..\..\..\packages"));
+            string package = Directory.GetDirectories(packages, packageId + ".*").OrderByDescending(d => d).First();
+            return Path.Combine(package, @"lib\net462", dll);
         }
 
         [TestMethod]
         public void Resolver_ProbesReleaseFirstThenShared_AndTriesTheNextCandidateWhenOneFails()
         {
             const string name = "System.IO.Pipelines";
-            Assert.IsFalse(AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == name), "precondition: not loaded yet");
             using (var t = new TempFolder())
             {
                 string release = t.Combine("release"), shared = t.Combine("shared");
                 Directory.CreateDirectory(release);
                 Directory.CreateDirectory(shared);
                 File.WriteAllText(Path.Combine(release, name + ".dll"), "corrupt");
-                File.Copy(PackageDll("System.IO.Pipelines.10.0.9", name + ".dll"), Path.Combine(shared, name + ".dll"));
+                File.Copy(PackageDll(name, name + ".dll"), Path.Combine(shared, name + ".dll"));
                 var log = new RecordingLogger();
 
-                Assembly resolved = RemoteLoader.ResolveFromFolders(name + ", Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51", release, shared, log);
-
-                Assert.IsNotNull(resolved, log.Dump());
-                Assert.AreEqual(name, resolved.GetName().Name);
-                StringAssert.StartsWith(resolved.Location, shared);
-                Assert.IsTrue(log.Contains("AssemblyResolve: could not load"), log.Dump());
+                InProbeDomain(probe =>
+                {
+                    Assert.IsFalse(probe.IsLoaded(name), "precondition: not loaded in the probe domain");
+                    string location = probe.Resolve(name + ", Culture=neutral", release, shared, log);
+                    Assert.IsNotNull(location, log.Dump());
+                    StringAssert.StartsWith(location, shared);
+                });
+                Assert.IsTrue(log.Contains("RemoteLoader.ResolveFromFolders: could not load"), log.Dump());
             }
         }
 
         [TestMethod]
-        public void Resolver_SkipsResourcesAndReturnsAlreadyLoaded()
+        public void Resolver_SkipsResourcesAndSerializersAndReturnsAlreadyLoaded()
         {
             var log = new RecordingLogger();
-            Assert.IsNull(RemoteLoader.ResolveFromFolders("XLEdge.Addin.Core.resources, Culture=en-US", @"C:\none", @"C:\none", log));
-            var contracts = typeof(ContractInfo).Assembly;
-            Assert.AreSame(contracts, RemoteLoader.ResolveFromFolders(contracts.FullName, @"C:\none", @"C:\none", log));
-            Assert.IsNull(RemoteLoader.ResolveFromFolders("Does.Not.Exist", @"C:\none", null, log));
-            Assert.IsTrue(log.Contains("AssemblyResolve: could not resolve 'Does.Not.Exist'"), log.Dump());
+            InProbeDomain(probe =>
+            {
+                Assert.IsNull(probe.Resolve("XLEdge.Addin.Core.resources, Culture=en-US", @"C:\none", @"C:\none", log));
+                Assert.IsNull(probe.Resolve("XLEdge.Addin.Core.XmlSerializers, Culture=neutral", @"C:\none", @"C:\none", log));
+                Assert.IsNotNull(probe.Resolve(typeof(ContractInfo).Assembly.FullName, @"C:\none", @"C:\none", log));
+                Assert.IsNull(probe.Resolve("Does.Not.Exist", @"C:\none", null, log));
+            });
+            Assert.IsTrue(log.Contains("RemoteLoader.ResolveFromFolders: could not resolve 'Does.Not.Exist'"), log.Dump());
+            Assert.IsFalse(log.Contains("XmlSerializers"), "serializer probes are expected and not worth a warning: " + log.Dump());
         }
     }
 }

@@ -247,17 +247,46 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void RebuildFrom_KeepsTheOldFileAsCorruptCopyAndWritesTheEntries()
+        public void RebuildIfUnusable_KeepsTheOldFileAsCorruptCopyAndWritesTheEntries()
         {
             using (var t = new TempFolder())
             {
                 string file = t.Combine("ReleaseHistory.json");
                 File.WriteAllText(file, "[{\"Version\":");
-                ReleaseHistoryStore.RebuildFrom(file, new[] { Entry("v1"), Entry("v2") });
+                var result = ReleaseHistoryStore.RebuildIfUnusable(file, () => new List<ReleaseEntry> { Entry("v1"), Entry("v2") });
+                CollectionAssert.AreEqual(new[] { "v1", "v2" }, result.Select(e => e.FolderName).ToArray());
                 CollectionAssert.AreEqual(new[] { "v1", "v2" }, ReleaseHistoryStore.ReadAll(file).Select(e => e.FolderName).ToArray());
                 var kept = Directory.GetFiles(t.Path, "ReleaseHistory.corrupt-*.json");
                 Assert.AreEqual(1, kept.Length);
                 Assert.AreEqual("[{\"Version\":", File.ReadAllText(kept[0]));
+            }
+        }
+
+        [TestMethod]
+        public void RebuildIfUnusable_LeavesAUsableCatalogAlone()
+        {
+            // Another Excel process may have rebuilt (and added to) the catalog between our read and our rebuild.
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json");
+                ReleaseHistoryStore.Append(file, Entry("v-other"));
+                bool called = false;
+                var result = ReleaseHistoryStore.RebuildIfUnusable(file, () => { called = true; return new List<ReleaseEntry> { Entry("v1") }; });
+                Assert.IsFalse(called);
+                CollectionAssert.AreEqual(new[] { "v-other" }, result.Select(e => e.FolderName).ToArray());
+                Assert.AreEqual(0, Directory.GetFiles(t.Path, "ReleaseHistory.corrupt-*.json").Length);
+            }
+        }
+
+        [TestMethod]
+        public void RebuildIfUnusable_MissingFile_WritesEntriesWithoutCorruptCopy()
+        {
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json");
+                ReleaseHistoryStore.RebuildIfUnusable(file, () => new List<ReleaseEntry> { Entry("v1") });
+                Assert.AreEqual("v1", ReleaseHistoryStore.ReadAll(file).Single().FolderName);
+                Assert.AreEqual(0, Directory.GetFiles(t.Path, "ReleaseHistory.corrupt-*.json").Length);
             }
         }
 

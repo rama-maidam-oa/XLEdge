@@ -52,6 +52,7 @@ namespace XLEdge.Loader.Core
             catch (Exception ex)
             {
                 logger?.LogError($"RemoteLoader.Create: failed to create the XLEdge core from '{path}'.", ex.ToString());
+                if (CrossDomain.NeedsWrapping(ex)) throw CrossDomain.Wrap(ex);
                 throw;
             }
         }
@@ -68,7 +69,7 @@ namespace XLEdge.Loader.Core
             catch (ReflectionTypeLoadException ex)
             {
                 foreach (var loaderException in ex.LoaderExceptions.Where(e => e != null))
-                    logger?.LogError("RemoteLoader: type load failure in the XLEdge core: " + loaderException.Message);
+                    logger?.LogError("RemoteLoader.Create: type load failure in the XLEdge core: " + loaderException.Message);
                 types = ex.Types.Where(t => t != null);
             }
             return types.FirstOrDefault(t => typeof(IXLEdgeAddin).IsAssignableFrom(t) && t.IsClass && !t.IsAbstract);
@@ -101,16 +102,25 @@ namespace XLEdge.Loader.Core
             }
             catch (Exception ex)
             {
-                logger?.LogError($"AssemblyResolve: invalid assembly name '{requestedName}'.", ex.ToString());
+                logger?.LogError($"RemoteLoader.ResolveFromFolders: invalid assembly name '{requestedName}'.", ex.ToString());
                 return null;
             }
             string simpleName = requested.Name;
-            if (string.IsNullOrEmpty(simpleName) || simpleName.EndsWith(".resources", StringComparison.OrdinalIgnoreCase)) return null;
+            // Satellite resources and pre-generated XmlSerializers assemblies are probed routinely and are optional.
+            if (string.IsNullOrEmpty(simpleName) ||
+                simpleName.EndsWith(".resources", StringComparison.OrdinalIgnoreCase) ||
+                simpleName.EndsWith(".XmlSerializers", StringComparison.OrdinalIgnoreCase)) return null;
 
             var loaded = AppDomain.CurrentDomain.GetAssemblies();
-            Assembly match = loaded.FirstOrDefault(a => string.Equals(a.FullName, requestedName, StringComparison.OrdinalIgnoreCase))
-                ?? loaded.FirstOrDefault(a => string.Equals(a.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase));
-            if (match != null) return match;
+            Assembly exact = loaded.FirstOrDefault(a => string.Equals(a.FullName, requestedName, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+            Assembly sameName = loaded.FirstOrDefault(a => string.Equals(a.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase));
+            if (sameName != null)
+            {
+                if (requested.Version != null && sameName.GetName().Version != requested.Version)
+                    logger?.LogDebug($"RemoteLoader.ResolveFromFolders: '{requestedName}' answered with the loaded '{sameName.FullName}'.");
+                return sameName;
+            }
 
             foreach (string candidate in Candidates(simpleName, releaseFolder, sharedFolder))
             {
@@ -118,16 +128,16 @@ namespace XLEdge.Loader.Core
                 try
                 {
                     Assembly assembly = Assembly.LoadFrom(candidate);
-                    logger?.LogDebug($"AssemblyResolve: '{requestedName}' loaded from '{candidate}'.");
+                    logger?.LogDebug($"RemoteLoader.ResolveFromFolders: '{requestedName}' loaded from '{candidate}'.");
                     return assembly;
                 }
                 catch (Exception ex)
                 {
-                    logger?.LogWarn($"AssemblyResolve: could not load '{candidate}': {ex.Message}");
+                    logger?.LogWarn($"RemoteLoader.ResolveFromFolders: could not load '{candidate}': {ex.Message}");
                 }
             }
 
-            logger?.LogWarn($"AssemblyResolve: could not resolve '{requestedName}' from release '{releaseFolder}' or shared dependencies '{sharedFolder}'.");
+            logger?.LogWarn($"RemoteLoader.ResolveFromFolders: could not resolve '{requestedName}' from release '{releaseFolder}' or shared dependencies '{sharedFolder}'.");
             return null;
         }
 
@@ -152,19 +162,32 @@ namespace XLEdge.Loader.Core
                 _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             }
 
-            public void Initialize(IXLEdgeContext context) => _inner.Initialize(context);
-            public void OnRibbonAction(string action, object parameter) => _inner.OnRibbonAction(action, parameter);
-            public bool OnExcelEvent(string eventName, object[] args) => _inner.OnExcelEvent(eventName, args);
-            public void Shutdown() => _inner.Shutdown();
-            public IntPtr CreateTaskPaneContent(IntPtr excelWindowHandle) => _inner.CreateTaskPaneContent(excelWindowHandle);
-            public void CloseTaskPaneContent(IntPtr excelWindowHandle) => _inner.CloseTaskPaneContent(excelWindowHandle);
-            public void OnTaskPaneShown(IntPtr excelWindowHandle) => _inner.OnTaskPaneShown(excelWindowHandle);
+            public void Initialize(IXLEdgeContext context) => Call(() => _inner.Initialize(context));
+            public void OnRibbonAction(string action, object parameter) => Call(() => _inner.OnRibbonAction(action, parameter));
+            public bool OnExcelEvent(string eventName, object[] args) => Call(() => _inner.OnExcelEvent(eventName, args));
+            public void Shutdown() => Call(() => _inner.Shutdown());
+            public IntPtr CreateTaskPaneContent(IntPtr excelWindowHandle) => Call(() => _inner.CreateTaskPaneContent(excelWindowHandle));
+            public void CloseTaskPaneContent(IntPtr excelWindowHandle) => Call(() => _inner.CloseTaskPaneContent(excelWindowHandle));
+            public void OnTaskPaneShown(IntPtr excelWindowHandle) => Call(() => _inner.OnTaskPaneShown(excelWindowHandle));
             public void OnLoginFromGLSense(string instanceName, string loginUrl, string token, string userName, bool hasXLEdgePermission) =>
-                _inner.OnLoginFromGLSense(instanceName, loginUrl, token, userName, hasXLEdgePermission);
-            public void OnLogoutFromGLSense() => _inner.OnLogoutFromGLSense();
-            public LoginInfo GetLoginInfo() => _inner.GetLoginInfo();
-            public string[] GetOpenWindowTitles() => _inner.GetOpenWindowTitles();
-            public bool IsBusy() => _inner.IsBusy();
+                Call(() => _inner.OnLoginFromGLSense(instanceName, loginUrl, token, userName, hasXLEdgePermission));
+            public void OnLogoutFromGLSense() => Call(() => _inner.OnLogoutFromGLSense());
+            public LoginInfo GetLoginInfo() => Call(() => _inner.GetLoginInfo());
+            public string[] GetOpenWindowTitles() => Call(() => _inner.GetOpenWindowTitles());
+            public bool IsBusy() => Call(() => _inner.IsBusy());
+
+            // Exceptions of core-only types are replaced by a framework exception carrying their text (see CrossDomain).
+            private static void Call(Action call)
+            {
+                try { call(); }
+                catch (Exception ex) when (CrossDomain.NeedsWrapping(ex)) { throw CrossDomain.Wrap(ex); }
+            }
+
+            private static T Call<T>(Func<T> call)
+            {
+                try { return call(); }
+                catch (Exception ex) when (CrossDomain.NeedsWrapping(ex)) { throw CrossDomain.Wrap(ex); }
+            }
 
             public override object InitializeLifetimeService() => null;
         }

@@ -139,15 +139,25 @@ namespace XLEdge.Shared
         }
 
         /// <summary>
-        /// Replaces the catalog with <paramref name="entries"/> (used to recover an unreadable catalog). The previous file, if
-        /// any, is kept next to it as "{name}.corrupt-{yyyyMMddHHmmss}.json" for diagnosis.
+        /// Recovers an unusable catalog: under the lock, if the catalog is (still) missing, unreadable or empty, it is replaced by
+        /// <paramref name="rebuild"/>'s entries and the previous file, if any, is kept as "{name}.corrupt-{yyyyMMddHHmmss}.json"
+        /// for diagnosis. A catalog that has become usable in the meantime (another Excel process rebuilt it) is returned as is.
         /// </summary>
-        public static void RebuildFrom(string releaseHistoryFile, IEnumerable<ReleaseEntry> entries)
+        public static List<ReleaseEntry> RebuildIfUnusable(string releaseHistoryFile, Func<List<ReleaseEntry>> rebuild)
         {
-            if (entries == null) throw new ArgumentNullException(nameof(entries));
-            var list = entries.ToList();
-            WithLock(releaseHistoryFile, LockTimeout, () =>
+            if (rebuild == null) throw new ArgumentNullException(nameof(rebuild));
+            return WithLock(releaseHistoryFile, LockTimeout, () =>
             {
+                try
+                {
+                    var current = ReadAllUnlocked(releaseHistoryFile);
+                    if (current.Count > 0) return current;
+                }
+                catch (JsonException)
+                {
+                }
+
+                var list = rebuild() ?? new List<ReleaseEntry>();
                 if (File.Exists(releaseHistoryFile))
                 {
                     string folder = Path.GetDirectoryName(Path.GetFullPath(releaseHistoryFile));
@@ -157,7 +167,7 @@ namespace XLEdge.Shared
                     File.Move(releaseHistoryFile, backup);
                 }
                 WriteAllUnlocked(releaseHistoryFile, list);
-                return 0;
+                return list;
             });
         }
 

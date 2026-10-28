@@ -65,15 +65,9 @@
       <Project>{29E7F086-11DD-40A5-B5B1-8E8358D4F6C3}</Project>
       <Name>XLEdge.Shared</Name>
     </ProjectReference>
-    <!-- No code here uses XLEdge.Loader.Core. The reference makes MSBuild build it first and
-         copy XLEdge.Loader.Core.dll into this project's output: that DLL has to ship inside
-         every core zip, because the loader creates RemoteLoader in the core's AppDomain, and
-         that AppDomain resolves assemblies from the extracted release folder
-         (AddinCore\Versions\<release>\), not from the shell's folder. -->
-    <ProjectReference Include="..\XLEdge.Loader.Core\XLEdge.Loader.Core.csproj">
-      <Project>{884BC684-A657-434E-A773-E8A4B43FE5C0}</Project>
-      <Name>XLEdge.Loader.Core</Name>
-    </ProjectReference>
   </ItemGroup>
+  <!-- No reference to XLEdge.Loader.Core: the shell creates RemoteLoader in the core's AppDomain from the shell's own copy
+       (CreateInstanceFromAndUnwrap), so release zips never carry a loader. -->
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

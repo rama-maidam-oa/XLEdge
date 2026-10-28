@@ -178,6 +178,13 @@ Open items for Stage 0e (from the Stage 0a review):
   the other.
 - Loader DLL name: `adxloader.XLEdge.dll` (GLSense pattern) vs the existing `adxloader.dll`.
 - `stdole.dll` is copied next to the shell (Office interop dependency): include it in the MSI file list or drop it deliberately.
+- From Stage 0d: after every successful load (startup, reload, Release History) the shell calls
+  `UpdateBootstrapper.RememberLoaded(context, folder)` so the release survives a restart; a newly staged release still wins.
+- `AddinDomainLoader.Unload` must never run on a thread that came from the core (a core→shell callback); queue the reload.
+- `XLEdge.Loader.Core.dll` ships with the shell only (the shell creates `RemoteLoader` from its own copy); core zips carry
+  `XLEdge.Contracts.dll` and `XLEdge.Shared.dll` but no loader.
+- Reload order: EndReleaseSession → core Shutdown → Unload → resolve → set Version/ReleaseDate/ActiveFolderName → Load →
+  RememberLoaded. A staged reinstall of the just-unloaded release is accepted (already-extracted folder).
 
 Not adopted (same as GLSense today): Authenticode check of the core DLL at load — SHA256 vs manifest only.
 Worth adding to both later.

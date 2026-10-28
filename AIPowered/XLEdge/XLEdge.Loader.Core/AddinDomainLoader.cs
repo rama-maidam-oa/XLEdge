@@ -43,7 +43,10 @@ namespace XLEdge.Loader.Core
                 throw new InvalidOperationException(message);
             }
             if (!ReleaseHistoryStore.IsSafeFolderName(release.FolderName))
+            {
+                logger?.LogError($"AddinDomainLoader.Load: invalid release folder name '{release.FolderName}'.");
                 throw new InvalidOperationException($"Invalid release folder name '{release.FolderName}'.");
+            }
 
             string folder = Path.Combine(context.Paths.VersionsPath, release.FolderName);
             string coreDll = Path.Combine(folder, RemoteLoader.CoreAssemblyFile);
@@ -53,7 +56,9 @@ namespace XLEdge.Loader.Core
                 throw new FileNotFoundException("XLEdge core not found: " + coreDll, coreDll);
             }
 
-            var setup = new AppDomainSetup { ApplicationBase = folder, ApplicationName = "XLEdgeCore" };
+            // SingleDomain: nothing is loaded domain-neutral, whatever the host process uses, so every assembly of the core
+            // domain really goes away when it is unloaded.
+            var setup = new AppDomainSetup { ApplicationBase = folder, ApplicationName = "XLEdgeCore", LoaderOptimization = LoaderOptimization.SingleDomain };
             string config = coreDll + ".config";
             if (File.Exists(config)) setup.ConfigurationFile = config;
 
@@ -64,7 +69,9 @@ namespace XLEdge.Loader.Core
             logger?.LogDebug($"AddinDomainLoader.Load: created AppDomain '{name}'.");
             try
             {
-                var remoteLoader = (RemoteLoader)_domain.CreateInstanceAndUnwrap(typeof(RemoteLoader).Assembly.FullName, typeof(RemoteLoader).FullName);
+                // The shell's own copy of XLEdge.Loader.Core creates the core, so a rolled-back (older) release never runs an
+                // older loader against this shell. Its dependencies (XLEdge.Contracts) resolve from the release folder.
+                var remoteLoader = (RemoteLoader)_domain.CreateInstanceFromAndUnwrap(typeof(RemoteLoader).Assembly.Location, typeof(RemoteLoader).FullName);
                 IXLEdgeAddin addin = remoteLoader.Create(folder, context.Paths.SharedDependenciesPath, logger);
                 addin.Initialize(context);
                 logger?.LogInfo($"AddinDomainLoader.Load: XLEdge core {release.Version} initialized.");
@@ -81,6 +88,8 @@ namespace XLEdge.Loader.Core
         /// <summary>
         /// Unloads the core's AppDomain, waiting at most 5 seconds (AppDomain.Unload can block forever on a thread stuck in a
         /// COM call; it runs on a background thread so it can never keep Excel alive). Never throws.
+        /// Never call it from inside a call that came from the core (a core-to-shell callback): that thread still has core frames
+        /// on its stack and the unload would abort it.
         /// </summary>
         public void Unload(IXLEdgeContext context)
         {

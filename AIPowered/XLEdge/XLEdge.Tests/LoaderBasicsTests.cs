@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.Remoting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using XLEdge.Contracts;
 using XLEdge.Loader.Core;
@@ -27,20 +28,31 @@ namespace XLEdge.Tests
             Assert.IsFalse(ContractCompatibility.IsLoadable(-1));
         }
 
-        [TestMethod]
-        public void ResolvedRelease_Fields()
+        // The core is created in a throwaway AppDomain so it never gets loaded into the test domain
+        // (other tests assert that the shell's domain never loads it).
+        private static void WithCoreEntry(Action<IXLEdgeAddin, string> test)
         {
-            var r = new ResolvedRelease { Version = "11.1.2.0", ReleaseDate = "d", FolderName = "v1", ContractVersion = 1 };
-            Assert.AreEqual("v1", r.FolderName);
-            Assert.AreEqual(1, r.ContractVersion);
+            string coreFolder = ReleaseFolders.CoreBuildFolder;
+            var domain = AppDomain.CreateDomain("CoreEntryTest", null, new AppDomainSetup { ApplicationBase = coreFolder });
+            try
+            {
+                var entry = (IXLEdgeAddin)domain.CreateInstanceFromAndUnwrap(Path.Combine(coreFolder, "XLEdge.Addin.Core.dll"), "XLEdge.Addin.Core.AddinEntry");
+                test(entry, domain.FriendlyName);
+            }
+            finally
+            {
+                AppDomain.Unload(domain);
+            }
         }
 
         [TestMethod]
         public void AddinEntry_IsMarshalByRefWithInfiniteLease()
         {
-            var entry = CreateEntry();
-            Assert.IsInstanceOfType(entry, typeof(MarshalByRefObject));
-            Assert.IsNull(((MarshalByRefObject)entry).InitializeLifetimeService());
+            WithCoreEntry((entry, _) =>
+            {
+                Assert.IsTrue(RemotingServices.IsTransparentProxy(entry));
+                Assert.IsNull(RemotingServices.GetLifetimeService((MarshalByRefObject)entry));
+            });
         }
 
         [TestMethod]
@@ -50,26 +62,44 @@ namespace XLEdge.Tests
             {
                 var logger = new RecordingLogger();
                 var context = new FakeContext(new PathProvider(t.Combine("inst"), t.Combine("data"))) { Logger = logger };
-                var entry = CreateEntry();
-
-                entry.Initialize(context);
-                Assert.IsTrue(logger.Contains($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}'"), logger.Dump());
-                Assert.IsNotNull(entry.GetLoginInfo());
-                Assert.IsFalse(entry.GetLoginInfo().IsLoggedIn);
-                Assert.AreEqual(0, entry.GetOpenWindowTitles().Length);
-                Assert.IsFalse(entry.IsBusy());
-                Assert.AreEqual(IntPtr.Zero, entry.CreateTaskPaneContent(new IntPtr(1)));
-                entry.OnRibbonAction("RibEdgeRefresh", null);
-                Assert.IsTrue(entry.OnExcelEvent("SheetActivate", new object[] { "Sheet1" }));
-                entry.Shutdown();
-                Assert.IsTrue(logger.Contains("AddinEntry.Shutdown: XLEdge core shut down."), logger.Dump());
+                WithCoreEntry((entry, domainName) =>
+                {
+                    entry.Initialize(context);
+                    Assert.IsTrue(logger.Contains($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{domainName}'"), logger.Dump());
+                    Assert.IsFalse(entry.GetLoginInfo().IsLoggedIn);
+                    Assert.AreEqual(0, entry.GetOpenWindowTitles().Length);
+                    Assert.IsFalse(entry.IsBusy());
+                    Assert.AreEqual(IntPtr.Zero, entry.CreateTaskPaneContent(new IntPtr(1)));
+                    entry.OnRibbonAction("RibEdgeRefresh", null);
+                    Assert.IsTrue(entry.OnExcelEvent("SheetActivate", new object[] { "Sheet1" }));
+                    entry.Shutdown();
+                    Assert.IsTrue(logger.Contains("AddinEntry.Shutdown: XLEdge core shut down."), logger.Dump());
+                });
             }
         }
 
-        private static IXLEdgeAddin CreateEntry()
+        // ---- exceptions crossing back to the shell -----------------------------------
+
+        private sealed class CoreOnlyException : Exception
         {
-            var asm = Assembly.LoadFrom(Path.Combine(ReleaseFolders.CoreBuildFolder, "XLEdge.Addin.Core.dll"));
-            return (IXLEdgeAddin)Activator.CreateInstance(asm.GetType("XLEdge.Addin.Core.AddinEntry", throwOnError: true));
+            public CoreOnlyException(string message) : base(message) { }
+        }
+
+        [TestMethod]
+        public void CrossDomain_FrameworkExceptionsPassThrough_OthersAreWrapped()
+        {
+            Assert.IsFalse(CrossDomain.NeedsWrapping(new FileNotFoundException("x")));
+            Assert.IsFalse(CrossDomain.NeedsWrapping(new TargetInvocationException(new InvalidOperationException("x"))));
+
+            var custom = new CoreOnlyException("boom");
+            Assert.IsTrue(CrossDomain.NeedsWrapping(custom));
+            Assert.IsTrue(CrossDomain.NeedsWrapping(new TargetInvocationException(custom)));
+            Assert.IsTrue(CrossDomain.NeedsWrapping(new AggregateException(new InvalidOperationException("a"), custom)));
+
+            var wrapped = CrossDomain.Wrap(new TargetInvocationException(custom));
+            Assert.IsInstanceOfType(wrapped, typeof(InvalidOperationException));
+            StringAssert.Contains(wrapped.Message, "CoreOnlyException: boom");
+            Assert.IsNull(wrapped.InnerException, "nothing core-specific may be serialized back");
         }
     }
 }

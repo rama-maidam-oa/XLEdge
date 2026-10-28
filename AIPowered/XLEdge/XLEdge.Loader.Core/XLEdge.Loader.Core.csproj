@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="AddinDomainLoader.cs" />
     <Compile Include="ContractCompatibility.cs" />
+    <Compile Include="CrossDomain.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RemoteLoader.cs" />
     <Compile Include="ResolvedRelease.cs" />
