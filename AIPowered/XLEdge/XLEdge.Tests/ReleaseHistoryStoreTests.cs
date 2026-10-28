@@ -166,6 +166,24 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Delete_NamesWindowsNormalisesOntoAnotherFolder_AreRejected()
+        {
+            // Windows drops trailing dots and spaces: "v-active." and "v-active " resolve to Versions-active.
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json"), versions = t.Combine("Versions");
+                MakeRelease(versions, "v-active");
+                foreach (var f in new[] { "v-active.", "v-active ", "...", ". ." }) ReleaseHistoryStore.Append(file, Entry(f));
+                foreach (var bad in new[] { "v-active.", "v-active ", "...", ". ." })
+                {
+                    Assert.AreEqual(ReleaseDeleteResult.InvalidFolderName, ReleaseHistoryStore.Delete(file, versions, bad, "v-active", out _), "'" + bad + "'");
+                    Assert.IsTrue(File.Exists(Path.Combine(versions, "v-active", "XLEdge.Addin.Core.dll")), "active release deleted via '" + bad + "'");
+                }
+                Assert.IsTrue(Directory.Exists(versions));
+            }
+        }
+
+        [TestMethod]
         public void Delete_LockedFolder_ReportsFolderDeleteFailed()
         {
             using (var t = new TempFolder())

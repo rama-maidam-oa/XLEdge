@@ -13,7 +13,7 @@ namespace XLEdge.Tests
     {
         private const string Manifest =
             "[{\"version\":\"11.1.2\",\"releaseDate\":\"2026-10-20T09:00:00\",\"folderName\":\"v11.1.2_a\",\"contractVersion\":1}," +
-            " {\"version\":\"11.1.10\",\"releaseDate\":\"2026-10-28T14:05:09\",\"folderName\":\"v11.1.10_b\",\"contractVersion\":2}," +
+            " {\"version\":\"11.1.10\",\"releaseDate\":\"2026-10-28T14:05:09\",\"folderName\":\"v11.1.10_b\",\"fileName\":\"v11.1.10_b.zip\",\"checksum\":\"sha-b\",\"contractVersion\":2}," +
             " {\"version\":\"11.1.10\",\"releaseDate\":\"2026-10-29T00:00:00\",\"folderName\":\"v11.1.10_tie\",\"contractVersion\":3}]";
 
         [TestMethod]
@@ -24,6 +24,9 @@ namespace XLEdge.Tests
             Assert.AreEqual("11.1.10", result.Version);
             Assert.AreEqual(new DateTime(2026, 10, 28, 14, 5, 9), result.ReleaseDate);
             Assert.AreEqual(2, result.ContractVersion, "ties go to the first entry");
+            Assert.AreEqual("v11.1.10_b", result.FolderName);
+            Assert.AreEqual("sha-b", result.Checksum);
+            Assert.AreEqual("v11.1.10_b.zip", result.FileName);
             Assert.AreEqual(3, result.AllVersions.Count);
             Assert.AreEqual("v11.1.2_a", result.AllVersions[0].FolderName);
         }

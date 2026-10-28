@@ -54,10 +54,10 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void FileName_EnglishMonthUnderDeDE()
+        public void FileName_EnglishMonthUnderFrFR()
         {
             var previous = Thread.CurrentThread.CurrentCulture;
-            Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             try
             {
                 using (var f = new Fixture())
@@ -131,6 +131,74 @@ namespace XLEdge.Tests
                 }
                 string text = f.Text();
                 Assert.IsTrue(Regex.IsMatch(text, @"\|===== Refresh \| \d{4}-\d\d-\d\d \d\d:\d\d:\d\d =====\r?\n-+\r?\nDEBUG \| \d\d:\d\d:\d\d \| BEGIN: Refresh\r?\n  DEBUG \| \d\d:\d\d:\d\d \| step 1\r?\nDEBUG \| \d\d:\d\d:\d\d \| END: Refresh\r?\n-+"), text);
+            }
+        }
+
+        [TestMethod]
+        public void Scope_FromSecondAppDomain_BuffersLikeInDomain()
+        {
+            using (var f = new Fixture())
+            {
+                var domain = AppDomain.CreateDomain("CoreLike", null, new AppDomainSetup
+                {
+                    ApplicationBase = Path.GetDirectoryName(typeof(LoggerTests).Assembly.Location),
+                });
+                try
+                {
+                    var caller = (RemoteScopeCaller)domain.CreateInstanceAndUnwrap(typeof(RemoteScopeCaller).Assembly.FullName, typeof(RemoteScopeCaller).FullName);
+                    caller.Run(f.Logger, "SyncScope");
+                    caller.RunWithAwait(f.Logger, "AsyncScope");
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+
+                string text = f.Text();
+                foreach (var name in new[] { "SyncScope", "AsyncScope" })
+                {
+                    Assert.IsTrue(Regex.IsMatch(text,
+                        @"\|===== " + name + @" \| [^\r\n]+=====\r?\n-+\r?\nDEBUG \| \d\d:\d\d:\d\d \| BEGIN: " + name + @"\r?\n  DEBUG \| \d\d:\d\d:\d\d \| inside\r?\nDEBUG \| \d\d:\d\d:\d\d \| END: " + name + @"\r?\n-+"),
+                        name + " was not buffered as one block:\n" + text);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TwoLoggersSameFile_KeepEveryLine()
+        {
+            // Two Excel processes log to the same day's file; neither may overwrite the other's lines.
+            using (var f = new Fixture())
+            using (var second = new Logger(new FakeContext(f.Paths) { DebugMode = true }))
+            {
+                var a = new Thread(() => { for (int i = 0; i < 300; i++) f.Logger.LogInfo("A" + i); });
+                var b = new Thread(() => { for (int i = 0; i < 300; i++) second.LogInfo("B" + i); });
+                a.Start(); b.Start(); a.Join(); b.Join();
+                var lines = f.Lines();
+                Assert.AreEqual(300, lines.Count(l => Regex.IsMatch(l, @"\| A\d+$")), "lines from the first logger");
+                Assert.AreEqual(300, lines.Count(l => Regex.IsMatch(l, @"\| B\d+$")), "lines from the second logger");
+            }
+        }
+
+        [TestMethod]
+        [Timeout(10000)]
+        public void ReadLinesBackwards_StreamShorterThanReported_Terminates()
+        {
+            // A log file truncated while it is being read must not hang Excel's startup.
+            var lines = Logger.ReadLinesBackwards(new ShortStream(reportedLength: 200_000, actual: "a\nb\n")).ToList();
+            Assert.IsTrue(lines.Count < 10);
+        }
+
+        private sealed class ShortStream : MemoryStream
+        {
+            private readonly long _reported;
+            public ShortStream(long reportedLength, string actual) : base(System.Text.Encoding.UTF8.GetBytes(actual)) { _reported = reportedLength; }
+            public override long Length => _reported;
+            public override int Read(byte[] buffer, int offset, int count) => Position >= base.Length ? 0 : base.Read(buffer, offset, count);
+            public override long Position
+            {
+                get => base.Position;
+                set => base.Position = Math.Min(value, base.Length);
             }
         }
 
@@ -236,12 +304,13 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void ReleaseSession_DedupeWorksUnderDeDE()
+        public void ReleaseSession_DedupeWorksUnderFrFR()
         {
             // The "today's log file" lookup must use the same (English) month name as the file NLog writes,
-            // otherwise on German Windows ("Okt") every Excel start adds a duplicate section.
+            // otherwise on non-English Windows every Excel start adds a duplicate section. fr-FR month
+            // abbreviations differ from English in every month (de-DE only in four).
             var previous = Thread.CurrentThread.CurrentCulture;
-            Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             try
             {
                 using (var f = new Fixture())

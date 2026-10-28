@@ -15,6 +15,12 @@ namespace XLEdge.Shared
         public string Version { get; set; }
         public DateTime ReleaseDate { get; set; }
         public int ContractVersion { get; set; }
+
+        /// <summary>SHA-256 of the release zip, checked before an offline/online release is staged.</summary>
+        public string Checksum { get; set; }
+
+        public string FolderName { get; set; }
+        public string FileName { get; set; }
         public List<VersionInfo> AllVersions { get; set; } = new List<VersionInfo>();
         public string ErrorMessage { get; set; }
     }
@@ -58,6 +64,9 @@ namespace XLEdge.Shared
                     Version = latest.Version,
                     ReleaseDate = ParseReleaseDate(latest.ReleaseDate),
                     ContractVersion = latest.ContractVersion,
+                    Checksum = latest.Checksum,
+                    FolderName = latest.FolderName,
+                    FileName = latest.FileName,
                     AllVersions = versions,
                 };
                 _logger?.LogDebug($"Parsed version: {result.Version}, Release Date: {result.ReleaseDate.ToString("dd-MMM-yyyy", CultureInfo.InvariantCulture)}");

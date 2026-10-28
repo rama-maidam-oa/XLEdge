@@ -53,6 +53,7 @@
     <Compile Include="LoggerTests.cs" />
     <Compile Include="PathProviderTests.cs" />
     <Compile Include="ReleaseHistoryStoreTests.cs" />
+    <Compile Include="RemoteScopeCaller.cs" />
     <Compile Include="TempFolder.cs" />
     <Compile Include="VersionParserTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

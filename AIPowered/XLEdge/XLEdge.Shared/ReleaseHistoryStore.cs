@@ -86,10 +86,22 @@ namespace XLEdge.Shared
                 if (!IsSafeFolderName(folderName))
                     return ReleaseDeleteResult.InvalidFolderName;
 
-                string root = Path.GetFullPath(versionsPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                string target = Path.GetFullPath(Path.Combine(versionsPath, folderName));
-                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                string root, target, active = null;
+                try
+                {
+                    root = Path.GetFullPath(versionsPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    target = Path.GetFullPath(Path.Combine(versionsPath, folderName));
+                    if (!string.IsNullOrWhiteSpace(activeFolderName) && IsSafeFolderName(activeFolderName))
+                        active = Path.GetFullPath(Path.Combine(versionsPath, activeFolderName));
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is PathTooLongException)
+                {
                     return ReleaseDeleteResult.InvalidFolderName;
+                }
+                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase) || target.Length <= root.Length)
+                    return ReleaseDeleteResult.InvalidFolderName;
+                if (active != null && string.Equals(target.TrimEnd(Path.DirectorySeparatorChar), active.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                    return ReleaseDeleteResult.ActiveRelease;
 
                 try
                 {
@@ -125,10 +137,13 @@ namespace XLEdge.Shared
             return $"v{version}_{safeDate}";
         }
 
-        /// <summary>A bare folder name: no path separators, not rooted, not "." or "..".</summary>
+        /// <summary>
+        /// A bare folder name: no path separators or invalid characters, not rooted, and not ending in '.' or ' '
+        /// (Windows drops those, so "v1." would resolve to the folder "v1").
+        /// </summary>
         public static bool IsSafeFolderName(string folderName)
         {
-            if (string.IsNullOrWhiteSpace(folderName) || folderName == "." || folderName == "..") return false;
+            if (string.IsNullOrWhiteSpace(folderName) || folderName.EndsWith(".", StringComparison.Ordinal) || folderName.EndsWith(" ", StringComparison.Ordinal)) return false;
             if (folderName.IndexOf('\\') >= 0 || folderName.IndexOf('/') >= 0) return false;
             if (folderName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
             return !Path.IsPathRooted(folderName) && Path.GetFileName(folderName) == folderName;
@@ -209,7 +224,13 @@ namespace XLEdge.Shared
             if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
 
             string tmp = file + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(entries, WriteOptions));
+            byte[] content = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(entries, WriteOptions));
+            using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(content, 0, content.Length);
+                // On disk before the swap: after a power cut the catalog is the old or the new one, never empty.
+                stream.Flush(flushToDisk: true);
+            }
 
             // Antivirus and indexers open a freshly written file for a moment; File.Replace then fails with a
             // sharing violation. Retry briefly before giving up (the temp file is still complete on failure).

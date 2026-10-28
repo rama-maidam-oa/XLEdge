@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Threading;
 using NLog;
@@ -39,7 +40,10 @@ namespace XLEdge.Shared
         private readonly string _logsFolder;
         private readonly LogFactory _factory;
         private readonly NLog.Logger _nlog;
-        private readonly AsyncLocal<ActionBuffer> _currentBuffer = new AsyncLocal<ActionBuffer>();
+        // The current scope's buffer id lives in the logical call context, not in an AsyncLocal: the core calls
+        // BeginLogScope through a cross-AppDomain proxy, and an AsyncLocal set during a remoted call is discarded
+        // when the call returns, while logical call context data flows back to the caller (and on through awaits).
+        private readonly string _scopeSlot = "XLEdge.LogScope." + Guid.NewGuid().ToString("N");
         private readonly ConcurrentDictionary<Guid, ActionBuffer> _openBuffers = new ConcurrentDictionary<Guid, ActionBuffer>();
         private readonly object _timerLock = new object();
         private Timer _safetyNetTimer;
@@ -70,12 +74,14 @@ namespace XLEdge.Shared
                     Header = EscapeLayout(BuildEnvironmentSnapshot()),
                     Layout = "${longdate}|${message:withException=true:exceptionSeparator=|}",
                     AutoFlush = true,
-                    KeepFileOpen = true,
+                    // Not kept open: two Excel processes write the same day's file, and with a kept-open handle each
+                    // process overwrites the other's lines. Writes are batched per action, so the cost is small.
+                    KeepFileOpen = false,
                     DeleteOldFileOnStartup = false,
                     ArchiveAboveSize = 20 * 1024 * 1024,
                     MaxArchiveFiles = 30,
                     // No ArchiveFileName: with a date-based FileName it switches NLog to the legacy archive
-                    // handler, which fights KeepFileOpen. This gives XLEdge_Logs_28-Oct-2026(1).log, (2)...
+                    // handler. This gives XLEdge_Logs_28-Oct-2026(1).log, (2)...
                     ArchiveSuffixFormat = "({0})",
                 };
                 config.AddRule(LogLevel.Debug, LogLevel.Fatal, file);
@@ -111,7 +117,7 @@ namespace XLEdge.Shared
         {
             if (!DebugMode) return;
             string line = Format("DEBUG ", message);
-            var buffer = _currentBuffer.Value;
+            var buffer = CurrentBuffer;
             if (buffer == null)
             {
                 WriteImmediate(line);
@@ -224,11 +230,16 @@ namespace XLEdge.Shared
             }
         }
 
+        private ActionBuffer CurrentBuffer =>
+            CallContext.LogicalGetData(_scopeSlot) is string id && Guid.TryParse(id, out var guid) && _openBuffers.TryGetValue(guid, out var buffer)
+                ? buffer
+                : null;
+
         private ActionBuffer BeginScope(string name)
         {
-            if (!DebugMode || _currentBuffer.Value != null) return null;
+            if (!DebugMode || CurrentBuffer != null) return null;
             var buffer = new ActionBuffer { RootScopeName = name };
-            _currentBuffer.Value = buffer;
+            CallContext.LogicalSetData(_scopeSlot, buffer.Id.ToString("N"));
             _openBuffers[buffer.Id] = buffer;
             EnsureSafetyNetTimer();
             return buffer;
@@ -239,26 +250,26 @@ namespace XLEdge.Shared
             if (owned == null) return;
             FlushBuffer(owned, owned.RootScopeName);
             _openBuffers.TryRemove(owned.Id, out _);
-            if (_currentBuffer.Value == owned) _currentBuffer.Value = null;
+            if (CurrentBuffer == owned) CallContext.LogicalSetData(_scopeSlot, null);
         }
 
         private void ChangeDepth(int delta)
         {
-            var buffer = _currentBuffer.Value;
+            var buffer = CurrentBuffer;
             if (buffer == null) return;
             lock (buffer.Lock) buffer.Depth = Math.Max(0, buffer.Depth + delta);
         }
 
         private string Indent()
         {
-            var buffer = _currentBuffer.Value;
+            var buffer = CurrentBuffer;
             if (buffer == null) return string.Empty;
             lock (buffer.Lock) return new string(' ', 2 * buffer.Depth);
         }
 
         private void FlushCurrent(string reason)
         {
-            var buffer = _currentBuffer.Value;
+            var buffer = CurrentBuffer;
             if (buffer != null) FlushBuffer(buffer, $"{buffer.RootScopeName} - {reason}");
         }
 
@@ -348,11 +359,17 @@ namespace XLEdge.Shared
             return false;
         }
 
-        /// <summary>Lines of a (possibly 20 MB) log file from the last to the first, read in 64 KB chunks.</summary>
         private static IEnumerable<string> ReadLinesBackwards(string path)
         {
-            const int chunkSize = 64 * 1024;
             using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                foreach (string line in ReadLinesBackwards(stream))
+                    yield return line;
+        }
+
+        /// <summary>Lines of a (possibly 20 MB) log file from the last to the first, read in 64 KB chunks.</summary>
+        internal static IEnumerable<string> ReadLinesBackwards(Stream stream)
+        {
+            const int chunkSize = 64 * 1024;
             {
                 long position = stream.Length;
                 var carry = new List<byte>();
@@ -363,7 +380,12 @@ namespace XLEdge.Shared
                     position -= count;
                     stream.Position = position;
                     int read = 0;
-                    while (read < count) read += stream.Read(chunk, read, count - read);
+                    while (read < count)
+                    {
+                        int n = stream.Read(chunk, read, count - read);
+                        if (n == 0) yield break; // file truncated while reading
+                        read += n;
+                    }
 
                     var bytes = new byte[count + carry.Count];
                     Array.Copy(chunk, bytes, count);
