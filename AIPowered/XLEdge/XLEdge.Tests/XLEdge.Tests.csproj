@@ -42,6 +42,8 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
@@ -52,6 +54,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ContractSurfaceTests.cs" />
+    <Compile Include="LoaderBasicsTests.cs" />
+    <Compile Include="RecordingLogger.cs" />
+    <Compile Include="ReleaseFolders.cs" />
     <Compile Include="FakeContext.cs" />
     <Compile Include="LoggerTests.cs" />
     <Compile Include="PathProviderTests.cs" />
@@ -68,6 +73,17 @@
     <ProjectReference Include="..\XLEdge.Contracts\XLEdge.Contracts.csproj">
       <Project>{CAAFBB00-FAB0-4A5D-AAB3-8B5409A7C56B}</Project>
       <Name>XLEdge.Contracts</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\XLEdge.Loader.Core\XLEdge.Loader.Core.csproj">
+      <Project>{884BC684-A657-434E-A773-E8A4B43FE5C0}</Project>
+      <Name>XLEdge.Loader.Core</Name>
+    </ProjectReference>
+    <!-- Build order only: the tests load the real core from XLEdge.Addin.Core\bin\<Config>\ the way the
+         loader does (it is not strong-named, so a signed test assembly cannot reference it directly). -->
+    <ProjectReference Include="..\XLEdge.Addin.Core\XLEdge.Addin.Core.csproj">
+      <Project>{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}</Project>
+      <Name>XLEdge.Addin.Core</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\XLEdge.Shared\XLEdge.Shared.csproj">
       <Project>{29E7F086-11DD-40A5-B5B1-8E8358D4F6C3}</Project>

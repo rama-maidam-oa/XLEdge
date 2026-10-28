@@ -47,7 +47,9 @@
     <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ContractCompatibility.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ResolvedRelease.cs" />
     <Compile Include="..\XLEdgeContractsVersion.cs">
       <Link>Properties\XLEdgeContractsVersion.cs</Link>
     </Compile>

@@ -50,6 +50,7 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AddinEntry.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="..\XLEdgeSharedVersion.cs">
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
