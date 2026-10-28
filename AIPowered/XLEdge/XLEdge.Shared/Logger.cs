@@ -35,9 +35,17 @@ namespace XLEdge.Shared
         private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
         private static readonly TimeSpan SafetyNetMaxAge = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan SafetyNetPeriod = TimeSpan.FromSeconds(15);
+        private const string LockNamePrefix = @"Global\XLEdge_Log_";
+
+        /// <summary>How long a write waits for another process's write; after that it writes anyway (never freezes Excel).</summary>
+        internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(2);
 
         private readonly IXLEdgeContext _context;
         private readonly string _logsFolder;
+        // Every write opens the day's file, seeks to its end and writes (KeepFileOpen=false). Two Excel processes doing that at
+        // the same moment can land on the same offset and overwrite each other's line, so each write holds this lock, shared
+        // by every process logging to the same folder. Null when it could not be created (writes then go unprotected).
+        private readonly Mutex _writeLock;
         private readonly LogFactory _factory;
         private readonly NLog.Logger _nlog;
         // The current scope's buffer id lives in the logical call context, not in an AsyncLocal: the core calls
@@ -66,6 +74,8 @@ namespace XLEdge.Shared
             if (context.Paths == null || string.IsNullOrWhiteSpace(context.Paths.Logs))
                 throw new ArgumentException("The context has no logs folder (Paths.Logs).", nameof(context));
             _logsFolder = context.Paths.Logs;
+            try { _writeLock = new Mutex(false, LockName(_logsFolder)); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException || ex is WaitHandleCannotBeOpenedException) { _writeLock = null; }
             try
             {
                 Directory.CreateDirectory(_logsFolder);
@@ -183,14 +193,16 @@ namespace XLEdge.Shared
         public void Dispose()
         {
             if (_disposed) return;
-            _disposed = true;
             lock (_timerLock)
             {
                 _safetyNetTimer?.Dispose();
                 _safetyNetTimer = null;
             }
+            // Flushed before the disposed flag is set: writes are refused after it.
             FlushDebugLogs("add-in shutting down");
+            _disposed = true;
             _factory?.Shutdown();
+            _writeLock?.Dispose();
         }
 
         /// <summary>A per-action log scope. MarshalByRefObject so the core can dispose it through the proxy.</summary>
@@ -335,7 +347,38 @@ namespace XLEdge.Shared
         private void WriteImmediate(string text)
         {
             if (_nlog == null || _disposed) return;
-            _nlog.Debug(text);
+            WriteLocked(text);
+        }
+
+        private void WriteLocked(string text)
+        {
+            bool acquired = false;
+            try
+            {
+                try { acquired = _writeLock?.WaitOne(LockTimeout) ?? false; }
+                catch (AbandonedMutexException) { acquired = true; }
+                catch (ObjectDisposedException) { acquired = false; }
+                _nlog.Debug(text);
+            }
+            finally
+            {
+                if (acquired)
+                {
+                    try { _writeLock.ReleaseMutex(); }
+                    catch (ObjectDisposedException) { /* Dispose raced this write; the handle is closed with the lock. */ }
+                }
+            }
+        }
+
+        /// <summary>The cross-process write lock of a logs folder (same folder, any spelling → same name).</summary>
+        internal static string LockName(string logsFolder)
+        {
+            string key = Path.GetFullPath(logsFolder).TrimEnd(Path.DirectorySeparatorChar).ToLowerInvariant();
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(key));
+                return LockNamePrefix + string.Concat(hash.Take(8).Select(b => b.ToString("x2")));
+            }
         }
 
         private static string FormatRelease(string version, string releaseDate) =>

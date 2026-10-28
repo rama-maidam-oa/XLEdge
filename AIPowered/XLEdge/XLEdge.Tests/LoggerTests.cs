@@ -165,18 +165,76 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Dispose_WritesTheDebugLinesStillBuffered()
+        {
+            // Excel closing inside a running action: what was buffered so far is the most useful part of the log.
+            using (var f = new Fixture())
+            {
+                var scope = f.Logger.BeginLogScope("Refresh");
+                f.Logger.LogDebug("buffered before shutdown");
+                f.Logger.Dispose();
+                StringAssert.Contains(f.Text(), "buffered before shutdown");
+                f.Logger.LogInfo("after dispose");
+                Assert.IsFalse(f.Text().Contains("after dispose"), "nothing is written once disposed");
+                GC.KeepAlive(scope);
+            }
+        }
+
+        [TestMethod]
+        public void Writes_WaitForTheCrossProcessLogLock()
+        {
+            // Each write opens the file, seeks to the end and writes; two Excel processes doing that at once can land on the same
+            // offset and overwrite each other's line. Writes therefore take a lock per logs folder that every process shares.
+            using (var f = new Fixture())
+            using (var held = new Mutex(false, Logger.LockName(f.Paths.Logs)))
+            {
+                Assert.IsTrue(held.WaitOne(0));
+                var write = System.Threading.Tasks.Task.Run(() => f.Logger.LogInfo("waited for the lock"));
+                Assert.IsFalse(write.Wait(300), "the write must wait while another process holds the lock");
+                held.ReleaseMutex();
+                Assert.IsTrue(write.Wait(5000));
+                StringAssert.Contains(f.Text(), "| waited for the lock");
+            }
+        }
+
+        [TestMethod]
+        public void Writes_LockHeldTooLong_StillWrite()
+        {
+            // A hung process holding the lock must not freeze logging (and so Excel): after the wait the line is written anyway.
+            using (var f = new Fixture())
+            using (var held = new Mutex(false, Logger.LockName(f.Paths.Logs)))
+            {
+                Assert.IsTrue(held.WaitOne(0));
+                var write = System.Threading.Tasks.Task.Run(() => f.Logger.LogInfo("written without the lock"));
+                Assert.IsTrue(write.Wait(Logger.LockTimeout + TimeSpan.FromSeconds(3)));
+                held.ReleaseMutex();
+                StringAssert.Contains(f.Text(), "| written without the lock");
+            }
+        }
+
+        [TestMethod]
+        public void LockName_IsPerLogsFolderAndCaseInsensitive()
+        {
+            Assert.AreEqual(Logger.LockName(@"C:\Data\XLEdge_Logs\Logs"), Logger.LockName(@"c:\data\xledge_logs\LOGS\"));
+            Assert.AreNotEqual(Logger.LockName(@"C:\A\Logs"), Logger.LockName(@"C:\B\Logs"));
+            StringAssert.StartsWith(Logger.LockName(@"C:\A\Logs"), @"Global\XLEdge_Log_");
+        }
+
+        [TestMethod]
         public void TwoLoggersSameFile_KeepEveryLine()
         {
             // Two Excel processes log to the same day's file; neither may overwrite the other's lines.
             using (var f = new Fixture())
             using (var second = new Logger(new FakeContext(f.Paths) { DebugMode = true }))
             {
-                var a = new Thread(() => { for (int i = 0; i < 300; i++) f.Logger.LogInfo("A" + i); });
-                var b = new Thread(() => { for (int i = 0; i < 300; i++) second.LogInfo("B" + i); });
+                // Enough lines that two writers racing for the end of the file collide on every run, not now and then.
+                const int Count = 2000;
+                var a = new Thread(() => { for (int i = 0; i < Count; i++) f.Logger.LogInfo("A" + i); });
+                var b = new Thread(() => { for (int i = 0; i < Count; i++) second.LogInfo("B" + i); });
                 a.Start(); b.Start(); a.Join(); b.Join();
                 var lines = f.Lines();
-                Assert.AreEqual(300, lines.Count(l => Regex.IsMatch(l, @"\| A\d+$")), "lines from the first logger");
-                Assert.AreEqual(300, lines.Count(l => Regex.IsMatch(l, @"\| B\d+$")), "lines from the second logger");
+                Assert.AreEqual(Count, lines.Count(l => Regex.IsMatch(l, @"\| A\d+$")), "lines from the first logger");
+                Assert.AreEqual(Count, lines.Count(l => Regex.IsMatch(l, @"\| B\d+$")), "lines from the second logger");
             }
         }
 
