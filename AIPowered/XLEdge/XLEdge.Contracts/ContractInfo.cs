@@ -12,6 +12,7 @@ namespace XLEdge.Contracts
     /// </summary>
     public static class ContractInfo
     {
-        public const int Version = 1;
+        /// <summary>1: Stage 0b. 2: IXLEdgeContext.GetExcelDispatch (Stage 2a).</summary>
+        public const int Version = 2;
     }
 }

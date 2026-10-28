@@ -25,5 +25,6 @@ namespace XLEdge.Tests
         public string ShellVersion { get; set; } = "11.1.2.0";
         public void SetRibbonController(IRibbonController controller) => RibbonController = controller;
         public object GetGLSenseAddinInstance() => null;
+        public IntPtr GetExcelDispatch() => IntPtr.Zero;
     }
 }

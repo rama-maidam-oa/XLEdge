@@ -89,6 +89,20 @@ namespace XLEdge
             }
         }
 
+        /// <summary>See <see cref="IXLEdgeContext.GetExcelDispatch"/>: AddRef'ed, the core releases it.</summary>
+        public IntPtr GetExcelDispatch()
+        {
+            try
+            {
+                return ExcelApp != null && Marshal.IsComObject(ExcelApp) ? Marshal.GetIDispatchForObject(ExcelApp) : IntPtr.Zero;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarn("XLEdgeContext.GetExcelDispatch: could not hand Excel to the core: " + ex.Message);
+                return IntPtr.Zero;
+            }
+        }
+
         public override object InitializeLifetimeService() => null;
 
         /// <summary>Flushes and closes the log. Called once, when the add-in shuts down.</summary>

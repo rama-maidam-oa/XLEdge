@@ -66,8 +66,10 @@
     <Compile Include="ContractSurfaceTests.cs" />
     <Compile Include="CoreHostTests.cs" />
     <Compile Include="XLEdgeContextTests.cs" />
+    <Compile Include="CoreExcelTests.cs" />
     <Compile Include="CorePackageTests.cs" />
     <Compile Include="CorePaneTests.cs" />
+    <Compile Include="CoreProbe.cs" />
     <Compile Include="HostWindowsTests.cs" />
     <Compile Include="LoaderBasicsTests.cs" />
     <Compile Include="RecordingLogger.cs" />

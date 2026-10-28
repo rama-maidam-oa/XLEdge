@@ -36,5 +36,12 @@ namespace XLEdge.Contracts
         /// when GLSense is not loaded. Used for the XLEdge/GLSense login sync.
         /// </summary>
         object GetGLSenseAddinInstance();
+
+        /// <summary>
+        /// An AddRef'ed IDispatch pointer of <see cref="ExcelApp"/> (IntPtr.Zero when there is none); the caller releases it.
+        /// The core builds its own RCW from it (same process, so the pointer is valid in every AppDomain): calls then go
+        /// straight to Excel instead of through a remoting proxy of the shell's RCW.
+        /// </summary>
+        IntPtr GetExcelDispatch();
     }
 }

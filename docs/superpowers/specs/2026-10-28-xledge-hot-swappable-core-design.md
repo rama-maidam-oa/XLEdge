@@ -209,6 +209,10 @@ Open items for Stage 0e (from the Stage 0a review):
   browser process of the core is left, including when the WebView2 is still starting.
 - The WebView2 environment options (`AllowSingleSignOnUsingOSPrimaryAccount = true`, nothing else) and the user data folder
   must be identical in every core version: reloaded, rolled-back and other-process cores share them (else `0x8007139F`).
+- From Stage 2a (contract 2): the core works on Excel through its **own RCW**, built from an AddRef'ed IDispatch pointer
+  the shell hands over (`IXLEdgeContext.GetExcelDispatch`; same process, so the pointer is valid in every AppDomain) and
+  released at core Shutdown — not through a remoting proxy of the shell's RCW. Ported code makes thousands of COM calls
+  per report, and the proxy path is where GLSense recorded CrossAppDomainSink InvalidCastExceptions after awaits.
 - Stage 3: a page can navigate anywhere, and then any origin can set `document.title` — act on an `xledge:` command only
   when `CoreWebView2.Source` is the instance's own origin.
 

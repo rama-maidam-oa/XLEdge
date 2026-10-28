@@ -1,4 +1,5 @@
 using System;
+using XLEdge.Addin.Core.Infrastructure;
 using XLEdge.Addin.Core.Pane;
 using XLEdge.Contracts;
 
@@ -22,6 +23,7 @@ namespace XLEdge.Addin.Core
             try
             {
                 _context = context;
+                CoreServices.Initialize(context);
                 _panes = new TaskPaneContentHost(context);
                 Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
             }
@@ -57,6 +59,8 @@ namespace XLEdge.Addin.Core
                 // Every window of this AppDomain goes before the domain is unloaded.
                 _panes?.CloseAll();
                 _panes = null;
+                // Last: everything above may still use Excel; the core's Excel reference must not outlive it.
+                CoreServices.Shutdown();
                 Logger?.LogInfo("AddinEntry.Shutdown: XLEdge core shut down.");
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Shutdown"); }

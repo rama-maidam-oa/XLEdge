@@ -58,6 +58,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
+    <Compile Include="Infrastructure\CoreServices.cs" />
     <Compile Include="Pane\PaneContentWindow.cs">
       <SubType>Form</SubType>
     </Compile>
