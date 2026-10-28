@@ -49,6 +49,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ContractSurfaceTests.cs" />
+    <Compile Include="FakeContext.cs" />
+    <Compile Include="LoggerTests.cs" />
     <Compile Include="PathProviderTests.cs" />
     <Compile Include="ReleaseHistoryStoreTests.cs" />
     <Compile Include="TempFolder.cs" />
