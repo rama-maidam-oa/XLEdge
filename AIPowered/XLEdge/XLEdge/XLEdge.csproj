@@ -121,6 +121,12 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AddinModule.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="AddinModule.Designer.cs">
+      <DependentUpon>AddinModule.cs</DependentUpon>
+    </Compile>
     <Compile Include="Hosting\CoreHost.cs" />
     <Compile Include="Hosting\HostSeams.cs" />
     <Compile Include="Hosting\WpfHostUi.cs" />
@@ -129,6 +135,13 @@
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>
     <Compile Include="RibbonControlIds.cs" />
+    <Compile Include="RibbonController.cs" />
+    <Compile Include="XLEdgeTaskPane.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="XLEdgeTaskPane.Designer.cs">
+      <DependentUpon>XLEdgeTaskPane.cs</DependentUpon>
+    </Compile>
     <Compile Include="Views\OfflineReleaseScanner.cs" />
     <Compile Include="Views\ReleaseHistoryRows.cs" />
     <Compile Include="Views\WindowChromeHelper.cs" />
@@ -144,6 +157,13 @@
     <Compile Include="XLEdgeContext.cs" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="AddinModule.resx">
+      <DependentUpon>AddinModule.cs</DependentUpon>
+    </EmbeddedResource>
+    <None Include="Loader\adxloader.dll.manifest" />
+    <None Include="Loader\adxloader.dll" />
+    <None Include="Loader\adxloader64.dll" />
+    <None Include="post_build.cmd" />
     <None Include="XLEdge.app.manifest" />
     <None Include="XLEdge.snk" />
   </ItemGroup>
@@ -188,4 +208,7 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="..\packages\System.ValueTuple.4.6.2\build\net471\System.ValueTuple.targets" Condition="Exists('..\packages\System.ValueTuple.4.6.2\build\net471\System.ValueTuple.targets')" />
+  <PropertyGroup>
+    <PostBuildEvent>call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
+  </PropertyGroup>
 </Project>

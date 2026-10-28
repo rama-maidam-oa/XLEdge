@@ -72,6 +72,7 @@
     <Compile Include="PathProviderTests.cs" />
     <Compile Include="ReleaseHistoryRowsTests.cs" />
     <Compile Include="ReleaseHistoryStoreTests.cs" />
+    <Compile Include="RibbonParityTests.cs" />
     <Compile Include="RemoteScopeCaller.cs" />
     <Compile Include="ResolverProbe.cs" />
     <Compile Include="TempFolder.cs" />
