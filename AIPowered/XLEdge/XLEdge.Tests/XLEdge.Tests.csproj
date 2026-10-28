@@ -15,6 +15,9 @@
     <Deterministic>true</Deterministic>
     <ProjectTypeGuids>{3AC096D0-A1C2-E12C-1390-A8335801FDAB};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <IsTestProject>true</IsTestProject>
+    <!-- Test-only key: XLEdge.Shared is strong-named, so InternalsVisibleTo needs a signed friend assembly. -->
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>XLEdge.Tests.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -47,8 +50,12 @@
   <ItemGroup>
     <Compile Include="ContractSurfaceTests.cs" />
     <Compile Include="PathProviderTests.cs" />
+    <Compile Include="ReleaseHistoryStoreTests.cs" />
     <Compile Include="TempFolder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="XLEdge.Tests.snk" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\XLEdge.Contracts\XLEdge.Contracts.csproj">
