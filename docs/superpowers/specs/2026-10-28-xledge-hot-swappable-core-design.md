@@ -130,15 +130,33 @@ contracts ~450, shared ~1.5k, loader ~950, shell host + reload windows); the mai
 phase 2 (carving `AddinModule`) and phases 1/3 (the WebView2 pane in the core).
 
 ## 6. Deviations from GLSense (deliberate, my calls — veto any)
-1. **Contract assembly versions frozen** (e.g. `1.0.0.0`) and resolved from the host, not from the zip.
-   GLSense stamps them from the shared version file and ships them in the zip; a core-only version bump
-   could break the host/core type identity. Recommend back-porting to GLSense.
+1. **Contract assembly versions frozen** at `1.0.0.0` (`XLEdgeContractsVersion.cs`; file version follows
+   the product). GLSense stamps them from the shared version file; a core-only version bump could break
+   the host/core type identity. Recommend back-porting to GLSense.
+   Contracts, Shared and Loader.Core still **ship inside the core zip** (the core's AppDomain resolves
+   from its release folder, so it needs them there). Because the identity no longer changes, a core built
+   against different contracts would load silently and fail only at call time. So:
+   - contract changes are additive only and always ship with a new MSI (the shell must know them too);
+   - **Stage 0d:** before creating the AppDomain, the loader compares the release folder's
+     `XLEdge.Contracts.dll` (and `XLEdge.Shared.dll`) with the shell's copies by SHA256 and refuses
+     the release with a clear log line and message if they differ.
 2. **`AppDomainSetup.ApplicationName` set**, so `CachePath` (shadow cache) is honoured.
 3. **Shell referenced as a plain File in the vdproj** from the start (GLSense CLAUDE.md §67/§68 lesson).
 4. No UDF/XLL module, no SQLite, no ribbon combo primer — XLEdge doesn't use them.
 5. `InvokedFromGLSense` stays a public method on the shell's COM-visible `AddinModule` and forwards
    to the core (GLSense calls it by ProgId through `COMAddIns`).
 6. Task pane fallback (§4) only if the spike fails.
+
+7. Intended setting differences found in the Stage 0a review: `LangVersion latest` on Loader.Core and
+   `Deterministic true` on the shell (GLSense has neither); the shell's `app.manifest` omits GLSense's
+   `dpiAware` block (GLSense's own comment says it has no effect inside a DLL — do not "restore" it).
+
+Open items for Stage 0e (from the Stage 0a review):
+- The twin shell has the same assembly name, key and ProgId `XLEdge.AddinModule` as the existing add-in, so
+  only one of them can be registered on a machine at a time. Dev boxes unregister one before registering
+  the other.
+- Loader DLL name: `adxloader.XLEdge.dll` (GLSense pattern) vs the existing `adxloader.dll`.
+- `stdole.dll` is copied next to the shell (Office interop dependency): include it in the MSI file list or drop it deliberately.
 
 Not adopted (same as GLSense today): Authenticode check of the core DLL at load — SHA256 vs manifest only.
 Worth adding to both later.
