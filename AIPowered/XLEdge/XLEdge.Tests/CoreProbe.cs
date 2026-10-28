@@ -160,6 +160,23 @@ namespace XLEdge.Tests
 
         public void ShutDownTheEntry() => _entry?.Shutdown();
 
+        /// <summary>The real entry point, initialized (see <see cref="ShutDownTheEntry"/>).</summary>
+        public void InitializeTheEntry(IXLEdgeContext context)
+        {
+            _entry = (IXLEdgeAddin)Activator.CreateInstance(CoreType("XLEdge.Addin.Core.AddinEntry"));
+            _entry.Initialize(context);
+        }
+
+        /// <summary>Calls a method of a singleton reached through a static member (e.g. XLEdgePreferencesManager.Instance.Initialize()).</summary>
+        public object CallOnSingleton(string typeName, string instanceMember, string method, params object[] args)
+        {
+            object instance = CallStatic(typeName, instanceMember);
+            MethodInfo info = instance.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                                  .FirstOrDefault(m => m.Name == method && m.GetParameters().Length == (args?.Length ?? 0))
+                              ?? throw new MissingMethodException(typeName, method);
+            return Unwrap(() => info.Invoke(instance, args));
+        }
+
         /// <summary>The real entry point: Initialize, make the core take Excel, then Shutdown.</summary>
         public void InitializeUseAndShutDownTheEntry(IXLEdgeContext context)
         {

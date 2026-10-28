@@ -27,6 +27,7 @@ namespace XLEdge.Addin.Core
                 CoreServices.Initialize(context);
                 // XLEdge 11.1.2 code reaches the ribbon through XLEdgeRibbonHelper.Current.
                 _ = new XLEdgeRibbonHelper(context.RibbonController);
+                LoadPreferences();
                 _panes = new TaskPaneContentHost(context);
                 Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
             }
@@ -68,6 +69,17 @@ namespace XLEdge.Addin.Core
                 Logger?.LogInfo("AddinEntry.Shutdown: XLEdge core shut down.");
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Shutdown"); }
+        }
+
+        /// <summary>
+        /// The user's preferences into XLEdgeAppState, as XLEdge 11.1.2 did when its ribbon loaded. Every new core (start-up and
+        /// each hot reload) starts from defaults, so this is also what brings the preferences back after a reload. A failure
+        /// leaves today's defaults (the manager itself already falls back on a damaged file).
+        /// </summary>
+        private void LoadPreferences()
+        {
+            try { XLEdgePreferencesManager.Instance.Initialize(); }
+            catch (Exception ex) { Log(ex, "AddinEntry.Initialize (preferences)"); }
         }
 
         /// <summary>

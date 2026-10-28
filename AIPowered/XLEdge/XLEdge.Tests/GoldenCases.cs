@@ -78,6 +78,9 @@ namespace XLEdge.Tests
                 yield return C("XLEdge.Helpers.ExceptionHelper", "GetFriendlyErrorMessage", false, ex);
 
             yield return C("XLEdge.Helpers.XLEdgeOperatorMappings", "Map", false);
+            // The preferences file format: XLEdgeUserPreferences through SerializationHelper (all false, all true, today's defaults).
+            foreach (string flags in new[] { "0000000", "1111111", "1000010", "0111101", "0000010", "1000000" })
+                yield return C("PREFS", "Serialize", false, flags);
             yield return C("JSON", "RoundTrip", true,
                 "{\"a\":1,\"b\":1.50,\"c\":\"2\",\"d\":null,\"e\":true,\"f\":12345678901234567890,\"g\":[1,2.5],\"h\":{\"x\":\"y\"},\"i\":-0.0001}");
         }
@@ -113,6 +116,7 @@ namespace XLEdge.Tests
             try
             {
                 if (c.Type == "JSON") return RoundTrip(xledge, (string)c.Args[0]);
+                if (c.Type == "PREFS") return SerializePreferences(xledge, (string)c.Args[0]);
                 Type type = xledge.GetType(c.Type, throwOnError: true);
                 FieldInfo field = type.GetField(c.Member, BindingFlags.Public | BindingFlags.Static);
                 if (field != null) return Describe(field.GetValue(null));
@@ -141,6 +145,17 @@ namespace XLEdge.Tests
                 m.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { typeof(object), typeof(Type), options.GetType() }));
             object value = deserialize.Invoke(null, new object[] { json, typeof(Dictionary<string, object>), options });
             return Describe(value) + " -> " + (string)serialize.Invoke(null, new object[] { value, typeof(Dictionary<string, object>), options });
+        }
+
+        /// <summary>XLEdgeUserPreferences with its seven flags in declaration order set from "0"/"1", serialized as the file is written.</summary>
+        private static string SerializePreferences(Assembly xledge, string flags)
+        {
+            Type type = xledge.GetType("XLEdge.Models.XLEdgeUserPreferences", true);
+            object preferences = Activator.CreateInstance(type);
+            string[] names = { "ParameterValues", "ScheduledOutputs", "RefreshSync", "ChangeSheetName", "CalendarCtrlDisplay", "SegmentSelectionWindowDisplay", "PreserveFormats" };
+            for (int i = 0; i < names.Length; i++) type.GetProperty(names[i]).SetValue(preferences, flags[i] == '1');
+            MethodInfo serialize = xledge.GetType("XLEdge.Helpers.SerializationHelper", true).GetMethod("SerializeToJson").MakeGenericMethod(type);
+            return Describe(serialize.Invoke(null, new[] { preferences }));
         }
 
         private static string Show(object value) => value == null ? "null" : value is string s ? "\"" + s + "\"" : value is Exception e ? e.GetType().Name : Convert.ToString(value, CultureInfo.InvariantCulture);
