@@ -53,6 +53,23 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void BuiltPackage_CarriesWebView2()
+        {
+            // The pane content is a WinForms WebView2 in the core; WebView2 finds its native loader under runtimes\ next to Core.dll.
+            using (var archive = new ZipArchive(File.OpenRead(Directory.GetFiles(PackageFolder, "*.zip").Single())))
+            {
+                var names = archive.Entries.Select(e => e.FullName).ToList();
+                CollectionAssert.IsSubsetOf(new[]
+                {
+                    "Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll",
+                    "runtimes/win-x86/native/WebView2Loader.dll", "runtimes/win-x64/native/WebView2Loader.dll",
+                }, names, string.Join(", ", names));
+                Assert.AreEqual(new System.Version(1, 0, 4022, 49), System.Reflection.AssemblyName.GetAssemblyName(
+                    Path.Combine(ReleaseFolders.CoreBuildFolder, "Microsoft.Web.WebView2.Core.dll")).Version, "today's XLEdge WebView2 version");
+            }
+        }
+
+        [TestMethod]
         public void ShellBuild_StagesExactlyTheCorePackage_AndNoCoreNextToTheShell()
         {
             string coreBin = ReleaseFolders.CoreBuildFolder;
