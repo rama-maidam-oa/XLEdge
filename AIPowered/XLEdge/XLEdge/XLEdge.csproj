@@ -123,6 +123,7 @@
   <ItemGroup>
     <Compile Include="Hosting\CoreHost.cs" />
     <Compile Include="Hosting\HostSeams.cs" />
+    <Compile Include="Hosting\WpfHostUi.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="..\XLEdgeSharedVersion.cs">
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
@@ -130,11 +131,38 @@
     <Compile Include="RibbonControlIds.cs" />
     <Compile Include="Views\OfflineReleaseScanner.cs" />
     <Compile Include="Views\ReleaseHistoryRows.cs" />
+    <Compile Include="Views\WindowChromeHelper.cs" />
+    <Compile Include="Views\XLEdgeReleaseHistoryBrowser.xaml.cs">
+      <DependentUpon>XLEdgeReleaseHistoryBrowser.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeReloadProgressWindow.xaml.cs">
+      <DependentUpon>XLEdgeReloadProgressWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeReloadSourcePicker.xaml.cs">
+      <DependentUpon>XLEdgeReloadSourcePicker.xaml</DependentUpon>
+    </Compile>
     <Compile Include="XLEdgeContext.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="XLEdge.app.manifest" />
     <None Include="XLEdge.snk" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="Views\XLEdgeReleaseHistoryBrowser.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeReloadProgressWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeReloadSourcePicker.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\Orbit.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\XLEdge.Contracts\XLEdge.Contracts.csproj">

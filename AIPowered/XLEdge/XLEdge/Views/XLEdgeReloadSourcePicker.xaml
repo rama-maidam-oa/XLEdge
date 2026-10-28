@@ -1,0 +1,311 @@
+<Window x:Class="XLEdge.Views.XLEdgeReloadSourcePicker"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Reload XLEdge Add-in"
+        Icon="/XLEdge;component/Resources/Orbit.ico"
+        Width="760" Height="560"
+        MinWidth="680" MinHeight="480"
+        MaxWidth="900" MaxHeight="1000"
+        SizeToContent="Manual"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        Background="#EEF2F6"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#82B6CD"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White"/>
+
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#FFF9DB"/>
+            <Setter Property="Foreground" Value="#3C3C3C"/>
+            <Setter Property="BorderBrush" Value="#FBB41A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+        </Style>
+
+        <Style x:Key="BrowserButton" TargetType="Button">
+            <Setter Property="Padding" Value="16,7"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#263942"/>
+            <Setter Property="BorderBrush" Value="#CBD8DF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#2E86AB"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1B6B93"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1B6B93"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.48"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernRadioButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#263942"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="7,0,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Background="Transparent">
+                            <Grid Width="16" Height="16" VerticalAlignment="Center">
+                                <Ellipse Stroke="#2E86AB" StrokeThickness="1.5" Fill="White"/>
+                                <Ellipse x:Name="Dot"
+                                         Width="8"
+                                         Height="8"
+                                         Fill="#2E86AB"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         Visibility="Collapsed"/>
+                            </Grid>
+                            <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Dot" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="76"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="66"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="24,0" VerticalAlignment="Center">
+                    <Border Width="32" Height="32" Background="#2E86AB" CornerRadius="16" Margin="0,0,12,0">
+                        <Path Data="M7,16 L13,22 L25,9"
+                              Stroke="White"
+                              StrokeThickness="2.5"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Reload XLEdge"
+                                   FontSize="17"
+                                   FontWeight="SemiBold"
+                                   Foreground="#1F2D38"/>
+                        <TextBlock Text="Choose a source to safely load an available version."
+                                   FontSize="12"
+                                   Foreground="#6B7883"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock Grid.Column="1"
+                           Text="Version source"
+                           FontSize="11"
+                           Foreground="#60727D"
+                           Margin="0,0,20,0"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="20,18,20,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="#F4F8FB"
+                    BorderBrush="#D9E8EF"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,10"
+                    Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="24"
+                            Height="24"
+                            Background="#2E86AB"
+                            CornerRadius="12"
+                            Margin="0,0,9,0"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="i"
+                                   FontWeight="Bold"
+                                   FontSize="14"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Grid.Column="1"
+                               Text="Select a source"
+                               FontSize="12.5"
+                               FontWeight="SemiBold"
+                               Foreground="#536772"
+                               VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Margin="36,0,0,0"
+                                VerticalAlignment="Center">
+                        <RadioButton x:Name="RbOnline"
+                                     Style="{StaticResource ModernRadioButton}"
+                                     Content="Online"
+                                     GroupName="Mode"
+                                     Margin="0,0,24,0"
+                                     IsEnabled="False"
+                                     ToolTipService.ShowOnDisabled="True"
+                                     ToolTip="Online updates are not available yet."/>
+                        <RadioButton x:Name="RbOffline"
+                                     Style="{StaticResource ModernRadioButton}"
+                                     Content="Offline"
+                                     GroupName="Mode"
+                                     IsChecked="True"
+                                     ToolTip="Load an XLEdge version from a manifest.json and zip pair in a local folder."/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border x:Name="OfflinePanel"
+                    Grid.Row="1"
+                    Background="White"
+                    BorderBrush="#D6E0E7"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,12"
+                    Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Local version folder"
+                               FontSize="12.5"
+                               FontWeight="SemiBold"
+                               Foreground="#536772"
+                               Margin="0,0,0,7"/>
+                    <DockPanel>
+                        <Button x:Name="BtnBrowse"
+                                Style="{StaticResource BrowserButton}"
+                                Content="Browse..."
+                                DockPanel.Dock="Right"
+                                Padding="10,5"
+                                Margin="8,0,0,0"
+                                Click="BtnBrowse_Click"
+                                ToolTip="Choose a folder to scan for a manifest.json and zip pair."/>
+                        <TextBox x:Name="TxtFolder"
+                                 IsReadOnly="True"
+                                 Padding="8,5"
+                                 VerticalContentAlignment="Center"
+                                 Background="#F8FAFC"
+                                 BorderBrush="#CBD8DF"
+                                 BorderThickness="1"
+                                 ToolTip="The local folder currently being scanned. Use Browse... to select a different folder."/>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Background="White"
+                    BorderBrush="#D6E0E7"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12"
+                    ToolTip="Live progress while a folder is checked, and the full result when it finishes.">
+                <DockPanel LastChildFill="True">
+                    <ProgressBar x:Name="BusyProgress"
+                                 DockPanel.Dock="Top"
+                                 Height="4"
+                                 Margin="0,0,0,8"
+                                 IsIndeterminate="True"
+                                 Foreground="#2E86AB"
+                                 Visibility="Collapsed"
+                                 ToolTip="A folder check is currently running."/>
+                    <TextBox x:Name="TxtStatus"
+                             IsReadOnly="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Padding="0"
+                             Foreground="#536772"
+                             FontSize="11.5"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             MinHeight="60"
+                             Text="Click &quot;Browse...&quot; to select a folder to scan for a manifest.json + zip pair."/>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2"
+                Background="#F7F9FB"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,1,0,0"
+                Padding="20,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Reloading safely restarts the XLEdge add-in without restarting Excel."
+                           FontSize="11.5"
+                           Foreground="#6B7883"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="BtnReload"
+                            Content="Reload"
+                            Style="{StaticResource BrowserButton}"
+                            IsEnabled="False"
+                            Click="BtnReload_Click"
+                            ToolTip="Stage the verified version and reload XLEdge without restarting Excel."/>
+                    <Button x:Name="BtnCancel"
+                            Content="Cancel"
+                            Style="{StaticResource BrowserButton}"
+                            Click="BtnCancel_Click"
+                            ToolTip="Close this window without reloading anything."/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
