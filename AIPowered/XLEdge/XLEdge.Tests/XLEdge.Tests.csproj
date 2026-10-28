@@ -55,6 +55,7 @@
   <ItemGroup>
     <Compile Include="AddinDomainLoaderTests.cs" />
     <Compile Include="ContractSurfaceTests.cs" />
+    <Compile Include="CorePackageTests.cs" />
     <Compile Include="LoaderBasicsTests.cs" />
     <Compile Include="RecordingLogger.cs" />
     <Compile Include="ReleaseFolders.cs" />

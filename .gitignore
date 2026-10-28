@@ -28,3 +28,6 @@ XLEdge/setupfiles/Release/
 
 # local Claude Code settings (machine-specific, not shared)
 .claude/
+
+# Core release packages produced by XLEdge.Addin.Core\post_build.ps1
+AIPowered/XLEdge/XLEdge.Addin.Core/SetupFiles/

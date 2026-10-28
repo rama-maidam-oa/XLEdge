@@ -70,4 +70,10 @@
        (CreateInstanceFromAndUnwrap), so release zips never carry a loader. -->
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <ItemGroup>
+    <None Include="post_build.ps1" />
+  </ItemGroup>
+  <PropertyGroup>
+    <PostBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)post_build.ps1" -TargetDir "$(TargetDir) " -Configuration $(Configuration)</PostBuildEvent>
+  </PropertyGroup>
 </Project>
