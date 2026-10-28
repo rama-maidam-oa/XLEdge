@@ -35,6 +35,9 @@ namespace XLEdge.Tests
             return Unwrap(() => property.GetValue(null));
         }
 
+        /// <summary>The golden cases (GoldenCases) evaluated against the core in this domain.</summary>
+        public string[] RunGoldenCases() => GoldenCases.Run(CoreType("XLEdge.Addin.Core.AddinEntry").Assembly);
+
         /// <summary>Whether a static member is non-null (for members whose value cannot cross the domain boundary).</summary>
         public bool HasStatic(string typeName, string member) => CallStatic(typeName, member) != null;
 

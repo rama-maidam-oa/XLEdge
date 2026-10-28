@@ -68,6 +68,7 @@
     <Compile Include="XLEdgeContextTests.cs" />
     <Compile Include="CoreExcelTests.cs" />
     <Compile Include="CoreFacadeTests.cs" />
+    <Compile Include="CoreHelperGoldenTests.cs" />
     <Compile Include="CorePackageTests.cs" />
     <Compile Include="CorePaneTests.cs" />
     <Compile Include="CorePortParityTests.cs" />
@@ -78,6 +79,8 @@
     <Compile Include="RecordingLogger.cs" />
     <Compile Include="ReleaseFolders.cs" />
     <Compile Include="FakeContext.cs" />
+    <Compile Include="GoldenCases.cs" />
+    <Compile Include="GoldenValues.cs" />
     <Compile Include="LoggerTests.cs" />
     <Compile Include="OfflineReleaseScannerTests.cs" />
     <Compile Include="PaneEmbeddingTests.cs" />
