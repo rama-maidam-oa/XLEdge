@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -35,6 +36,24 @@ namespace XLEdge.Shared
 
         /// <summary>All entries; empty when the file is missing, empty or "null". A corrupt file throws JsonException.</summary>
         public static List<ReleaseEntry> ReadAll(string releaseHistoryFile) => ReadAll(releaseHistoryFile, LockTimeout);
+
+        /// <summary>
+        /// Like <see cref="ReadAll(string)"/>, but an unreadable (corrupt) catalog returns false with null entries instead of
+        /// throwing. Lock timeouts and I/O errors still throw.
+        /// </summary>
+        public static bool TryReadAll(string releaseHistoryFile, out List<ReleaseEntry> entries)
+        {
+            try
+            {
+                entries = ReadAll(releaseHistoryFile);
+                return true;
+            }
+            catch (JsonException)
+            {
+                entries = null;
+                return false;
+            }
+        }
 
         internal static List<ReleaseEntry> ReadAll(string releaseHistoryFile, TimeSpan lockTimeout) =>
             WithLock(releaseHistoryFile, lockTimeout, () => ReadAllUnlocked(releaseHistoryFile));
@@ -117,6 +136,29 @@ namespace XLEdge.Shared
             });
             error = failure;
             return result;
+        }
+
+        /// <summary>
+        /// Replaces the catalog with <paramref name="entries"/> (used to recover an unreadable catalog). The previous file, if
+        /// any, is kept next to it as "{name}.corrupt-{yyyyMMddHHmmss}.json" for diagnosis.
+        /// </summary>
+        public static void RebuildFrom(string releaseHistoryFile, IEnumerable<ReleaseEntry> entries)
+        {
+            if (entries == null) throw new ArgumentNullException(nameof(entries));
+            var list = entries.ToList();
+            WithLock(releaseHistoryFile, LockTimeout, () =>
+            {
+                if (File.Exists(releaseHistoryFile))
+                {
+                    string folder = Path.GetDirectoryName(Path.GetFullPath(releaseHistoryFile));
+                    string stem = Path.GetFileNameWithoutExtension(releaseHistoryFile) + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+                    string backup = Path.Combine(folder, stem + ".json");
+                    if (File.Exists(backup)) backup = Path.Combine(folder, stem + "-" + Guid.NewGuid().ToString("N") + ".json");
+                    File.Move(releaseHistoryFile, backup);
+                }
+                WriteAllUnlocked(releaseHistoryFile, list);
+                return 0;
+            });
         }
 
         /// <summary>"v{version}_{releaseDate}" with characters that are invalid in file names replaced by '-'.</summary>

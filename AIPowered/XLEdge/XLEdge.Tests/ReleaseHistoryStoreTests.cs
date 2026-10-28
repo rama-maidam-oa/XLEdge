@@ -230,6 +230,38 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void TryReadAll_ReportsUnreadableCatalogAsFalse()
+        {
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json");
+                Assert.IsTrue(ReleaseHistoryStore.TryReadAll(file, out var none));
+                Assert.AreEqual(0, none.Count);
+                ReleaseHistoryStore.Append(file, Entry("v1"));
+                Assert.IsTrue(ReleaseHistoryStore.TryReadAll(file, out var one));
+                Assert.AreEqual("v1", one.Single().FolderName);
+                File.WriteAllText(file, "[{\"Version\":");
+                Assert.IsFalse(ReleaseHistoryStore.TryReadAll(file, out var corrupt));
+                Assert.IsNull(corrupt);
+            }
+        }
+
+        [TestMethod]
+        public void RebuildFrom_KeepsTheOldFileAsCorruptCopyAndWritesTheEntries()
+        {
+            using (var t = new TempFolder())
+            {
+                string file = t.Combine("ReleaseHistory.json");
+                File.WriteAllText(file, "[{\"Version\":");
+                ReleaseHistoryStore.RebuildFrom(file, new[] { Entry("v1"), Entry("v2") });
+                CollectionAssert.AreEqual(new[] { "v1", "v2" }, ReleaseHistoryStore.ReadAll(file).Select(e => e.FolderName).ToArray());
+                var kept = Directory.GetFiles(t.Path, "ReleaseHistory.corrupt-*.json");
+                Assert.AreEqual(1, kept.Length);
+                Assert.AreEqual("[{\"Version\":", File.ReadAllText(kept[0]));
+            }
+        }
+
+        [TestMethod]
         public void BuildFolderName_ReplacesInvalidChars()
         {
             Assert.AreEqual("v11.1.2_2026-10-28T14-05-09", ReleaseHistoryStore.BuildFolderName("11.1.2", "2026-10-28T14:05:09"));

@@ -31,6 +31,87 @@ namespace XLEdge.Loader.Core
             "Microsoft.Bcl.AsyncInterfaces.dll", "System.ValueTuple.dll",
         };
 
+        private static readonly string[] ReleaseDateFormats = { "yyyy-MM-ddTHH:mm:ss", "dd-MMM-yyyy", "yyyy-MM-dd" };
+
+        /// <summary>
+        /// Chooses the release to load at startup or after a reload request. Never throws; null means nothing can be loaded.
+        /// <list type="number">
+        /// <item>No catalog yet and a seed staged (installer: manifest.json + zip) — first run: clear Versions, extract the seed,
+        /// and remove the Manifest folder only if that worked.</item>
+        /// <item>Catalog unreadable, or empty while releases exist — rebuilt from the releases' manifest.json snapshots.</item>
+        /// <item>A manifest + zip staged (offline/online update, or a rebuilt dev core) — extract it; the zip is deleted once
+        /// catalogued. If it is refused, the newest catalogued release is used instead.</item>
+        /// <item>Otherwise the newest catalogued release whose folder holds DLLs and whose contract this shell can load.</item>
+        /// </list>
+        /// The staged manifest.json never decides which installed release is used.
+        /// </summary>
+        public ResolvedRelease ResolveVersionToLoad(IXLEdgeContext context, string source = "Install")
+        {
+            ILogger logger = null;
+            try
+            {
+                logger = context.Logger;
+                IPathProvider paths = context.Paths;
+                paths.Ensure();
+                paths.Refresh();
+                RemoveStalePartialFolders(paths.VersionsPath, logger);
+
+                bool catalogExists = File.Exists(paths.ReleaseHistoryFile);
+                string stagedZip = FindStagedZip(paths, logger);
+
+                if (!catalogExists && stagedZip != null)
+                {
+                    logger?.LogInfo("UpdateBootstrapper: first run - installing the staged core release.");
+                    ClearVersions(paths.VersionsPath, logger);
+                    ResolvedRelease seeded = ExtractStaged(context, stagedZip, "Install");
+                    if (seeded != null) TryDeleteDirectory(paths.ManifestDirectory, logger);
+                    else logger?.LogWarn("UpdateBootstrapper: the staged release could not be installed; it is kept for the next start.");
+                    return seeded;
+                }
+
+                List<ReleaseEntry> catalog = catalogExists ? ReadOrRecoverCatalog(paths, logger) : new List<ReleaseEntry>();
+
+                if (stagedZip != null)
+                {
+                    VersionInfo staged = new VersionParser(logger).ParseVersionFile(paths.ManifestFile).AllVersions.FirstOrDefault();
+                    if (staged != null && catalog.Any(e => string.Equals(e.Version, staged.Version, StringComparison.OrdinalIgnoreCase) &&
+                                                           string.Equals(e.ReleaseDate, staged.ReleaseDate, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        logger?.LogInfo($"UpdateBootstrapper: release {staged.Version} is already catalogued (reinstall); reconciling the catalog.");
+                        catalog = ReleaseHistoryStore.Reconcile(paths.ReleaseHistoryFile, paths.VersionsPath);
+                    }
+                    ResolvedRelease extracted = ExtractStaged(context, stagedZip, source);
+                    if (extracted != null) return extracted;
+                    logger?.LogWarn("UpdateBootstrapper: the staged release was not installed; using the newest catalogued release.");
+                    catalog = ReleaseHistoryStore.ReadAll(paths.ReleaseHistoryFile);
+                }
+
+                ReleaseEntry newest = catalog
+                    .Where(e => ReleaseHistoryStore.IsSafeFolderName(e.FolderName) && HasDlls(Path.Combine(paths.VersionsPath, e.FolderName)))
+                    .Where(e =>
+                    {
+                        string refusal = ContractCompatibility.RefusalReason(e.ContractVersion);
+                        if (refusal != null) logger?.LogWarn($"UpdateBootstrapper: skipping catalogued release '{e.FolderName}': {refusal}.");
+                        return refusal == null;
+                    })
+                    .OrderByDescending(e => ParseReleaseDate(e.ReleaseDate))
+                    .FirstOrDefault();
+                if (newest != null)
+                {
+                    logger?.LogInfo($"UpdateBootstrapper: using catalogued release '{newest.FolderName}'.");
+                    return new ResolvedRelease { Version = newest.Version, ReleaseDate = newest.ReleaseDate, FolderName = newest.FolderName, ContractVersion = newest.ContractVersion };
+                }
+
+                logger?.LogError($"UpdateBootstrapper: no staged release in '{paths.ManifestDirectory}' and no usable catalogued release - nothing to load.");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                try { logger?.LogException(ex.ToString(), "UpdateBootstrapper.ResolveVersionToLoad"); } catch (Exception) { }
+                return null;
+            }
+        }
+
         /// <summary>
         /// Extracts a release zip described by <paramref name="manifestJson"/> (a one-entry manifest array) into its release
         /// folder and catalogues it. Returns null — logged, nothing changed — when the release is refused: no usable entry,
@@ -91,6 +172,117 @@ namespace XLEdge.Loader.Core
             logger?.LogInfo($"UpdateBootstrapper: extracted and catalogued '{folderName}' (source={source}).");
             return new ResolvedRelease { Version = info.Version, ReleaseDate = info.ReleaseDate, FolderName = folderName, ContractVersion = info.ContractVersion };
         }
+
+        // ---- ResolveVersionToLoad helpers ---------------------------------------------
+
+        /// <summary>The staged zip: none without a manifest; the manifest's fileName when several are staged, else the newest.</summary>
+        private static string FindStagedZip(IPathProvider paths, ILogger logger)
+        {
+            if (!File.Exists(paths.ManifestFile)) return null;
+            var zips = Directory.GetFiles(paths.ManifestDirectory, "*.zip");
+            if (zips.Length == 0) return null;
+            if (zips.Length == 1) return zips[0];
+
+            string named = new VersionParser(logger).ParseVersionFile(paths.ManifestFile).FileName;
+            string match = named == null ? null : zips.FirstOrDefault(z => string.Equals(Path.GetFileName(z), named, StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+
+            string newest = zips.OrderByDescending(File.GetLastWriteTimeUtc).First();
+            logger?.LogWarn($"UpdateBootstrapper: {zips.Length} zips are staged in '{paths.ManifestDirectory}'; using the newest, '{Path.GetFileName(newest)}'.");
+            return newest;
+        }
+
+        private ResolvedRelease ExtractStaged(IXLEdgeContext context, string zipPath, string source)
+        {
+            ILogger logger = context.Logger;
+            ResolvedRelease release;
+            try
+            {
+                logger?.LogInfo($"UpdateBootstrapper: extracting '{zipPath}' (source={source}).");
+                release = ExtractAndCatalog(context, File.ReadAllText(context.Paths.ManifestFile), File.ReadAllBytes(zipPath), source);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"UpdateBootstrapper: could not install '{zipPath}'.", ex.ToString());
+                return null;
+            }
+            if (release != null)
+            {
+                // Only after the catalog write: a zip left behind is retried, a lost one is not.
+                try { File.Delete(zipPath); }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { logger?.LogWarn($"UpdateBootstrapper: could not delete '{zipPath}': {ex.Message}"); }
+            }
+            return release;
+        }
+
+        /// <summary>
+        /// The catalog, or — when it is unreadable, or empty although releases are installed — a catalog rebuilt from each
+        /// release folder's manifest.json snapshot. A broken catalog must never look like a first run (that clears Versions).
+        /// </summary>
+        private static List<ReleaseEntry> ReadOrRecoverCatalog(IPathProvider paths, ILogger logger)
+        {
+            if (ReleaseHistoryStore.TryReadAll(paths.ReleaseHistoryFile, out List<ReleaseEntry> entries))
+            {
+                if (entries.Count > 0) return entries;
+            }
+            else
+            {
+                logger?.LogWarn($"UpdateBootstrapper: '{paths.ReleaseHistoryFile}' is unreadable.");
+            }
+
+            var recovered = SnapshotEntries(paths.VersionsPath, logger);
+            if (entries != null && recovered.Count == 0) return entries; // genuinely empty: nothing installed
+            logger?.LogWarn($"UpdateBootstrapper: rebuilding the release catalog from {recovered.Count} installed release(s).");
+            ReleaseHistoryStore.RebuildFrom(paths.ReleaseHistoryFile, recovered);
+            return ReleaseHistoryStore.ReadAll(paths.ReleaseHistoryFile);
+        }
+
+        private static List<ReleaseEntry> SnapshotEntries(string versionsPath, ILogger logger)
+        {
+            var result = new List<ReleaseEntry>();
+            if (!Directory.Exists(versionsPath)) return result;
+            foreach (string folder in Directory.GetDirectories(versionsPath))
+            {
+                string name = Path.GetFileName(folder);
+                string snapshot = Path.Combine(folder, "manifest.json");
+                if (name.Contains(PartialMarker) || !HasDlls(folder) || !File.Exists(snapshot)) continue;
+                VersionInfo info = new VersionParser(logger).ParseVersionFile(snapshot).AllVersions.FirstOrDefault();
+                if (info == null || string.IsNullOrWhiteSpace(info.Version)) continue;
+                result.Add(new ReleaseEntry
+                {
+                    Version = info.Version,
+                    ReleaseDate = info.ReleaseDate,
+                    FolderName = name,
+                    Checksum = info.Checksum,
+                    Notes = info.Notes,
+                    Source = "Recovered",
+                    ContractVersion = info.ContractVersion,
+                });
+            }
+            return result;
+        }
+
+        private static void ClearVersions(string versionsPath, ILogger logger)
+        {
+            if (!Directory.Exists(versionsPath)) return;
+            foreach (string folder in Directory.GetDirectories(versionsPath))
+            {
+                logger?.LogInfo($"UpdateBootstrapper: first run - removing leftover release folder '{Path.GetFileName(folder)}'.");
+                TryDeleteDirectory(folder, logger);
+            }
+        }
+
+        private static void RemoveStalePartialFolders(string versionsPath, ILogger logger)
+        {
+            if (!Directory.Exists(versionsPath)) return;
+            foreach (string folder in Directory.GetDirectories(versionsPath, "*" + PartialMarker + "*"))
+                TryDeleteDirectory(folder, logger);
+        }
+
+        private static DateTime ParseReleaseDate(string value) =>
+            DateTime.TryParseExact(value, ReleaseDateFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed)
+                ? parsed
+                : DateTime.MinValue;
 
         // ---- helpers -------------------------------------------------------------------
 
