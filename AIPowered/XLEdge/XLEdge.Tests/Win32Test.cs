@@ -76,6 +76,47 @@ namespace XLEdge.Tests
             return all;
         }
 
+        /// <summary>Every window of this process (all threads), top-level and child, with its class name.</summary>
+        public static Dictionary<IntPtr, string> ProcessWindows()
+        {
+            int pid = Process.GetCurrentProcess().Id;
+            var all = new Dictionary<IntPtr, string>();
+            EnumWindows((top, _) =>
+            {
+                GetWindowThreadProcessId(top, out int owner);
+                if (owner != pid) return true;
+                all[top] = ClassName(top);
+                EnumChildWindows(top, (child, __) =>
+                {
+                    GetWindowThreadProcessId(child, out int childOwner);
+                    if (childOwner == pid) all[child] = ClassName(child);
+                    return true;
+                }, IntPtr.Zero);
+                return true;
+            }, IntPtr.Zero);
+            // Message-only windows (WinForms parking/marshaling windows, SystemEvents) are not enumerated above.
+            IntPtr found = IntPtr.Zero;
+            while ((found = FindWindowEx(HWND_MESSAGE, found, null, null)) != IntPtr.Zero)
+            {
+                GetWindowThreadProcessId(found, out int owner);
+                if (owner == pid) all[found] = ClassName(found);
+            }
+            return all;
+        }
+
+        private static readonly IntPtr HWND_MESSAGE = new IntPtr(-3);
+
+        /// <summary>The native thread that owns the window, and whether it is the calling thread.</summary>
+        public static string Owner(IntPtr hwnd)
+        {
+            int thread = GetWindowThreadProcessId(hwnd, out _);
+            return thread == GetCurrentThreadId() ? $"thread {thread} (this thread)" : $"thread {thread}";
+        }
+
+        [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern int GetWindowThreadProcessId(IntPtr hWnd, out int processId);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
+
         public static string ClassName(IntPtr hwnd)
         {
             var text = new System.Text.StringBuilder(256);

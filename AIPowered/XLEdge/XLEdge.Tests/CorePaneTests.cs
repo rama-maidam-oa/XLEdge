@@ -129,6 +129,100 @@ namespace XLEdge.Tests
             });
         }
 
+        /// <summary>What the shell does before an unload: take the content out of the pane, close it, shut the core down, unload.</summary>
+        private static void DetachAndUnload(LoadedCore core, Form pane, IntPtr content)
+        {
+            PaneEmbedding.Release(content);
+            core.Addin.CloseTaskPaneContent(pane.Handle);
+            core.Unload();
+        }
+
+        [TestMethod]
+        public void Unload_WithEmbeddedContent_LeavesNoCoreWindowInTheProcess()
+        {
+            // A window whose window procedure lives in the unloaded AppDomain (a form, the WinForms parking window or
+            // marshaling control, a SystemEvents window) crashes Excel on the next message it receives.
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var pane = NewPane())
+                {
+                    var before = Win32Test.ProcessWindows();
+                    var core = new LoadedCore(t);
+                    IntPtr content = core.Addin.CreateTaskPaneContent(pane.Handle);
+                    PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height);
+                    Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), core.Log.Dump());
+                    DetachAndUnload(core, pane, content);
+
+                    // Native helper windows may stay (COM's OleMainThreadWndClass, GDI+'s hook window, IME): their window
+                    // procedures are in ole32/gdiplus/imm32, not in the unloaded domain. A window of a class registered by managed
+                    // code (WinForms, WPF, SystemEvents) must not.
+                    bool Managed(string cls) => cls.StartsWith("WindowsForms10.", StringComparison.Ordinal)
+                        || cls.StartsWith("HwndWrapper", StringComparison.Ordinal) || cls.StartsWith(".NET-", StringComparison.Ordinal);
+                    Win32Test.PumpUntil(() => !Win32Test.ProcessWindows().Any(w => !before.ContainsKey(w.Key) && Managed(w.Value)), TimeSpan.FromSeconds(5));
+                    var added = Win32Test.ProcessWindows().Where(w => !before.ContainsKey(w.Key)).ToList();
+                    var left = added.Where(w => Managed(w.Value)).Select(w => $"{w.Key}:{w.Value} on {Win32Test.Owner(w.Key)}").ToList();
+                    Assert.AreEqual(0, left.Count, "managed windows left after the unload: " + string.Join(", ", left));
+                    Console.WriteLine("native windows added by the session: " + string.Join(", ", added.Select(w => w.Value)));
+                    Assert.IsTrue(Win32Test.PumpUntil(() => BrowserProcesses(core.Context.Paths.BrowserDataPath) == 0, TimeSpan.FromSeconds(15)),
+                        "a WebView2 browser process of the unloaded core is still running");
+                    Win32Test.Pump(TimeSpan.FromSeconds(3));
+                }
+            });
+        }
+
+        /// <summary>msedgewebview2.exe processes started on this user data folder.</summary>
+        private static int BrowserProcesses(string userDataFolder)
+        {
+            using (var search = new System.Management.ManagementObjectSearcher("SELECT CommandLine FROM Win32_Process WHERE Name = 'msedgewebview2.exe'"))
+            using (var results = search.Get())
+            {
+                return results.Cast<System.Management.ManagementObject>()
+                    .Count(p => ((p["CommandLine"] as string) ?? "").IndexOf(userDataFolder, StringComparison.OrdinalIgnoreCase) >= 0);
+            }
+        }
+
+        [TestMethod]
+        public void Shutdown_ClosesEveryContentWindow()
+        {
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var core = new LoadedCore(t))
+                using (var excel1 = NewPane())
+                using (var excel2 = NewPane())
+                {
+                    IntPtr first = core.Addin.CreateTaskPaneContent(excel1.Handle);
+                    IntPtr second = core.Addin.CreateTaskPaneContent(excel2.Handle);
+                    core.Addin.Shutdown();
+                    Assert.IsFalse(Win32Test.IsWindow(first));
+                    Assert.IsFalse(Win32Test.IsWindow(second));
+                }
+            });
+        }
+
+        [TestMethod]
+        public void Reload_SameUserDataFolder_SecondCoreShowsThePageAgain()
+        {
+            // Hot reload: the next core creates its own WebView2 environment on the same user data folder.
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var pane = NewPane())
+                {
+                    foreach (string round in new[] { "first", "second" })
+                    {
+                        var core = new LoadedCore(t);
+                        IntPtr content = core.Addin.CreateTaskPaneContent(pane.Handle);
+                        Assert.IsTrue(PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height), round);
+                        Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), round + ": " + core.Log.Dump());
+                        Assert.IsFalse(core.Log.Lines.Any(l => l.StartsWith("ERROR") || l.StartsWith("EXCEPTION")), round + ": " + core.Log.Dump());
+                        DetachAndUnload(core, pane, content);
+                    }
+                }
+            });
+        }
+
         [TestMethod]
         public void CloseTaskPaneContent_DestroysOnlyThatWindow()
         {

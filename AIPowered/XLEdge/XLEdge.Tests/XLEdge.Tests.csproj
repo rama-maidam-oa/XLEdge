@@ -53,6 +53,7 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Management" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MSTest.TestFramework" Version="3.11.1" />
