@@ -48,6 +48,8 @@
     <Compile Include="ILogger.cs" />
     <Compile Include="IPathProvider.cs" />
     <Compile Include="IRibbonController.cs" />
+    <Compile Include="IXLEdgeAddin.cs" />
+    <Compile Include="IXLEdgeContext.cs" />
     <Compile Include="LoginInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="VersionInfo.cs" />
