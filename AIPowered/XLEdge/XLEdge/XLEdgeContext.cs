@@ -89,6 +89,19 @@ namespace XLEdge
             }
         }
 
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _session =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>See <see cref="IXLEdgeContext.GetSessionValue"/>: lives as long as this context (the Excel session).</summary>
+        public string GetSessionValue(string key) => key != null && _session.TryGetValue(key, out string value) ? value : null;
+
+        public void SetSessionValue(string key, string value)
+        {
+            if (key == null) return;
+            if (value == null) _session.TryRemove(key, out _);
+            else _session[key] = value;
+        }
+
         /// <summary>See <see cref="IXLEdgeContext.GetExcelDispatch"/>: AddRef'ed, the core releases it.</summary>
         public IntPtr GetExcelDispatch()
         {

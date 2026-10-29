@@ -63,6 +63,7 @@ namespace XLEdge.Addin.Core
         {
             try
             {
+                KeepSessionOptions();
                 // Every window of this AppDomain goes before the domain is unloaded.
                 _panes?.CloseAll();
                 _panes = null;
@@ -83,6 +84,38 @@ namespace XLEdge.Addin.Core
         {
             try { XLEdgePreferencesManager.Instance.Initialize(); }
             catch (Exception ex) { Log(ex, "AddinEntry.Initialize (preferences)"); }
+            RestoreSessionOptions();
+        }
+
+        private const string SessionOptionsKey = "XLEdge.SessionOptions";
+
+        /// <summary>
+        /// At Shutdown (a reload, or Excel closing): options applied for this session only (Options > Apply) differ from the saved
+        /// ones; the shell keeps them so the next core of this Excel session applies them again. Saved options leave nothing.
+        /// </summary>
+        private void KeepSessionOptions()
+        {
+            try
+            {
+                string inForce = SerializationHelper.SerializeToJson(XLEdgePreferencesManager.Instance.GetFromAppState());
+                string saved = SerializationHelper.SerializeToJson(XLEdgePreferencesManager.Instance.Current);
+                _context?.SetSessionValue(SessionOptionsKey, inForce == saved ? null : inForce);
+            }
+            catch (Exception ex) { Log(ex, "AddinEntry.Shutdown (session options)"); }
+        }
+
+        /// <summary>After the saved preferences load: this session's Apply-only options, if a previous core left any (never saved to the file).</summary>
+        private void RestoreSessionOptions()
+        {
+            try
+            {
+                string json = _context?.GetSessionValue(SessionOptionsKey);
+                if (string.IsNullOrEmpty(json)) return;
+                var options = System.Text.Json.JsonSerializer.Deserialize<XLEdge.Models.XLEdgeUserPreferences>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (options != null) XLEdgePreferencesManager.Instance.ApplyRuntime(options);
+            }
+            catch (Exception ex) { Log(ex, "AddinEntry.Initialize (session options)"); }
         }
 
         /// <summary>

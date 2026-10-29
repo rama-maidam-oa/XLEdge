@@ -26,5 +26,8 @@ namespace XLEdge.Tests
         public void SetRibbonController(IRibbonController controller) => RibbonController = controller;
         public object GetGLSenseAddinInstance() => null;
         public IntPtr GetExcelDispatch() => IntPtr.Zero;
+        private readonly System.Collections.Generic.Dictionary<string, string> _session = new System.Collections.Generic.Dictionary<string, string>();
+        public string GetSessionValue(string key) { lock (_session) return _session.TryGetValue(key, out string v) ? v : null; }
+        public void SetSessionValue(string key, string value) { lock (_session) { if (value == null) _session.Remove(key); else _session[key] = value; } }
     }
 }

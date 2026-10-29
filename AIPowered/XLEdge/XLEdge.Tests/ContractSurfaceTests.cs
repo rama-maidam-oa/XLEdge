@@ -43,7 +43,7 @@ namespace XLEdge.Tests
         public void ContractInfo_IsStaticWithTheCurrentVersion()
         {
             Assert.IsTrue(typeof(ContractInfo).IsAbstract && typeof(ContractInfo).IsSealed, "ContractInfo must be a static class");
-            Assert.AreEqual(2, ContractInfo.Version, "2: IXLEdgeContext.GetExcelDispatch (Stage 2a)");
+            Assert.AreEqual(3, ContractInfo.Version, "3: IXLEdgeContext session bag (Stage 2c)");
             AssertMembers(typeof(ContractInfo), "field const int Version");
         }
 
@@ -139,7 +139,8 @@ namespace XLEdge.Tests
                 "IRibbonController RibbonController {get;}", "IntPtr ExcelHandle {get;set;}", "bool DebugMode {get;set;}",
                 "string Version {get;set;}", "string ReleaseDate {get;set;}", "string ActiveFolderName {get;set;}",
                 "string ShellVersion {get;}", "void SetRibbonController(IRibbonController controller)",
-                "object GetGLSenseAddinInstance()", "IntPtr GetExcelDispatch()");
+                "object GetGLSenseAddinInstance()", "IntPtr GetExcelDispatch()",
+                "string GetSessionValue(string key)", "void SetSessionValue(string key, string value)");
         }
 
         [TestMethod]

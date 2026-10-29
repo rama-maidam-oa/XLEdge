@@ -90,7 +90,7 @@ namespace XLEdge.Tests
 
             yield return C("XLEdge.Helpers.XLEdgeOperatorMappings", "Map", false);
             // The preferences file format: XLEdgeUserPreferences through SerializationHelper (all false, all true, today's defaults).
-            foreach (string flags in new[] { "0000000", "1111111", "1000010", "0111101", "0000010", "1000000" })
+            foreach (string flags in new[] { "0000000", "1111111", "1000010", "0111101", "0000010", "1000000", "0000011" })
                 yield return C("PREFS", "Serialize", false, flags);
             yield return C("JSONW", "RequestBody", true);
             yield return C("JSON", "RoundTrip", true,

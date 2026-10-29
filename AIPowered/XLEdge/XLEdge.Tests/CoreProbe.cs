@@ -162,6 +162,23 @@ namespace XLEdge.Tests
 
         public string[] EntryOpenWindowTitles() => _entry.GetOpenWindowTitles();
 
+        /// <summary>XLEdgeUserPreferences from "0"/"1" flags (declaration order), applied as Options does: Apply (session) or Save.</summary>
+        public void SetOptions(string flags, bool save)
+        {
+            Type type = CoreType("XLEdge.Models.XLEdgeUserPreferences");
+            object preferences = Activator.CreateInstance(type);
+            string[] names = { "ParameterValues", "ScheduledOutputs", "RefreshSync", "ChangeSheetName", "CalendarCtrlDisplay", "SegmentSelectionWindowDisplay", "PreserveFormats" };
+            for (int i = 0; i < names.Length; i++) type.GetProperty(names[i]).SetValue(preferences, flags[i] == '1');
+            CallOnSingleton("XLEdge.Helpers.XLEdgePreferencesManager", "Instance", save ? "Save" : "ApplyRuntime", preferences);
+        }
+
+        /// <summary>The options in force (XLEdgeAppState) as the same seven "0"/"1" flags.</summary>
+        public string OptionsInForce()
+        {
+            string[] state = { "ParamDataSameSheet", "SchOutputsToSameSheet", "RefreshSync", "AllowSheetNameChanges", "ShowCalendarControl", "ShowSegmentSelectionWindow", "PreserveFormats" };
+            return string.Concat(state.Select(p => (bool)OnSingleton("XLEdge.XLEdgeAppState", "Instance", p) ? "1" : "0"));
+        }
+
         /// <summary>This domain's ServicePointManager after the core's ApiHelper type is initialised (its static constructor).</summary>
         public string ServicePointSettingsAfterApiHelper()
         {

@@ -124,6 +124,62 @@ namespace XLEdge.Tests
             }
         }
 
+        /// <summary>One core lifetime on <paramref name="context"/>: load, run <paramref name="use"/>, shut down, unload (a reload is two of these).</summary>
+        private static string CoreSession(FakeContext context, Action<CoreProbe> use = null)
+        {
+            var (domain, probe) = CoreProbe.Create("CoreSession");
+            try
+            {
+                probe.InitializeTheEntry(context);
+                string atStart = probe.OptionsInForce();
+                use?.Invoke(probe);
+                probe.ShutDownTheEntry();
+                return atStart;
+            }
+            finally
+            {
+                AppDomain.Unload(domain);
+            }
+        }
+
+        [TestMethod]
+        public void SessionOnlyOptions_SurviveAReload_AndTheFileIsUntouched()
+        {
+            // Options > Apply says "applied to this session only - lost when you close Excel"; a Reload Add-in is not closing Excel.
+            using (var core = new Core())
+            {
+                CoreSession(core.Context);
+                string saved = System.IO.File.ReadAllText(core.File);
+                CoreSession(core.Context, p => p.SetOptions("0111101", save: false));
+                Assert.AreEqual("0111101", CoreSession(core.Context), "the reloaded core has the session's options");
+                Assert.AreEqual(saved, System.IO.File.ReadAllText(core.File), "session-only options are never written to the file");
+            }
+        }
+
+        [TestMethod]
+        public void SavedOptions_AfterAReload_AreTheSavedOnes()
+        {
+            using (var core = new Core())
+            {
+                CoreSession(core.Context, p => p.SetOptions("0111101", save: false));
+                CoreSession(core.Context, p => p.SetOptions("0000011", save: true));
+                Assert.AreEqual("0000011", CoreSession(core.Context), "saving replaces the session's earlier Apply");
+                Assert.AreEqual(Golden("0000011"), System.IO.File.ReadAllText(core.File));
+            }
+        }
+
+        [TestMethod]
+        public void AnExcelRestart_GetsOnlyTheSavedOptions()
+        {
+            using (var core = new Core())
+            {
+                CoreSession(core.Context, p => p.SetOptions("0111101", save: false));
+                var restarted = new FakeContext(core.Paths) { Logger = core.Logger };
+                restarted.SetRibbonController(new CoreRibbonFacadeTests.FakeRibbon());
+                Assert.AreEqual("1000010", CoreSession(restarted), "a new Excel session starts from the saved file (today's defaults here)");
+            }
+        }
+
         [TestMethod]
         public void CoreStartup_LoadsThePreferences()
         {

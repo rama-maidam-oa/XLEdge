@@ -43,5 +43,14 @@ namespace XLEdge.Contracts
         /// straight to Excel instead of through a remoting proxy of the shell's RCW.
         /// </summary>
         IntPtr GetExcelDispatch();
+
+        /// <summary>
+        /// A value the shell keeps for this Excel session across core reloads (null when there is none); gone when Excel closes.
+        /// For what a reload must not lose, e.g. options applied for the session only.
+        /// </summary>
+        string GetSessionValue(string key);
+
+        /// <summary>Stores (or, with null, removes) a session value; see <see cref="GetSessionValue"/>.</summary>
+        void SetSessionValue(string key, string value);
     }
 }
