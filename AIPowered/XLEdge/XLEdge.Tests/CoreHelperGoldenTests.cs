@@ -46,6 +46,16 @@ namespace XLEdge.Tests
             // The numeric drilldown branches (int, decimal, BigInteger).
             foreach (string kind in new[] { "= i:42", "= m:12.50", "= bi:123456789012345678901234" })
                 Assert.IsTrue(lines.Any(l => l.StartsWith("en-US XLEdgeValueFormatter.FormatDrilldownValue(", StringComparison.Ordinal) && l.EndsWith(kind)), kind);
+            // Stage 2d: a BigInteger through both request writers - quoted by ReportParameterRequestSerializer, raw by NumericJsonConverter.
+            string scalars = lines.Single(l => l.StartsWith("en-US REQ.Serialize(\"scalars\") = ", StringComparison.Ordinal));
+            StringAssert.Contains(scalars, "serializer:{\"reportId\":\"42\"");
+            StringAssert.Contains(scalars, "{\"name\":\"big\",\"value\":\"123456789012345678901234\"");
+            StringAssert.Contains(scalars, "| stj:{\"reportId\":42");
+            StringAssert.Contains(scalars, "{\"name\":\"big\",\"value\":123456789012345678901234,");
+            // Stored drilldown parameters: every lookup branch (values, values1, value, value1, array value, no match).
+            foreach (string result in new[] { "Values=[i:1,", "Values=[s:x]", "Value=s:2026-10-28T00:00:00", "Value=s:0234-01-01T00:00:00", "Values=[s:a,s:b]",
+                                              "Name=s:Missing,Operator=null,Value=null,Values=null" })
+                Assert.IsTrue(lines.Any(l => l.StartsWith("en-US DrilldownRequestBuilder.ResolveStoredParamValue(", StringComparison.Ordinal) && l.Contains(result)), result);
         }
     }
 }

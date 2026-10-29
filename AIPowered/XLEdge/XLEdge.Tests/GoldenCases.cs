@@ -93,6 +93,19 @@ namespace XLEdge.Tests
             foreach (string flags in new[] { "0000000", "1111111", "1000010", "0111101", "0000010", "1000000", "0000011" })
                 yield return C("PREFS", "Serialize", false, flags);
             yield return C("JSONW", "RequestBody", true);
+            // Stage 2d: the report request (XLEdgeParamsBuilder's types) through both of 11.1.2's writers.
+            foreach (string shape in new[] { "scalars", "lists", "extras", "empty", "bigReportId", "stringReportId", "nonDictionaryExtras" })
+                yield return C("REQ", "Serialize", true, shape);
+            foreach (string column in new[] { "AMOUNT", "amount", "NO_TYPE", "MISSING", "", null, "NULL_META" })
+                yield return C("COLTYPE", "GetColumnType", false, column);
+            const string D = "XLEdge.Helpers.DrilldownRequestBuilder";
+            const string Stored = "[{\"name\":\"Period\",\"value\":\"2026-10-28\"},{\"name\":\"Ledger\",\"values\":[\"1\",\"12.5\",\"abc\",null,true]}," +
+                                  "{\"name\":\" Spaced \",\"value\":12.5},{\"name\":\"V1\",\"values1\":[\"x\"],\"value\":\"ignored\"},{\"name\":\"S1\",\"value1\":\"1,234\"}," +
+                                  "{\"name\":\"Arr\",\"value\":[\"a\",\"b\"]},{\"name\":\"Nul\",\"value\":null},{\"name\":7,\"value\":\"numeric name\"},{\"value\":\"no name\"}]";
+            foreach (string label in new[] { "Period", "Ledger", "Spaced", " Spaced ", "V1", "S1", "Arr", "Nul", "7", "period", "Missing", "", null })
+                yield return C(D, "ResolveStoredParamValue", true, Stored, label);
+            foreach (string json in new[] { "{\"name\":\"Period\",\"value\":\"x\"}", "not json", "", null, "[]", "[1,2]" })
+                yield return C(D, "ResolveStoredParamValue", false, json, "Period");
             yield return C("JSON", "RoundTrip", true,
                 "{\"a\":1,\"b\":1.50,\"c\":\"2\",\"d\":null,\"e\":true,\"f\":12345678901234567890,\"g\":[1,2.5],\"h\":{\"x\":\"y\"},\"i\":-0.0001}");
         }
@@ -133,6 +146,8 @@ namespace XLEdge.Tests
                 if (c.Type == "JSON") return RoundTrip(xledge, (string)c.Args[0]);
                 if (c.Type == "PREFS") return SerializePreferences(xledge, (string)c.Args[0]);
                 if (c.Type == "JSONW") return SerializeRequestBody(xledge);
+                if (c.Type == "REQ") return SerializeParameterRequest(xledge, (string)c.Args[0]);
+                if (c.Type == "COLTYPE") return ColumnType(xledge, (string)c.Args[0]);
                 Type type = xledge.GetType(c.Type, throwOnError: true);
                 FieldInfo field = type.GetField(c.Member, BindingFlags.Public | BindingFlags.Static);
                 if (field != null) return Describe(field.GetValue(null));
@@ -183,6 +198,88 @@ namespace XLEdge.Tests
             MethodInfo serialize = serializer.GetMethods().Single(m => m.Name == "Serialize" && !m.IsGenericMethod &&
                 m.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { typeof(object), typeof(Type), options.GetType() }));
             return "s:" + (string)serialize.Invoke(null, new object[] { body, typeof(object), options });
+        }
+
+        /// <summary>
+        /// A ReportParameterRequest of the given shape, written by ReportParameterRequestSerializer (drilldown requests) and by
+        /// System.Text.Json with JsonGlobals.Options (its [JsonConverter(NumericJsonConverter)] attributes) - BigInteger, decimal, double,
+        /// long, int, bool, string and null values, value lists and extra parameters.
+        /// </summary>
+        private static string SerializeParameterRequest(Assembly xledge, string shape)
+        {
+            Type requestType = xledge.GetType("XLEdge.Helpers.ReportParameterRequest", true), valueType = xledge.GetType("XLEdge.Helpers.ReportParameterValue", true);
+            object Value(string name, object value, List<object> values, string op)
+            {
+                object v = Activator.CreateInstance(valueType);
+                valueType.GetProperty("Name").SetValue(v, name);
+                valueType.GetProperty("Value").SetValue(v, value);
+                valueType.GetProperty("Values").SetValue(v, values);
+                valueType.GetProperty("Operator").SetValue(v, op);
+                return v;
+            }
+            var big = System.Numerics.BigInteger.Parse("123456789012345678901234");
+            object request = Activator.CreateInstance(requestType);
+            IList parameters = (IList)requestType.GetProperty("Parameters").GetValue(request);
+            object reportId = 42, extras = null;
+            switch (shape)
+            {
+                case "scalars":
+                    foreach (var (n, v) in new (string, object)[] { ("i", 7), ("l", 8L), ("m", 1.25m), ("d", 2.5d), ("b", true), ("s", "x"), ("n", null), ("big", big), ("str", "007") })
+                        parameters.Add(Value(n, v, null, "="));
+                    break;
+                case "lists":
+                    parameters.Add(Value("list", "ignored when values exist", new List<object> { 1, "a", big, 2.5m, null, false }, "in"));
+                    parameters.Add(Value("emptyList", "used", new List<object>(), "="));
+                    break;
+                case "extras":
+                    extras = new Dictionary<string, object> { { "ORACLE_RESP_ID", 50559 }, { "ORACLE_GL_SEGMENT_VALUES", "01.000" }, { "none", null }, { "big", big } };
+                    parameters.Add(Value("p", "v", null, "between"));
+                    break;
+                case "empty":
+                    requestType.GetProperty("Parameters").SetValue(request, null);
+                    break;
+                case "bigReportId": reportId = big; break;
+                case "stringReportId": reportId = "R-1"; break;
+                case "nonDictionaryExtras": extras = new Dictionary<string, string> { { "ORACLE_RESP_ID", "1" } }; break;
+            }
+            requestType.GetProperty("ReportId").SetValue(request, reportId);
+            requestType.GetProperty("ExtraParameters").SetValue(request, extras);
+
+            string ours = Invoke(() => (string)xledge.GetType("XLEdge.Helpers.ReportParameterRequestSerializer", true).GetMethod("Serialize").Invoke(null, new[] { request }));
+            object options = xledge.GetType("XLEdge.Helpers.JsonGlobals", true).GetProperty("Options").GetValue(null);
+            Type serializer = options.GetType().Assembly.GetType("System.Text.Json.JsonSerializer", true);
+            MethodInfo serialize = serializer.GetMethods().Single(m => m.Name == "Serialize" && !m.IsGenericMethod &&
+                m.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { typeof(object), typeof(Type), options.GetType() }));
+            string stj = Invoke(() => (string)serialize.Invoke(null, new[] { request, requestType, options }));
+            return "serializer:" + ours + " | stj:" + stj;
+        }
+
+        private static string Invoke(Func<string> call)
+        {
+            try { return call(); }
+            catch (TargetInvocationException ex) when (ex.InnerException != null) { return "throws " + ex.InnerException.GetType().FullName + ": " + ex.InnerException.Message; }
+        }
+
+        /// <summary>DrilldownRequestBuilder.GetColumnType over a report meta with AMOUNT (NUMBER), NO_TYPE (no datatype) and Period (DATE).</summary>
+        private static string ColumnType(Assembly xledge, string column)
+        {
+            Type metaType = xledge.GetType("XLEdge.Models.ReportMeta", true), columnType = xledge.GetType("XLEdge.Models.RptColumn", true);
+            object meta = null;
+            if (column != "NULL_META")
+            {
+                meta = Activator.CreateInstance(metaType);
+                Array columns = Array.CreateInstance(columnType, 3);
+                foreach (var (i, n, t) in new[] { (0, "AMOUNT", "NUMBER"), (1, "NO_TYPE", (string)null), (2, "Period", "DATE") })
+                {
+                    object c = Activator.CreateInstance(columnType);
+                    columnType.GetProperty("Name").SetValue(c, n);
+                    columnType.GetProperty("DataType").SetValue(c, t);
+                    columns.SetValue(c, i);
+                }
+                metaType.GetProperty("Columns").SetValue(meta, columns);
+            }
+            MethodInfo method = xledge.GetType("XLEdge.Helpers.DrilldownRequestBuilder", true).GetMethod("GetColumnType");
+            return Describe(method.Invoke(null, new[] { meta, column == "NULL_META" ? "AMOUNT" : column }));
         }
 
         /// <summary>XLEdgeUserPreferences with its seven flags in declaration order set from "0"/"1", serialized as the file is written.</summary>
