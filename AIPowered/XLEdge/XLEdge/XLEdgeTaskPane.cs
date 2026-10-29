@@ -124,6 +124,12 @@ namespace XLEdge
             ShowRequested = false;
             if (!PaneEmbedding.IsAlive(_content)) _content = IntPtr.Zero;
             if (_content == IntPtr.Zero) EmbedContent();
+            NotifyShown();
+        }
+
+        /// <summary>Tells the core this pane is shown (its AfterTaskPaneShow): after ADX shows it, and after a reload re-embeds it.</summary>
+        internal void NotifyShown()
+        {
             try { global::XLEdge.AddinModule.CurrentInstance?.Host?.Addin?.OnTaskPaneShown(ExcelWindowHandle); }
             catch (Exception ex) { global::XLEdge.AddinModule.CurrentInstance?.LogError("XLEdgeTaskPane: OnTaskPaneShown failed.", ex); }
         }

@@ -38,6 +38,52 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void TitleCommands_CountFromTheInstancesOwnPagesOnly()
+        {
+            WithCore((p, _) =>
+            {
+                foreach (var (source, login, home, expected) in new (string, string, string, bool)[]
+                {
+                    ("http://acme:8080/app?excel=Y", "http://acme:8080", null, true),
+                    ("HTTP://ACME:8080/x", "http://acme:8080", null, true),
+                    ("https://acme/app", "http://acme", null, true),            // the server upgraded the configured http address
+                    ("https://acme:8443/app", "http://acme", null, false),
+                    ("http://acme:9090/x", "http://acme:8080", null, false),
+                    ("http://evil/x", "http://acme", null, false),
+                    ("https://app.acme.cloud/x", "http://acme", "https://app.acme.cloud", true), // where the login really completed
+                    ("https://evil/x", "http://acme", "https://app.acme.cloud", false),
+                    ("about:blank", "http://acme", null, false),
+                    ("data:text/html,x", "http://acme", null, false),
+                    ("http://acme/x", "", null, false),
+                    ("", "http://acme", null, false),
+                })
+                    Assert.AreEqual(expected, p.CallStatic("XLEdge.ADXExcelTaskPane1", "IsInstancePage", source, login, home), $"{source} | {login} | {home}");
+            });
+        }
+
+        [TestMethod]
+        public void ShellCalls_FromAPoolThread_RunOnExcelsThread()
+        {
+            // The shell's ribbon and panes are Add-in Express objects: 11.1.2's pane code can reach them after an await (pool thread).
+            WithCore((p, context) =>
+            {
+                var ribbon = (CoreRibbonFacadeTests.FakeRibbon)context.RibbonController;
+                using (var window = new System.Windows.Forms.Form())
+                {
+                    int before = ribbon.Calls.Length;
+                    p.ShellCallsFromAPoolThread(window.Handle);
+                    int excelThread = System.Threading.Thread.CurrentThread.ManagedThreadId;
+                    var calls = ribbon.Calls.Zip(ribbon.CallThreads, (c, th) => (c, th)).Skip(before).ToList();
+                    foreach (string expected in new[] { "Label:RibSheetLabel=from a pool thread", "Enabled:RibEdgeHelp=False",
+                                                        $"PaneVisible:{window.Handle}=True", $"PaneCaption:{window.Handle}=caption", $"PaneWidth:{window.Handle}=600" })
+                        Assert.IsTrue(calls.Any(x => x.c == expected), expected + " in " + string.Join(" | ", calls.Select(x => x.c)));
+                    var off = calls.Where(x => x.th != excelThread).Select(x => x.c + "@" + x.th).ToList();
+                    Assert.AreEqual(0, off.Count, "shell calls off Excel's thread: " + string.Join(", ", off));
+                }
+            });
+        }
+
+        [TestMethod]
         public void AHandlerStartedOffExcelsThread_StillResumesOnIt()
         {
             WithCore((p, _) => Assert.AreEqual("resumedOnExcelThread=True busyAfter=False", p.HandlerStartedOffExcelsThread()));

@@ -184,6 +184,14 @@ namespace XLEdge.Tests
                         string broadcast = instance.Requests.First(r => r.StartsWith("POST /web/secure/get-broadcast-msg", StringComparison.Ordinal));
                         StringAssert.Contains(broadcast, "Authorization: Bearer tok123");
                         CollectionAssert.Contains(core.Ribbon.Calls, "Visible:RibEdgeLogout=True", "11.1.2's LoggedIn ribbon");
+                        // The login's continuations (after its HTTP awaits) reach the shell's ribbon only from Excel's thread.
+                        // UpdateDialogLauncherState and the Logout caption run after ProcessCookiesAsync's await (WebView2's cookie call).
+                        Assert.IsTrue(Win32Test.PumpUntil(() => core.Ribbon.Calls.Any(c => c.StartsWith("Enabled:RibEdgeDialogBoxLauncher=", StringComparison.Ordinal)) &&
+                                                                core.Ribbon.Calls.Contains("Label:RibEdgeLogout=Test"), TimeSpan.FromSeconds(10)),
+                            "precondition, ribbon calls after an await: " + string.Join(" | ", core.Ribbon.Calls));
+                        int excelThread = System.Threading.Thread.CurrentThread.ManagedThreadId;
+                        var off = core.Ribbon.Calls.Zip(core.Ribbon.CallThreads, (c, th) => (c, th)).Where(x => x.th != excelThread).Select(x => x.c + "@" + x.th).ToList();
+                        Assert.AreEqual(0, off.Count, "ribbon calls off Excel's thread: " + string.Join(", ", off));
                         core.Addin.CloseTaskPaneContent(pane.Handle);
                         core.Unload();
                         session = core.Context.GetSessionValue("XLEdge.Login");
@@ -195,7 +203,46 @@ namespace XLEdge.Tests
                     {
                         Assert.IsTrue(next.Log.Contains("AddinEntry.Initialize: the login of the previous core is back."), next.Log.Dump());
                         CollectionAssert.Contains(next.Ribbon.Calls, "Visible:RibEdgeLogout=True", "the next core starts LoggedIn");
+                        // The shell re-embeds an open pane and tells the core it is shown: 11.1.2's AfterTaskPaneShow then logs in
+                        // through excel-auth-redirect with the session's token - no second login.
+                        int before = instance.Requests.Length;
+                        next.Addin.CreateTaskPaneContent(pane.Handle);
+                        next.Addin.OnTaskPaneShown(pane.Handle);
+                        Assert.IsTrue(Win32Test.PumpUntil(() => instance.Requests.Skip(before).Any(r => r.StartsWith("GET /web/public/excel-auth-redirect ", StringComparison.Ordinal)), PageTimeout),
+                            "the next core's pane logs in with the token: " + string.Join(" | ", instance.Requests.Skip(before)) + next.Log.Dump());
+                        StringAssert.Contains(instance.Requests.Skip(before).First(r => r.StartsWith("GET /web/public/excel-auth-redirect ", StringComparison.Ordinal)),
+                            "Authorization: Bearer tok123");
+                        next.Addin.CloseTaskPaneContent(pane.Handle);
                     }
+                }
+            });
+        }
+
+        [TestMethod]
+        public void ShowHide_TogglesTheActiveExcelWindowsPane_Only()
+        {
+            // 11.1.2's XLEdgeLogin(true) works on ADX's TaskPaneInstance: the active Excel window's pane.
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var instance = new InstanceServer())
+                using (var excel1 = NewPane())
+                using (var excel2 = NewPane())
+                using (var core = new LoadedCore(t, session: "{\"LoginUrl\":\"" + instance.Url + "\",\"LoginToken\":\"t\",\"IsLoginCompleted\":true}"))
+                {
+                    core.Addin.CreateTaskPaneContent(excel1.Handle);
+                    core.Addin.CreateTaskPaneContent(excel2.Handle);
+                    string Pane(Form f, bool v) => $"PaneVisible:{f.Handle}={v}";
+                    core.Ribbon.ActiveWindow = excel2.Handle;
+                    core.Addin.OnRibbonAction("RibEdgeShowHide", null);
+                    CollectionAssert.Contains(core.Ribbon.Calls, Pane(excel2, true), string.Join(" | ", core.Ribbon.Calls));
+                    CollectionAssert.DoesNotContain(core.Ribbon.Calls, Pane(excel1, true));
+                    core.Ribbon.ActiveWindow = excel1.Handle;
+                    core.Addin.OnRibbonAction("RibEdgeShowHide", null);
+                    CollectionAssert.Contains(core.Ribbon.Calls, Pane(excel1, true));
+                    core.Addin.OnRibbonAction("RibEdgeShowHide", null);
+                    CollectionAssert.Contains(core.Ribbon.Calls, Pane(excel1, false), "the second click hides it again");
+                    CollectionAssert.DoesNotContain(core.Ribbon.Calls, Pane(excel2, false));
                 }
             });
         }

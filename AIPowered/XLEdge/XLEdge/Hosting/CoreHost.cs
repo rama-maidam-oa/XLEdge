@@ -200,6 +200,9 @@ namespace XLEdge.Hosting
         /// <summary>The first contract whose cores read and keep session values (IXLEdgeContext.GetSessionValue).</summary>
         private const int FirstContractWithSessionValues = 3;
 
+        /// <summary>The first contract whose cores keep the login across a reload (session value "XLEdge.Login", Stage 2e).</summary>
+        private const int FirstContractWithSessionLogin = 4;
+
         private Exception TryLoad(ResolvedRelease release)
         {
             // An older core (Release History) neither reads nor keeps session values: by the time a newer core loads again
@@ -212,6 +215,17 @@ namespace XLEdge.Hosting
                     Log(l => l.LogDebug($"CoreHost: core contract {release.ContractVersion} keeps no session values - cleared them."));
                 }
                 catch (Exception ex) { Log(l => l.LogWarn("CoreHost: could not clear the session values: " + ex.Message)); }
+            }
+            // A core that predates the session login shows a logged-out ribbon and drops the login at its own Shutdown: the one it
+            // leaves here would log the user in again silently when a newer core loads.
+            else if (release.ContractVersion < FirstContractWithSessionLogin)
+            {
+                try
+                {
+                    _context?.SetSessionValue("XLEdge.Login", null);
+                    Log(l => l.LogDebug($"CoreHost: core contract {release.ContractVersion} keeps no login - dropped it."));
+                }
+                catch (Exception ex) { Log(l => l.LogWarn("CoreHost: could not drop the session login: " + ex.Message)); }
             }
             _context.Version = release.Version;
             _context.ReleaseDate = release.ReleaseDate;

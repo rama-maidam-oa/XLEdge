@@ -41,6 +41,8 @@ namespace XLEdge
         private readonly IntPtr _excelWindow;
         private string _caption = string.Empty;
         private bool _handleCreatedOnce;
+        // The origin of the page that completed the login ("excel=Y#Home"): the instance as it really serves (after redirects).
+        private string? _homeOrigin;
 
         /// <summary>The WebView2 (11.1.2's Designer field).</summary>
         internal Microsoft.Web.WebView2.WinForms.WebView2 WebCtrl;
@@ -66,8 +68,9 @@ namespace XLEdge
             };
             Controls.Add(WebCtrl);
 
-            // 11.1.2's constructor.
-            this.Text = string.Empty;
+            // 11.1.2's constructor set this.Text = string.Empty: the caption starts empty (without a call to the shell's pane while
+            // the shell is creating it).
+            _caption = string.Empty;
 
             _ribbonHelper = XLEdgeRibbonHelper.Current;
 
@@ -104,11 +107,18 @@ namespace XLEdge
 
         private static IRibbonController? ShellPanes => CoreServices.Context?.RibbonController;
 
+        // The shell's panes are Add-in Express's: every call goes to Excel's thread (11.1.2 code may run on a pool thread).
+        private static T OnShellPanes<T>(Func<IRibbonController, T> call, T none)
+        {
+            IRibbonController? shell = ShellPanes;
+            return shell == null ? none : ExcelThreadContext.OnExcelThread(() => call(shell));
+        }
+
         /// <summary>Whether the pane is shown (ADX: the pane's Visible); setting it shows or hides the shell's pane.</summary>
         public new bool Visible
         {
-            get => ShellPanes?.GetTaskPaneVisible(_excelWindow) ?? false;
-            set => ShellPanes?.SetTaskPaneVisible(_excelWindow, value);
+            get => OnShellPanes(s => s.GetTaskPaneVisible(_excelWindow), false);
+            set => OnShellPanes(s => { s.SetTaskPaneVisible(_excelWindow, value); return true; }, false);
         }
 
         /// <summary>The pane's caption (ADX: the pane's Text).</summary>
@@ -118,15 +128,16 @@ namespace XLEdge
             set
             {
                 _caption = value ?? string.Empty;
-                ShellPanes?.SetTaskPaneCaption(_excelWindow, _caption);
+                string caption = _caption;
+                OnShellPanes(s => { s.SetTaskPaneCaption(_excelWindow, caption); return true; }, false);
             }
         }
 
         /// <summary>The pane's width (ADX: the pane's Width).</summary>
         public new int Width
         {
-            get => ShellPanes?.GetTaskPaneWidth(_excelWindow) ?? 0;
-            set => ShellPanes?.SetTaskPaneWidth(_excelWindow, value);
+            get => OnShellPanes(s => s.GetTaskPaneWidth(_excelWindow), 0);
+            set => OnShellPanes(s => { s.SetTaskPaneWidth(_excelWindow, value); return true; }, false);
         }
 
         /// <summary>ADX: shows the pane.</summary>
@@ -155,12 +166,14 @@ namespace XLEdge
             WebCtrl.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
             WebCtrl.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
             WebCtrl.CoreWebView2.SourceChanged -= WebCtrl_SourceChanged;
+            WebCtrl.CoreWebView2.SourceChanged -= RememberHomeOrigin;
             WebCtrl.CoreWebView2.DocumentTitleChanged -= InstanceDocumentTitleChanged;
             WebCtrl.CoreWebView2.WebResourceRequested -= WebView_WebResourceRequested;
 
             WebCtrl.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
             WebCtrl.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
             WebCtrl.CoreWebView2.SourceChanged += WebCtrl_SourceChanged;
+            WebCtrl.CoreWebView2.SourceChanged += RememberHomeOrigin;
             WebCtrl.CoreWebView2.DocumentTitleChanged += InstanceDocumentTitleChanged;
             WebCtrl.CoreWebView2.WebResourceRequested += WebView_WebResourceRequested;
 
@@ -169,10 +182,20 @@ namespace XLEdge
             _webViewEventsHooked = true;
         }
 
+        private void RememberHomeOrigin(object sender, CoreWebView2SourceChangedEventArgs e)
+        {
+            try
+            {
+                string source = WebCtrl?.CoreWebView2?.Source ?? string.Empty;
+                if (source.Contains("excel=Y#Home") && Uri.TryCreate(source, UriKind.Absolute, out Uri? home)) _homeOrigin = home.GetLeftPart(UriPartial.Authority);
+            }
+            catch (Exception ex) { LogUtility.LogException(ex, "ADXExcelTaskPane1.RememberHomeOrigin"); }
+        }
+
         private void InstanceDocumentTitleChanged(object sender, object e)
         {
             string source = WebCtrl?.CoreWebView2?.Source ?? string.Empty;
-            if (!IsInstancePage(source, appState.LoginUrl))
+            if (!IsInstancePage(source, appState.LoginUrl, _homeOrigin))
             {
                 LogUtility.LogWarn($"ADXExcelTaskPane1: title of a page outside the instance ignored ({source}).");
                 return;
@@ -180,11 +203,19 @@ namespace XLEdge
             WebView_DocumentTitleChanged(sender, e);
         }
 
-        /// <summary>True when <paramref name="source"/> has the scheme, host and port of <paramref name="loginUrl"/>.</summary>
-        internal static bool IsInstancePage(string source, string loginUrl)
+        /// <summary>
+        /// True when <paramref name="source"/> is a page of the instance: the origin of <paramref name="loginUrl"/>, the same host
+        /// over https (an http address the server redirects), or <paramref name="homeOrigin"/> - where the login really completed.
+        /// </summary>
+        internal static bool IsInstancePage(string source, string loginUrl, string? homeOrigin = null)
         {
-            if (!Uri.TryCreate(source, UriKind.Absolute, out Uri? page) || !Uri.TryCreate(loginUrl, UriKind.Absolute, out Uri? instance)) return false;
-            return string.Equals(page.GetLeftPart(UriPartial.Authority), instance.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
+            if (!Uri.TryCreate(source, UriKind.Absolute, out Uri? page)) return false;
+            string origin = page.GetLeftPart(UriPartial.Authority);
+            if (!string.IsNullOrEmpty(homeOrigin) && string.Equals(origin, homeOrigin, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!Uri.TryCreate(loginUrl, UriKind.Absolute, out Uri? instance)) return false;
+            if (string.Equals(origin, instance.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase)) return true;
+            return instance.Scheme == Uri.UriSchemeHttp && page.Scheme == Uri.UriSchemeHttps && page.IsDefaultPort &&
+                   string.Equals(page.Host, instance.Host, StringComparison.OrdinalIgnoreCase);
         }
 
         protected override void Dispose(bool disposing)
@@ -193,7 +224,8 @@ namespace XLEdge
             {
                 try { WebCtrl?.Dispose(); }
                 catch (Exception ex) { LogUtility.LogException(ex, "ADXExcelTaskPane1: disposing the WebView2 failed"); }
-                _initLock.Dispose();
+                // _initLock is not disposed: a start-up still running on a pool thread may be inside WaitAsync/Release (it holds no
+                // wait handle, so the GC reclaims it).
             }
             base.Dispose(disposing);
         }

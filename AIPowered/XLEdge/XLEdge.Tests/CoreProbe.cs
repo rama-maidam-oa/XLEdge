@@ -371,6 +371,33 @@ namespace XLEdge.Tests
             return Unwrap(() => target.Invoke(null, new object[] { eventName, args }))?.ToString() ?? "null";
         }
 
+        /// <summary>
+        /// The ribbon helper and a pane's ADX stand-ins (Visible, Text, Width), used from a pool thread as 11.1.2's code can after
+        /// an await: the managed thread each shell call then arrived on, read from the ribbon (the test compares it with its own).
+        /// </summary>
+        public void ShellCallsFromAPoolThread(IntPtr excelWindow)
+        {
+            object helper = CallStatic("XLEdge.Helpers.XLEdgeRibbonHelper", "Current");
+            object host = CoreType("XLEdge.Addin.Core.Infrastructure.CoreServices") != null ? _entry.GetType().GetField("_panes", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_entry) : null;
+            _entry.CreateTaskPaneContent(excelWindow);
+            object pane = host.GetType().GetMethod("Pane").Invoke(host, new object[] { excelWindow });
+            Exception failure = null;
+            var work = System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    helper.GetType().GetMethod("SetControlCaption").Invoke(helper, new object[] { "RibSheetLabel", "from a pool thread" });
+                    helper.GetType().GetMethod("SetControlEnabled").Invoke(helper, new object[] { "RibEdgeHelp", false });
+                    pane.GetType().GetProperty("Visible", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly).SetValue(pane, true);
+                    pane.GetType().GetProperty("Text", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly).SetValue(pane, "caption");
+                    pane.GetType().GetProperty("Width", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly).SetValue(pane, 600);
+                }
+                catch (Exception ex) { failure = ex; }
+            });
+            WaitFor(() => work.IsCompleted);
+            if (failure != null) throw new InvalidOperationException(failure.ToString());
+        }
+
         private object _module;
 
         /// <summary>The core's AddinModule with a deferred sheet delete queued and its timer running (as SheetBeforeDelete leaves it).</summary>

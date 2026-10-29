@@ -26,6 +26,20 @@ namespace XLEdge.Addin.Core.Infrastructure
         /// <summary>Called by AddinEntry.Initialize on Excel's thread: continuations go to this thread's dispatcher from then on.</summary>
         public static void Initialize() => _excelThread = Dispatcher.CurrentDispatcher;
 
+        /// <summary>
+        /// Runs <paramref name="call"/> on Excel's thread and returns its result: at once when already there, else through Excel's
+        /// message loop (the caller waits). For calls into the shell's Add-in Express objects (ribbon, panes), which must never be
+        /// used from another thread - 11.1.2 code can reach them from a pool thread after an await or from Task.Run.
+        /// </summary>
+        public static T OnExcelThread<T>(Func<T> call)
+        {
+            Dispatcher excel = _excelThread;
+            if (excel == null || excel.CheckAccess() || excel.HasShutdownStarted) return call();
+            return excel.Invoke(call, DispatcherPriority.Send);
+        }
+
+        public static void OnExcelThread(Action call) => OnExcelThread(() => { call(); return true; });
+
         /// <summary>Async-void handlers started under this context that have not ended yet.</summary>
         public static int Pending => Volatile.Read(ref _pending);
 

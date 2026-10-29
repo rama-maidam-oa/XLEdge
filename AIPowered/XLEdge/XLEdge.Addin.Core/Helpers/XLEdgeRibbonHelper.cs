@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using XLEdge.Addin.Core.Infrastructure;
 using XLEdge.Contracts;
 using XLEdge.Utilities;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -130,14 +131,15 @@ namespace XLEdge.Helpers
         private void Guard(string member, string controlName, Action action)
         {
             if (string.IsNullOrWhiteSpace(controlName) || _ribbon == null) return;
-            try { action(); }
+            // The shell's ribbon is Add-in Express's: only ever from Excel's thread.
+            try { ExcelThreadContext.OnExcelThread(action); }
             catch (Exception ex) { LogUtility.LogException(ex, $"[XLEdgeRibbonHelper] {member}: {controlName}"); }
         }
 
         private T Guard<T>(string member, string controlName, Func<T> read)
         {
             if (string.IsNullOrWhiteSpace(controlName) || _ribbon == null) return default(T);
-            try { return read(); }
+            try { return ExcelThreadContext.OnExcelThread(read); }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, $"[XLEdgeRibbonHelper] {member}: {controlName}");

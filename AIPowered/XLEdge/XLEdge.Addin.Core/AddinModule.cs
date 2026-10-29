@@ -106,7 +106,8 @@ namespace XLEdge
             public TaskPanePosition Position { get; set; }
 
             /// <summary>The active Excel window's pane, or null when that window has none yet.</summary>
-            public ADXExcelTaskPane1 TaskPaneInstance => _panes?.Pane(Shell?.GetActiveTaskPaneWindow() ?? IntPtr.Zero);
+            public ADXExcelTaskPane1 TaskPaneInstance =>
+                _panes?.Pane(Shell == null ? IntPtr.Zero : ExcelThreadContext.OnExcelThread(() => Shell.GetActiveTaskPaneWindow()));
 
             /// <summary>
             /// Creates the active Excel window's pane: the shell creates its ADX pane, which asks the core for its content
@@ -114,8 +115,12 @@ namespace XLEdge
             /// </summary>
             public ADXExcelTaskPane1 CreateTaskPaneInstance()
             {
-                Shell?.ShowTaskPane();
-                return TaskPaneInstance;
+                if (Shell != null) ExcelThreadContext.OnExcelThread(() => Shell.ShowTaskPane());
+                ADXExcelTaskPane1 created = TaskPaneInstance;
+                // ADX created the pane without asking for its content now (its Excel window was not readable yet): it is embedded
+                // when the pane is shown, and 11.1.2's code skips what it would have done to it (the width).
+                if (created == null) LogUtility.LogWarn("AddinModule: the new task pane has no content yet.");
+                return created;
             }
 
             /// <summary>Every Excel window's pane the core has content for.</summary>

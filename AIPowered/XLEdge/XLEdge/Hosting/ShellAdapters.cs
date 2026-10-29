@@ -1,7 +1,9 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using AddinExpress.MSO;
 using XLEdge.Contracts;
+using Excel = Microsoft.Office.Interop.Excel;
 
 namespace XLEdge.Hosting
 {
@@ -76,10 +78,10 @@ namespace XLEdge.Hosting
                 if (pane != null) pane.Visible = false;
                 return;
             }
-            // No pane yet: ADX creates one for the active Excel window only.
+            // No pane yet: ADX creates one for the active Excel window only, so only that window's can be created here.
             if (pane == null)
             {
-                if (excelWindow == GetActiveTaskPaneWindow() || _module.ActivePane == null) _module.ShowTaskPane();
+                if (excelWindow != IntPtr.Zero && excelWindow == ActiveExcelWindow()) _module.ShowTaskPane();
                 return;
             }
             XLEdgeTaskPane.ShowRequested = true;
@@ -91,6 +93,22 @@ namespace XLEdge.Hosting
             finally
             {
                 XLEdgeTaskPane.ShowRequested = false;
+            }
+        }
+
+        /// <summary>Excel's active window (the key its pane would have), or Zero.</summary>
+        private IntPtr ActiveExcelWindow()
+        {
+            Excel.Window window = null;
+            try
+            {
+                window = (_module.HostApplication as Excel._Application)?.ActiveWindow;
+                return window == null ? IntPtr.Zero : new IntPtr(window.Hwnd);
+            }
+            catch (COMException) { return IntPtr.Zero; }
+            finally
+            {
+                if (window != null) Marshal.ReleaseComObject(window);
             }
         }
 
@@ -124,11 +142,19 @@ namespace XLEdge.Hosting
             foreach (XLEdgeTaskPane pane in _module.AllPanes()) pane.ReleaseContent(core);
         }
 
-        /// <summary>Open panes get the new core's content now; hidden ones get it when they are next shown.</summary>
+        /// <summary>
+        /// Every pane (with a window) gets the new core's content now, hidden ones too: 11.1.2's code finds a window's pane through
+        /// its content (Show/Hide, Param Refresh, the logout of every pane). An open pane is then "shown" to the new core, so 11.1.2's
+        /// AfterTaskPaneShow runs as on a first show (width, caption, the login navigation with the session's token).
+        /// </summary>
         public void AttachAll()
         {
             foreach (XLEdgeTaskPane pane in _module.AllPanes())
-                if (pane.Visible) pane.EmbedContent();
+            {
+                if (!pane.IsHandleCreated) continue;
+                pane.EmbedContent();
+                if (pane.Visible) pane.NotifyShown();
+            }
         }
     }
 }

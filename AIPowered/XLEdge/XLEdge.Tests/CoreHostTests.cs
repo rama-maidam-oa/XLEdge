@@ -143,6 +143,30 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void LoadingACoreThatPredatesTheSessionLogin_DropsOnlyTheLogin()
+        {
+            // A contract-3 core (2c/2d, Release History) shows a logged-out ribbon and does not keep the login: back on a newer
+            // core, the old token must not log the user in again silently.
+            var s = new Setup();
+            s.Context.SetSessionValue("XLEdge.SessionOptions", "{}");
+            s.Context.SetSessionValue("XLEdge.Login", "{\"LoginToken\":\"t\"}");
+            s.Catalog.StartRelease = new ResolvedRelease { Version = "v3", ReleaseDate = "d", FolderName = "vOld", ContractVersion = 3 };
+            Assert.IsTrue(s.Host.Start());
+            Assert.IsNull(s.Context.GetSessionValue("XLEdge.Login"));
+            Assert.AreEqual("{}", s.Context.GetSessionValue("XLEdge.SessionOptions"), "the options it does keep");
+        }
+
+        [TestMethod]
+        public void LoadingACoreWithTheSessionLogin_KeepsIt()
+        {
+            var s = new Setup();
+            s.Context.SetSessionValue("XLEdge.Login", "{}");
+            s.Catalog.StartRelease = new ResolvedRelease { Version = "v4", ReleaseDate = "d", FolderName = "vNew", ContractVersion = 4 };
+            Assert.IsTrue(s.Host.Start());
+            Assert.AreEqual("{}", s.Context.GetSessionValue("XLEdge.Login"));
+        }
+
+        [TestMethod]
         public void LoadingACoreWithTheSessionBag_KeepsIt()
         {
             var s = new Setup();

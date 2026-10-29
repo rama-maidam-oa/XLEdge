@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -26,7 +26,10 @@ namespace XLEdge.Tests
             public override object InitializeLifetimeService() => null;
             public string[] Calls { get { lock (_calls) return _calls.ToArray(); } }
             public void Clear() { lock (_calls) _calls.Clear(); }
-            private void Add(string call) { lock (_calls) _calls.Add(call); }
+            private void Add(string call) { lock (_calls) { _calls.Add(call); _threads.Add(System.Threading.Thread.CurrentThread.ManagedThreadId); } }
+            private readonly List<int> _threads = new List<int>();
+            /// <summary>The managed thread of each recorded call (the shell's ADX objects may only be used on Excel's thread).</summary>
+            public int[] CallThreads { get { lock (_calls) return _threads.ToArray(); } }
             public Dictionary<string, bool> Pressed { get; } = new Dictionary<string, bool>();
             public Dictionary<string, bool> Visible { get; } = new Dictionary<string, bool>();
             public Dictionary<string, string> Labels { get; } = new Dictionary<string, string>();
