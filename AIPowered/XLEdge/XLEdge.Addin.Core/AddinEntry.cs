@@ -1,8 +1,10 @@
 using System;
+using System.Linq;
 using XLEdge.Addin.Core.Infrastructure;
 using XLEdge.Addin.Core.Pane;
 using XLEdge.Contracts;
 using XLEdge.Helpers;
+using XLEdge.Utilities;
 
 namespace XLEdge.Addin.Core
 {
@@ -28,6 +30,7 @@ namespace XLEdge.Addin.Core
                 // XLEdge 11.1.2 code reaches the ribbon through XLEdgeRibbonHelper.Current.
                 _ = new XLEdgeRibbonHelper(context.RibbonController);
                 LoadPreferences();
+                StartWpfUi();
                 _panes = new TaskPaneContentHost(context);
                 Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
             }
@@ -93,12 +96,36 @@ namespace XLEdge.Addin.Core
                 System.Windows.Application app = System.Windows.Application.Current;
                 if (app == null) return;
                 System.Windows.Threading.Dispatcher dispatcher = app.Dispatcher;
-                if (dispatcher.CheckAccess()) dispatcher.InvokeShutdown();
-                else dispatcher.Invoke(new Action(dispatcher.InvokeShutdown));
+                Action close = () =>
+                {
+                    // Every core window first (they would otherwise be torn down mid-operation by the dispatcher shutdown).
+                    foreach (System.Windows.Window window in app.Windows.Cast<System.Windows.Window>().ToList())
+                    {
+                        try { window.Close(); }
+                        catch (Exception ex) { Log(ex, "AddinEntry.Shutdown (closing a window)"); }
+                    }
+                    dispatcher.InvokeShutdown();
+                };
+                if (dispatcher.CheckAccess()) close();
+                else dispatcher.Invoke(close);
             }
             catch (Exception ex)
             {
                 Log(ex, "AddinEntry.Shutdown (WPF)");
+            }
+        }
+
+        /// <summary>WPF-UI with XLEdge's accent and theme, and its resources preloaded - what XLEdge 11.1.2 did on ribbon load.</summary>
+        private void StartWpfUi()
+        {
+            try
+            {
+                WpfUiBootstrapper.Init(XLEdgeAppConstants.GLAccentHex, XLEdgeAppConstants.GLTheme);
+                WpfUiBootstrapper.PreloadResources();
+            }
+            catch (Exception ex)
+            {
+                Log(ex, "AddinEntry.Initialize (WPF-UI)");
             }
         }
 
@@ -130,7 +157,23 @@ namespace XLEdge.Addin.Core
 
         public LoginInfo GetLoginInfo() => new LoginInfo();
 
-        public string[] GetOpenWindowTitles() => new string[0];
+        /// <summary>The core's open windows (the shell asks before a reload, which would close them).</summary>
+        public string[] GetOpenWindowTitles()
+        {
+            try
+            {
+                System.Windows.Application app = System.Windows.Application.Current;
+                if (app == null) return new string[0];
+                Func<string[]> titles = () => app.Windows.Cast<System.Windows.Window>().Where(w => w.IsVisible)
+                    .Select(w => string.IsNullOrWhiteSpace(w.Title) ? w.GetType().Name : w.Title).ToArray();
+                return app.Dispatcher.CheckAccess() ? titles() : app.Dispatcher.Invoke(titles);
+            }
+            catch (Exception ex)
+            {
+                Log(ex, "AddinEntry.GetOpenWindowTitles");
+                return new string[0];
+            }
+        }
 
         public bool IsBusy() => false;
 

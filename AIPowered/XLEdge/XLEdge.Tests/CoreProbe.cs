@@ -160,6 +160,31 @@ namespace XLEdge.Tests
 
         public void ShutDownTheEntry() => _entry?.Shutdown();
 
+        public string[] EntryOpenWindowTitles() => _entry.GetOpenWindowTitles();
+
+        /// <summary>
+        /// Opens a core window (non-modal) on this STA thread and lets WPF load and lay it out; a user control is hosted in a
+        /// plain window. Returns "loaded=..., size=WxH" - a XAML or resource failure throws instead.
+        /// </summary>
+        public string OpenWindow(string typeName, params object[] args)
+        {
+            Type type = CoreType(typeName);
+            ConstructorInfo ctor = type.GetConstructors().First(c => c.GetParameters().Length == (args?.Length ?? 0));
+            object created = Unwrap(() => ctor.Invoke(args));
+            var window = created as System.Windows.Window ?? new System.Windows.Window { Title = typeName, Content = created, Width = 400, Height = 300 };
+            window.ShowActivated = false;
+            Unwrap(() => { window.Show(); return null; });
+            PumpWpf();
+            return $"loaded={window.IsLoaded}, size={(int)window.ActualWidth}x{(int)window.ActualHeight}";
+        }
+
+        /// <summary>Lets the dispatcher of this thread (in this domain) run everything queued down to Background.</summary>
+        private static void PumpWpf()
+        {
+            for (int i = 0; i < 5; i++)
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() => { }));
+        }
+
         /// <summary>The real entry point, initialized (see <see cref="ShutDownTheEntry"/>).</summary>
         public void InitializeTheEntry(IXLEdgeContext context)
         {
