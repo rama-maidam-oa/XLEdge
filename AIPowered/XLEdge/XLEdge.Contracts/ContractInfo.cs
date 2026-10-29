@@ -12,7 +12,8 @@ namespace XLEdge.Contracts
     /// </summary>
     public static class ContractInfo
     {
-        /// <summary>1: Stage 0b. 2: IXLEdgeContext.GetExcelDispatch (Stage 2a). 3: IXLEdgeContext session bag (Stage 2c).</summary>
-        public const int Version = 3;
+        /// <summary>1: Stage 0b. 2: IXLEdgeContext.GetExcelDispatch (Stage 2a). 3: IXLEdgeContext session bag (Stage 2c).
+        /// 4: IRibbonController, the pane of a given Excel window (Stage 2e).</summary>
+        public const int Version = 4;
     }
 }

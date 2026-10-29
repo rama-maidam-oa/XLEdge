@@ -49,6 +49,18 @@ namespace XLEdge.Tests
             public void HideAllTaskPanes() => Add("HideAllTaskPanes");
             public bool IsTaskPaneVisible() => false;
             public void SetTaskPaneCaption(string caption) => Add("Caption:" + caption);
+
+            // Contract 4: one pane per Excel window, as the shell keeps them.
+            public IntPtr ActiveWindow { get; set; }
+            public Dictionary<IntPtr, bool> PaneVisible { get; } = new Dictionary<IntPtr, bool>();
+            public Dictionary<IntPtr, string> PaneCaption { get; } = new Dictionary<IntPtr, string>();
+            public Dictionary<IntPtr, int> PaneWidth { get; } = new Dictionary<IntPtr, int>();
+            public IntPtr GetActiveTaskPaneWindow() => ActiveWindow;
+            public bool GetTaskPaneVisible(IntPtr excelWindow) { lock (PaneVisible) return PaneVisible.TryGetValue(excelWindow, out bool v) && v; }
+            public void SetTaskPaneVisible(IntPtr excelWindow, bool visible) { lock (PaneVisible) PaneVisible[excelWindow] = visible; Add($"PaneVisible:{excelWindow}={visible}"); }
+            public void SetTaskPaneCaption(IntPtr excelWindow, string caption) { lock (PaneCaption) PaneCaption[excelWindow] = caption; Add($"PaneCaption:{excelWindow}={caption}"); }
+            public int GetTaskPaneWidth(IntPtr excelWindow) { lock (PaneWidth) return PaneWidth.TryGetValue(excelWindow, out int w) ? w : 400; }
+            public void SetTaskPaneWidth(IntPtr excelWindow, int width) { lock (PaneWidth) PaneWidth[excelWindow] = width; Add($"PaneWidth:{excelWindow}={width}"); }
         }
 
         private sealed class Core : IDisposable

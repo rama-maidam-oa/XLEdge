@@ -1,3 +1,4 @@
+using System;
 using XLEdge.Contracts;
 using XLEdge.Loader.Core;
 
@@ -56,6 +57,13 @@ namespace XLEdge.Hosting
         void HideAllTaskPanes();
         bool IsTaskPaneVisible();
         void SetTaskPaneCaption(string caption);
+        // The pane of one Excel window (contract 4), keyed by the window handle the pane gives the core.
+        IntPtr GetActiveTaskPaneWindow();
+        bool GetTaskPaneVisible(IntPtr excelWindow);
+        void SetTaskPaneVisible(IntPtr excelWindow, bool visible);
+        void SetTaskPaneCaption(IntPtr excelWindow, string caption);
+        int GetTaskPaneWidth(IntPtr excelWindow);
+        void SetTaskPaneWidth(IntPtr excelWindow, int width);
     }
 
     /// <summary>Loads and unloads the core (AppDomain loader in the add-in).</summary>

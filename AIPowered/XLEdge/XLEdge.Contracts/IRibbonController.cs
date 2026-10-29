@@ -36,5 +36,15 @@ namespace XLEdge.Contracts
 
         /// <summary>Sets the title of the XLEdge task panes (shown above the pane content).</summary>
         void SetTaskPaneCaption(string caption);
+
+        // Contract 4: the pane of one Excel window, keyed by that window's handle (the key CreateTaskPaneContent receives).
+        // Zero when no Excel window's pane is active; members given an Excel window without a pane do nothing (or return false / 0).
+        System.IntPtr GetActiveTaskPaneWindow();
+        bool GetTaskPaneVisible(System.IntPtr excelWindow);
+        /// <summary>Showing a window's pane creates it when it does not exist yet (only for the active Excel window).</summary>
+        void SetTaskPaneVisible(System.IntPtr excelWindow, bool visible);
+        void SetTaskPaneCaption(System.IntPtr excelWindow, string caption);
+        int GetTaskPaneWidth(System.IntPtr excelWindow);
+        void SetTaskPaneWidth(System.IntPtr excelWindow, int width);
     }
 }

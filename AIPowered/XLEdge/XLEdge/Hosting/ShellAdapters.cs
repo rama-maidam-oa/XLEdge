@@ -54,6 +54,59 @@ namespace XLEdge.Hosting
         {
             foreach (XLEdgeTaskPane pane in _module.AllPanes()) pane.Text = caption;
         }
+
+        /// <summary>The pane of an Excel window; null when it has none (Zero is never a pane's key).</summary>
+        private XLEdgeTaskPane Pane(IntPtr excelWindow)
+        {
+            if (excelWindow == IntPtr.Zero) return null;
+            foreach (XLEdgeTaskPane pane in _module.AllPanes())
+                if (pane.ExcelWindowHandle == excelWindow) return pane;
+            return null;
+        }
+
+        public IntPtr GetActiveTaskPaneWindow() => _module.ActivePane?.ExcelWindowHandle ?? IntPtr.Zero;
+
+        public bool GetTaskPaneVisible(IntPtr excelWindow) => Pane(excelWindow)?.Visible == true;
+
+        public void SetTaskPaneVisible(IntPtr excelWindow, bool visible)
+        {
+            XLEdgeTaskPane pane = Pane(excelWindow);
+            if (!visible)
+            {
+                if (pane != null) pane.Visible = false;
+                return;
+            }
+            // No pane yet: ADX creates one for the active Excel window only.
+            if (pane == null)
+            {
+                if (excelWindow == GetActiveTaskPaneWindow() || _module.ActivePane == null) _module.ShowTaskPane();
+                return;
+            }
+            XLEdgeTaskPane.ShowRequested = true;
+            try
+            {
+                pane.Show();
+                pane.Visible = true;
+            }
+            finally
+            {
+                XLEdgeTaskPane.ShowRequested = false;
+            }
+        }
+
+        public void SetTaskPaneCaption(IntPtr excelWindow, string caption)
+        {
+            XLEdgeTaskPane pane = Pane(excelWindow);
+            if (pane != null) pane.Text = caption;
+        }
+
+        public int GetTaskPaneWidth(IntPtr excelWindow) => Pane(excelWindow)?.Width ?? 0;
+
+        public void SetTaskPaneWidth(IntPtr excelWindow, int width)
+        {
+            XLEdgeTaskPane pane = Pane(excelWindow);
+            if (pane != null && width > 0) pane.Width = width;
+        }
     }
 
     /// <summary>The add-in's <see cref="IPaneHost"/>: every XLEdge task pane (one per Excel window).</summary>

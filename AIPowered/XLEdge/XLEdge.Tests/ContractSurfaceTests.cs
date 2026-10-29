@@ -43,7 +43,7 @@ namespace XLEdge.Tests
         public void ContractInfo_IsStaticWithTheCurrentVersion()
         {
             Assert.IsTrue(typeof(ContractInfo).IsAbstract && typeof(ContractInfo).IsSealed, "ContractInfo must be a static class");
-            Assert.AreEqual(3, ContractInfo.Version, "3: IXLEdgeContext session bag (Stage 2c)");
+            Assert.AreEqual(4, ContractInfo.Version, "4: IRibbonController, the pane of an Excel window (Stage 2e)");
             AssertMembers(typeof(ContractInfo), "field const int Version");
         }
 
@@ -127,7 +127,10 @@ namespace XLEdge.Tests
                 "string GetControlLabel(string controlId)", "void EnableControls(string[] controlIds)",
                 "void DisableControls(string[] controlIds)", "void Invalidate(string controlId)", "void InvalidateAll()",
                 "void ShowTaskPane()", "void ToggleTaskPane()", "void HideAllTaskPanes()", "bool IsTaskPaneVisible()",
-                "void SetTaskPaneCaption(string caption)");
+                "void SetTaskPaneCaption(string caption)",
+                "IntPtr GetActiveTaskPaneWindow()", "bool GetTaskPaneVisible(IntPtr excelWindow)",
+                "void SetTaskPaneVisible(IntPtr excelWindow, bool visible)", "void SetTaskPaneCaption(IntPtr excelWindow, string caption)",
+                "int GetTaskPaneWidth(IntPtr excelWindow)", "void SetTaskPaneWidth(IntPtr excelWindow, int width)");
         }
 
         [TestMethod]

@@ -54,6 +54,13 @@ namespace XLEdge.Tests
             public void HideAllTaskPanes() => Calls.Add("HideAllPanes");
             public bool IsTaskPaneVisible() => PaneVisible;
             public void SetTaskPaneCaption(string caption) => Calls.Add("Caption:" + caption);
+            public IntPtr ActiveWindow;
+            public IntPtr GetActiveTaskPaneWindow() => ActiveWindow;
+            public bool GetTaskPaneVisible(IntPtr excelWindow) { Calls.Add("Visible?:" + excelWindow); return PaneVisible; }
+            public void SetTaskPaneVisible(IntPtr excelWindow, bool visible) => Calls.Add($"Visible:{excelWindow}={visible}");
+            public void SetTaskPaneCaption(IntPtr excelWindow, string caption) => Calls.Add($"Caption:{excelWindow}={caption}");
+            public int GetTaskPaneWidth(IntPtr excelWindow) { Calls.Add("Width?:" + excelWindow); return 480; }
+            public void SetTaskPaneWidth(IntPtr excelWindow, int width) => Calls.Add($"Width:{excelWindow}={width}");
         }
 
         private static (RibbonController Controller, FakeControls Controls, FakeShell Shell) Create()
@@ -65,6 +72,24 @@ namespace XLEdge.Tests
 
         private static readonly string[] Feature8 =
             { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp" };
+
+        [TestMethod]
+        public void PaneOfAnExcelWindow_GoesToThatWindowsPane()
+        {
+            // Contract 4: 11.1.2's pane code acts on its own pane (Visible, Text, Width) - one per Excel window.
+            var (c, _, shell) = Create();
+            shell.ActiveWindow = new IntPtr(0x2222);
+            shell.PaneVisible = true;
+            Assert.AreEqual(new IntPtr(0x2222), c.GetActiveTaskPaneWindow());
+            Assert.IsTrue(c.GetTaskPaneVisible(new IntPtr(0x1111)));
+            c.SetTaskPaneVisible(new IntPtr(0x1111), false);
+            c.SetTaskPaneCaption(new IntPtr(0x1111), "https://instance");
+            c.SetTaskPaneCaption(new IntPtr(0x1111), null);
+            Assert.AreEqual(480, c.GetTaskPaneWidth(new IntPtr(0x1111)));
+            c.SetTaskPaneWidth(new IntPtr(0x1111), 530);
+            CollectionAssert.AreEqual(new[] { "Visible?:4369", "Visible:4369=False", "Caption:4369=https://instance", "Caption:4369=", "Width?:4369", "Width:4369=530" },
+                shell.Calls.ToArray());
+        }
 
         [TestMethod]
         public void LoggedOut_MatchesTodaysAddin()

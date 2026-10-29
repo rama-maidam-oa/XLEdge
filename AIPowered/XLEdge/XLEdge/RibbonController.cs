@@ -97,6 +97,13 @@ namespace XLEdge
         public void HideAllTaskPanes() => Guard(nameof(HideAllTaskPanes), () => _shell.HideAllTaskPanes());
         public bool IsTaskPaneVisible() => Guard(nameof(IsTaskPaneVisible), () => _shell.IsTaskPaneVisible());
         public void SetTaskPaneCaption(string caption) => Guard(nameof(SetTaskPaneCaption), () => _shell.SetTaskPaneCaption(caption ?? string.Empty));
+        public IntPtr GetActiveTaskPaneWindow() => Guard(nameof(GetActiveTaskPaneWindow), () => _shell.GetActiveTaskPaneWindow());
+        public bool GetTaskPaneVisible(IntPtr excelWindow) => Guard(nameof(GetTaskPaneVisible), () => _shell.GetTaskPaneVisible(excelWindow));
+        public void SetTaskPaneVisible(IntPtr excelWindow, bool visible) => Guard(nameof(SetTaskPaneVisible), () => _shell.SetTaskPaneVisible(excelWindow, visible));
+        public void SetTaskPaneCaption(IntPtr excelWindow, string caption) =>
+            Guard(nameof(SetTaskPaneCaption), () => _shell.SetTaskPaneCaption(excelWindow, caption ?? string.Empty));
+        public int GetTaskPaneWidth(IntPtr excelWindow) => Guard(nameof(GetTaskPaneWidth), () => _shell.GetTaskPaneWidth(excelWindow));
+        public void SetTaskPaneWidth(IntPtr excelWindow, int width) => Guard(nameof(SetTaskPaneWidth), () => _shell.SetTaskPaneWidth(excelWindow, width));
 
         public override object InitializeLifetimeService() => null;
 
