@@ -27,7 +27,7 @@ namespace XLEdge.Tests
             Assert.IsFalse(log.Lines.Any(l => (l.StartsWith("ERROR") || l.StartsWith("EXCEPTION") || l.StartsWith("WARN")) && l.Contains("WpfUi")), log.Dump());
         }
 
-        private static FakeContext NewContext(TempFolder t)
+        internal static FakeContext NewContext(TempFolder t)
         {
             var paths = new PathProvider(t.Combine("inst"), t.Combine("data"));
             paths.Ensure();
@@ -37,7 +37,7 @@ namespace XLEdge.Tests
         }
 
         /// <summary>One core on this STA thread: Initialize, <paramref name="use"/>, Shutdown, then an unload as the loader does it.</summary>
-        private static void CoreOnThisThread(FakeContext context, Action<CoreProbe> use)
+        internal static void CoreOnThisThread(FakeContext context, Action<CoreProbe> use)
         {
             var (domain, probe) = CoreProbe.Create("CoreWindowsSession");
             try

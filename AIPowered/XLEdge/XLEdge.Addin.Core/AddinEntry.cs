@@ -18,6 +18,7 @@ namespace XLEdge.Addin.Core
     {
         private IXLEdgeContext _context;
         private TaskPaneContentHost _panes;
+        private AddinModule _module;
 
         private ILogger Logger => _context?.Logger;
 
@@ -29,7 +30,9 @@ namespace XLEdge.Addin.Core
                 CoreServices.Initialize(context);
                 // XLEdge 11.1.2 code reaches the ribbon through XLEdgeRibbonHelper.Current.
                 _ = new XLEdgeRibbonHelper(context.RibbonController);
+                _module = new AddinModule(XLEdgeRibbonHelper.Current);
                 LoadPreferences();
+                DeleteTempFiles();
                 StartWpfUi();
                 _panes = new TaskPaneContentHost(context);
                 Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
@@ -45,16 +48,24 @@ namespace XLEdge.Addin.Core
             try
             {
                 Logger?.LogDebug($"AddinEntry.OnRibbonAction: '{action}'.");
-                // Stage 1 spike wiring (Stage 3 brings today's login and pane logic): Login opens the pane, Show/Hide toggles it.
-                if (action == "RibEdgeLogin") _context?.RibbonController?.ShowTaskPane();
-                else if (action == "RibEdgeShowHide") _context?.RibbonController?.ToggleTaskPane();
+                ExcelThreadContext.Run(() =>
+                {
+                    // Stage 1 spike wiring (Stage 2e brings today's login and pane logic): Login opens the pane, Show/Hide toggles it.
+                    if (action == "RibEdgeLogin") _context?.RibbonController?.ShowTaskPane();
+                    else if (action == "RibEdgeShowHide") _context?.RibbonController?.ToggleTaskPane();
+                    else _module?.OnRibbonAction(action, parameter);
+                });
             }
             catch (Exception ex) { Log(ex, "AddinEntry.OnRibbonAction"); }
         }
 
         public bool OnExcelEvent(string eventName, object[] args)
         {
-            try { Logger?.LogDebug($"AddinEntry.OnExcelEvent: '{eventName}'."); }
+            try
+            {
+                Logger?.LogDebug($"AddinEntry.OnExcelEvent: '{eventName}'.");
+                ExcelThreadContext.Run(() => _module?.OnExcelEvent(eventName, args));
+            }
             catch (Exception ex) { Log(ex, "AddinEntry.OnExcelEvent"); }
             return true;
         }
@@ -64,6 +75,9 @@ namespace XLEdge.Addin.Core
             try
             {
                 KeepSessionOptions();
+                // No deferred sheet delete may fire into the unloaded AppDomain.
+                _module?.Shutdown();
+                _module = null;
                 // Every window of this AppDomain goes before the domain is unloaded.
                 _panes?.CloseAll();
                 _panes = null;
@@ -85,6 +99,16 @@ namespace XLEdge.Addin.Core
             try { XLEdgePreferencesManager.Instance.Initialize(); }
             catch (Exception ex) { Log(ex, "AddinEntry.Initialize (preferences)"); }
             RestoreSessionOptions();
+        }
+
+        /// <summary>
+        /// Temp report files left in XLEdgeAppPaths.TempFolder - by a crash, or by the previous core of this session - go, as
+        /// 11.1.2 did when its ribbon loaded (AddinModule.vb's EEDeleteAllFiles). No report runs now: a reload waits for IsBusy.
+        /// </summary>
+        private void DeleteTempFiles()
+        {
+            try { XLEdgeTempFileCleaner.DeleteAllTempFiles(); }
+            catch (Exception ex) { Log(ex, "AddinEntry.Initialize (temp files)"); }
         }
 
         private const string SessionOptionsKey = "XLEdge.SessionOptions";
@@ -232,12 +256,16 @@ namespace XLEdge.Addin.Core
         }
 
         /// <summary>
-        /// Busy while a core dialog's modal loop runs on Excel's thread: a reload then would unload the AppDomain under it. (Report
-        /// runs join in Stage 2d.)
+        /// Busy - a reload now would unload the AppDomain under running code - while a core dialog's modal loop runs on Excel's
+        /// thread, while one of 11.1.2's async handlers has not ended, and while a report runs or refreshes (ProcessRunning).
         /// </summary>
         public bool IsBusy()
         {
-            try { return System.Windows.Interop.ComponentDispatcher.IsThreadModal; }
+            try
+            {
+                return System.Windows.Interop.ComponentDispatcher.IsThreadModal || ExcelThreadContext.Pending > 0 ||
+                       XLEdgeAppState.Instance.ProcessRunning;
+            }
             catch (Exception ex)
             {
                 Log(ex, "AddinEntry.IsBusy");

@@ -115,6 +115,8 @@
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
     <Compile Include="AddinModule.cs" />
+    <Compile Include="AddinModule.Dispatch.cs" />
+    <Compile Include="Infrastructure\ExcelThreadContext.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />
     <Compile Include="Helpers\ReportGenerator.cs" />
     <Compile Include="Helpers\ParamsControlSheetBuilder.cs" />

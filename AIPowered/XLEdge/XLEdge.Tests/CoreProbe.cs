@@ -255,6 +255,89 @@ namespace XLEdge.Tests
 
         public bool EntryIsBusy() => _entry.IsBusy();
 
+        // ---- Stage 2d: ribbon actions and Excel events as the shell forwards them ----------------------------------------------
+
+        public void EntryRibbonAction(string action, object parameter) => _entry.OnRibbonAction(action, parameter);
+
+        public bool EntryExcelEvent(string eventName, object[] args) => _entry.OnExcelEvent(eventName, args);
+
+        /// <summary>
+        /// An async-void method started the way AddinEntry starts 11.1.2's handlers (ExcelThreadContext.Run): which thread its
+        /// continuation after an await runs on, and IsBusy while it is pending and once it finished.
+        /// </summary>
+        public string AsyncHandlerOnTheExcelThread()
+        {
+            MethodInfo run = CoreType("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext").GetMethod("Run", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            int excelThread = System.Threading.Thread.CurrentThread.ManagedThreadId, resumedOn = -1;
+            var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            async void Handler()
+            {
+                await gate.Task;
+                resumedOn = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            }
+            Unwrap(() => run.Invoke(null, new object[] { (Action)Handler }));
+            bool busyWhilePending = _entry.IsBusy();
+            // Released from a pool thread: the continuation must still come back to this (Excel's) thread.
+            System.Threading.Tasks.Task.Run(() => gate.SetResult(true));
+            DateTime until = DateTime.UtcNow.AddSeconds(5);
+            while (resumedOn < 0 && DateTime.UtcNow < until)
+            {
+                PumpWpf();
+                System.Threading.Thread.Sleep(10);
+            }
+            return $"resumedOnExcelThread={resumedOn == excelThread} busyWhilePending={busyWhilePending} busyAfter={_entry.IsBusy()}";
+        }
+
+        private object _module;
+
+        /// <summary>The core's AddinModule with a deferred sheet delete queued and its timer running (as SheetBeforeDelete leaves it).</summary>
+        public void QueueADeferredDelete()
+        {
+            _module = CallStatic("XLEdge.AddinModule", "CurrentInstance") ?? throw new InvalidOperationException("no AddinModule after Initialize");
+            const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            ((System.Collections.Generic.List<string>)_module.GetType().GetField("_sheetsToDelete", Flags).GetValue(_module)).Add("P_Sheet1");
+            ((System.Windows.Forms.Timer)_module.GetType().GetField("_deleteTimer", Flags).GetValue(_module)).Start();
+        }
+
+        /// <summary>The module queued by <see cref="QueueADeferredDelete"/>: its timer, its queue, and whether it is still the current one.</summary>
+        public string DeferredDeleteState()
+        {
+            const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var timer = (System.Windows.Forms.Timer)_module.GetType().GetField("_deleteTimer", Flags).GetValue(_module);
+            var queue = (System.Collections.Generic.List<string>)_module.GetType().GetField("_sheetsToDelete", Flags).GetValue(_module);
+            return $"timerEnabled={timer.Enabled} queued={queue.Count} current={CallStatic("XLEdge.AddinModule", "CurrentInstance") != null}";
+        }
+
+        private readonly System.Collections.Generic.List<string> _messages = new System.Collections.Generic.List<string>();
+        private System.Windows.Threading.DispatcherTimer _answering;
+
+        /// <summary>From now on every XLEdge message box the core shows is recorded and answered (Yes/OK) - they are modal.</summary>
+        public void AnswerMessages()
+        {
+            Type messageWindow = CoreType("XLEdge.Views.XLEdgeMessageWindow");
+            _answering = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(30) };
+            _answering.Tick += (s, e) =>
+            {
+                if (System.Windows.Application.Current == null) return;
+                foreach (System.Windows.Window window in System.Windows.Application.Current.Windows.Cast<System.Windows.Window>().ToList())
+                {
+                    if (!messageWindow.IsInstanceOfType(window) || !window.IsVisible) continue;
+                    _messages.Add(((System.Windows.Controls.TextBlock)window.FindName("MsgText"))?.Text);
+                    messageWindow.GetProperty("Result").SetValue(window, System.Windows.MessageBoxResult.Yes);
+                    window.Close();
+                }
+            };
+            _answering.Start();
+        }
+
+        public string[] MessagesShown()
+        {
+            PumpWpf();
+            return _messages.ToArray();
+        }
+
+        public void StopAnsweringMessages() => _answering?.Stop();
+
         /// <summary>Lets the dispatcher of this thread (in this domain) run everything queued down to Background.</summary>
         private static void PumpWpf()
         {
