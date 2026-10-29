@@ -89,7 +89,7 @@ namespace XLEdge.Hosting
                 if (CoreIsBusy())
                 {
                     Log(l => l.LogWarn("CoreHost.Reload: refused - the core is busy."));
-                    _ui.ShowError("XLEdge is busy (a report or refresh is running). Use Reload Add-in again when it has finished.", ReloadTitle);
+                    _ui.ShowError("XLEdge is busy (a report or refresh is running, or an XLEdge window is open). Use Reload Add-in again when it has finished.", ReloadTitle);
                     return false;
                 }
 

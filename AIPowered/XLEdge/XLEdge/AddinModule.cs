@@ -395,7 +395,7 @@ namespace XLEdge
                 {
                     if (range != null) Marshal.ReleaseComObject(range);
                 }
-                return new object[] { SheetName(sheet), cell, Safe(() => link?.ScreenTip), Safe(() => link?.SubAddress), Safe(() => link?.TextToDisplay), WorkbookName(sheet) };
+                return new object[] { SheetName(sheet), cell, Safe(() => link?.ScreenTip), Safe(() => link?.SubAddress), Safe(() => link?.TextToDisplay), WorkbookName(sheet), cell == null ? ShapeName(link) : null };
             });
         }
 
@@ -427,6 +427,22 @@ namespace XLEdge
         }
 
         private static string SheetName(object sheet) => Safe(() => (sheet as Excel.Worksheet)?.Name);
+
+        /// <summary>The shape a hyperlink is on (a hyperlink on a shape has no cell), last in SheetFollowHyperlink's arguments.</summary>
+        private static string ShapeName(Excel.Hyperlink link)
+        {
+            Excel.Shape shape = null;
+            try
+            {
+                shape = link?.Shape;
+                return shape?.Name;
+            }
+            catch (COMException) { return null; }
+            finally
+            {
+                if (shape != null) Marshal.ReleaseComObject(shape);
+            }
+        }
 
         /// <summary>
         /// The sheet's workbook, last in every sheet event's arguments (a sheet name alone is ambiguous with several workbooks open;

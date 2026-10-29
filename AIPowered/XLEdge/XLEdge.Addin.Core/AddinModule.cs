@@ -53,6 +53,23 @@ namespace XLEdge
             CurrentInstance = this;
         }
 
+        /// <summary>
+        /// 11.1.2's AddinModule_OnRibbonLoaded: LoggedOut, or LoggedIn after a login (a queued state is applied by the constructor).
+        /// Each core starts from it; IncludeOutputData's flag is then the button's state, which the shell's ribbon keeps across reloads.
+        /// </summary>
+        internal void ApplyStartRibbonState()
+        {
+            // The Debug toggle is the shell's and outlives a reload: LoggedOut switches it off for a logout, not for a new core.
+            bool debug = XLEdgeAppState.Instance.DebugLogs;
+            RibbonHelper?.ApplyState(XLEdgeAppState.Instance.IsLoginCompleted ? "LoggedIn" : "LoggedOut");
+            if (debug)
+            {
+                RibbonHelper?.SetControlPressed("RibEdgeDebug", true);
+                XLEdgeAppState.Instance.DebugLogs = true;
+            }
+            XLEdgeAppState.Instance.DebugOutputData = RibbonHelper?.GetControlPressed("RibEdgeIncludeOutputData") ?? false;
+        }
+
         /// <summary>At core Shutdown: no deferred delete may fire into an unloaded AppDomain, and the timer's window goes with it.</summary>
         internal void Shutdown()
         {

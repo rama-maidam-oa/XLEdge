@@ -288,6 +288,89 @@ namespace XLEdge.Tests
             return $"resumedOnExcelThread={resumedOn == excelThread} busyWhilePending={busyWhilePending} busyAfter={_entry.IsBusy()}";
         }
 
+        /// <summary>
+        /// A ribbon action, sent to the real entry point (AddinEntry.OnRibbonAction), whose handler - added to the module's handler
+        /// table for this call - awaits: which thread it resumes on, and IsBusy while it is pending and once it ended.
+        /// </summary>
+        public string AwaitingHandlerThroughTheEntry()
+        {
+            const string Action = "Probe.AwaitingHandler";
+            var table = (System.Collections.IDictionary)CoreType("XLEdge.AddinModule").GetField("RibbonHandlers", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            int excelThread = System.Threading.Thread.CurrentThread.ManagedThreadId, resumedOn = -1;
+            var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            async void Handler(object module, bool pressed)
+            {
+                await gate.Task;
+                resumedOn = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            }
+            table[Action] = (Action<object, bool>)Handler;
+            try
+            {
+                _entry.OnRibbonAction(Action, null);
+                bool busyWhilePending = _entry.IsBusy();
+                System.Threading.Tasks.Task.Run(() => gate.SetResult(true));
+                WaitFor(() => resumedOn >= 0);
+                return $"resumedOnExcelThread={resumedOn == excelThread} busyWhilePending={busyWhilePending} busyAfter={_entry.IsBusy()}";
+            }
+            finally
+            {
+                table.Remove(Action);
+            }
+        }
+
+        /// <summary>An async-void handler started (ExcelThreadContext.Run) on a pool thread: does it still resume on Excel's thread?</summary>
+        public string HandlerStartedOffExcelsThread()
+        {
+            MethodInfo run = CoreType("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext").GetMethod("Run", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            int excelThread = System.Threading.Thread.CurrentThread.ManagedThreadId, resumedOn = -1;
+            var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            async void Handler()
+            {
+                await gate.Task;
+                resumedOn = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            }
+            System.Threading.Tasks.Task.Run(() => run.Invoke(null, new object[] { (Action)Handler })).Wait();
+            System.Threading.Tasks.Task.Run(() => gate.SetResult(true));
+            WaitFor(() => resumedOn >= 0);
+            return $"resumedOnExcelThread={resumedOn == excelThread} busyAfter={_entry.IsBusy()}";
+        }
+
+        /// <summary>An async-void handler that throws (an IOException) after an await, started as AddinEntry starts handlers.</summary>
+        public string HandlerThatThrowsAfterAnAwait()
+        {
+            MethodInfo run = CoreType("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext").GetMethod("Run", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            bool reached = false;
+            async void Handler()
+            {
+                await gate.Task;
+                reached = true;
+                throw new IOException("disk gone");
+            }
+            Unwrap(() => run.Invoke(null, new object[] { (Action)Handler }));
+            System.Threading.Tasks.Task.Run(() => gate.SetResult(true));
+            WaitFor(() => reached);
+            PumpWpf();
+            return $"reached={reached} busyAfter={_entry.IsBusy()}";
+        }
+
+        private static void WaitFor(Func<bool> done)
+        {
+            DateTime until = DateTime.UtcNow.AddSeconds(5);
+            while (!done() && DateTime.UtcNow < until)
+            {
+                PumpWpf();
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+
+        /// <summary>What the core reads from a forwarded event's arguments (AddinModule.Target), or "null".</summary>
+        public string DescribeEventTarget(string eventName, object[] args)
+        {
+            MethodInfo target = CoreType("XLEdge.AddinModule").GetMethod("Target", BindingFlags.Static | BindingFlags.NonPublic);
+            return Unwrap(() => target.Invoke(null, new object[] { eventName, args }))?.ToString() ?? "null";
+        }
+
         private object _module;
 
         /// <summary>The core's AddinModule with a deferred sheet delete queued and its timer running (as SheetBeforeDelete leaves it).</summary>

@@ -30,7 +30,9 @@ namespace XLEdge.Addin.Core
                 CoreServices.Initialize(context);
                 // XLEdge 11.1.2 code reaches the ribbon through XLEdgeRibbonHelper.Current.
                 _ = new XLEdgeRibbonHelper(context.RibbonController);
+                ExcelThreadContext.Initialize();
                 _module = new AddinModule(XLEdgeRibbonHelper.Current);
+                _module.ApplyStartRibbonState();
                 LoadPreferences();
                 DeleteTempFiles();
                 StartWpfUi();
@@ -263,8 +265,11 @@ namespace XLEdge.Addin.Core
         {
             try
             {
-                return System.Windows.Interop.ComponentDispatcher.IsThreadModal || ExcelThreadContext.Pending > 0 ||
-                       XLEdgeAppState.Instance.ProcessRunning;
+                bool dialog = System.Windows.Interop.ComponentDispatcher.IsThreadModal, handlers = ExcelThreadContext.Pending > 0,
+                     report = XLEdgeAppState.Instance.ProcessRunning;
+                if (dialog || handlers || report)
+                    Logger?.LogInfo($"AddinEntry.IsBusy: busy (dialog open={dialog}, handlers running={ExcelThreadContext.Pending}, report running={report}).");
+                return dialog || handlers || report;
             }
             catch (Exception ex)
             {

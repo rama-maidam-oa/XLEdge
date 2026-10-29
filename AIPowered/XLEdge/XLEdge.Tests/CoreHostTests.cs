@@ -213,7 +213,7 @@ namespace XLEdge.Tests
             s.R.Events.Clear();
             Assert.IsFalse(s.Host.Reload(() => Setup.Release("vB")));
             CollectionAssert.AreEqual(new[] { "Error" }, s.R.Events);
-            Assert.AreEqual("Reload XLEdge Add-in: XLEdge is busy (a report or refresh is running). Use Reload Add-in again when it has finished.", s.Ui.Errors.Single());
+            Assert.AreEqual("Reload XLEdge Add-in: XLEdge is busy (a report or refresh is running, or an XLEdge window is open). Use Reload Add-in again when it has finished.", s.Ui.Errors.Single());
             Assert.AreSame(s.Addins["vA"], s.Host.Addin);
         }
 

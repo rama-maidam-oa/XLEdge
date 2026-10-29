@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -10,7 +10,8 @@ namespace XLEdge.Tests
     /// <summary>
     /// Stage 2d: XLEdge 11.1.2's handlers in the core, against a real Excel - an automation instance (no add-ins load in it), driven
     /// the way the shell drives the core: Excel events arrive as names, the core works on Excel through its own RCW from its own
-    /// AppDomain. Each test ends with Excel gone: still running after Quit means a COM reference was left behind.
+    /// AppDomain. Each test ends with Excel gone: still running after Quit means a COM reference was left behind. The core's domain
+    /// is unloaded before Quit (as when Excel closes), so this sees references held outside the core, not the core's own RCWs.
     /// </summary>
     [TestClass]
     [TestCategory("Excel")]
