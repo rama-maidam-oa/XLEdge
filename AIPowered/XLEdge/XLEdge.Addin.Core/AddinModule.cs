@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using XLEdge.Addin.Core.Infrastructure;
@@ -11,6 +13,7 @@ using XLEdge.Helpers;
 using XLEdge.Models;
 using XLEdge.Utilities;
 using XLEdge.Views;
+using MahApps.Metro.IconPacks;
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace XLEdge
@@ -40,8 +43,9 @@ namespace XLEdge
         public static AddinModule CurrentInstance { get; private set; }
 
         /// <summary>Created by AddinEntry.Initialize on Excel's thread (the delete timer's window belongs to that thread).</summary>
-        internal AddinModule(XLEdgeRibbonHelper ribbonHelper)
+        internal AddinModule(XLEdgeRibbonHelper ribbonHelper, TaskPaneContentHost panes)
         {
+            adxExcelTaskPanesCollectionItem1 = new TaskPanes(panes);
             _deleteTimer.Interval = 200;
             _deleteTimer.Tick += DeleteTimer_Tick;
             RibbonHelper = ribbonHelper;
@@ -85,8 +89,38 @@ namespace XLEdge
         /// <summary>Excel, through the core's own RCW.</summary>
         public Excel._Application ExcelApp => CoreServices.ExcelApp as Excel._Application;
 
-        /// <summary>The active Excel window's task pane; the pane's logic moves into the core in Stage 2e - none until then.</summary>
-        public ICorePane GetPaneInstance() => null;
+        /// <summary>11.1.2's ADX task pane collection: the panes are the shell's, their content the core's (one per Excel window).</summary>
+        private readonly TaskPanes adxExcelTaskPanesCollectionItem1;
+
+        internal enum TaskPanePosition { Right }
+
+        /// <summary>What 11.1.2 used of ADXExcelTaskPanesCollectionItem.</summary>
+        internal sealed class TaskPanes
+        {
+            private readonly TaskPaneContentHost _panes;
+            public TaskPanes(TaskPaneContentHost panes) { _panes = panes; }
+
+            private static Contracts.IRibbonController Shell => CoreServices.Context?.RibbonController;
+
+            /// <summary>The shell docks its panes on the right (ADX Position); kept for 11.1.2's code.</summary>
+            public TaskPanePosition Position { get; set; }
+
+            /// <summary>The active Excel window's pane, or null when that window has none yet.</summary>
+            public ADXExcelTaskPane1 TaskPaneInstance => _panes?.Pane(Shell?.GetActiveTaskPaneWindow() ?? IntPtr.Zero);
+
+            /// <summary>
+            /// Creates the active Excel window's pane: the shell creates its ADX pane, which asks the core for its content
+            /// (CreateTaskPaneContent, on this thread, before this returns) - that content is the pane returned.
+            /// </summary>
+            public ADXExcelTaskPane1 CreateTaskPaneInstance()
+            {
+                Shell?.ShowTaskPane();
+                return TaskPaneInstance;
+            }
+
+            /// <summary>Every Excel window's pane the core has content for.</summary>
+            public IList<ADXExcelTaskPane1> TaskPaneInstances => _panes?.Panes ?? new List<ADXExcelTaskPane1>();
+        }
 
         /// <summary>11.1.2 set ribbon controls' properties on its ADX controls; here they go through XLEdgeRibbonHelper.</summary>
         internal sealed class RibbonControl
@@ -103,9 +137,50 @@ namespace XLEdge
                 get => RibbonHelper?.GetControlVisible(_id) ?? false;
                 set => RibbonHelper?.SetControlVisible(_id, value);
             }
+            public bool Enabled
+            {
+                get => RibbonHelper?.GetControlEnabled(_id) ?? true;
+                set => RibbonHelper?.SetControlEnabled(_id, value);
+            }
         }
 
         private static readonly RibbonControl RibSheetLabel = new RibbonControl("RibSheetLabel");
+        private static readonly RibbonControl RibEdgeLogin = new RibbonControl("RibEdgeLogin");
+        private static readonly RibbonControl RibEdgeLogout = new RibbonControl("RibEdgeLogout");
+        private static readonly RibbonControl RibEdgeRefresh = new RibbonControl("RibEdgeRefresh");
+        private static readonly RibbonControl RibEdgeRefreshAll = new RibbonControl("RibEdgeRefreshAll");
+        private static readonly RibbonControl RibEdgeShowHide = new RibbonControl("RibEdgeShowHide");
+        private static readonly RibbonControl RibEdgeOptions = new RibbonControl("RibEdgeOptions");
+        private static readonly RibbonControl RibEdgeHelp = new RibbonControl("RibEdgeHelp");
+        private static readonly RibbonControl RibEdgeParamRefresh = new RibbonControl("RibEdgeParamRefresh");
+        private static readonly RibbonControl RibEdgeParamRefreshBook = new RibbonControl("RibEdgeParamRefreshBook");
+
+        // GLSense (Stage 2f): 11.1.2 called the sibling add-in here; until then the calls are logged only.
+        public void NotifyGLSenseOfLogin(string authToken, string loginUrl, string userName) =>
+            LogUtility.LogDebug("AddinModule.NotifyGLSenseOfLogin: GLSense login sync is not in the core yet (Stage 2f).");
+
+        private void NotifyGLSenseOfLogout() =>
+            LogUtility.LogDebug("AddinModule.NotifyGLSenseOfLogout: GLSense logout sync is not in the core yet (Stage 2f).");
+
+        /// <summary>
+        /// 11.1.2's RibEdgeLogout_PropertyChanging: the tab label follows the login state. The shell forwards only Logout's Visible
+        /// changes (the ADX event-args test of 11.1.2's first line), so the rest of 11.1.2's body is all that is left here.
+        /// </summary>
+        private void RibEdgeLogout_PropertyChanging(string propertyType)
+        {
+            try
+            {
+                if (propertyType == "Visible" &&
+                    ExcelApplicationHelper.TryGetActiveExcelApplication(out Excel.Application excelApp))
+                {
+                    UpdateTabLabel(excelApp.ActiveSheet as Excel.Worksheet);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(RibEdgeLogout_PropertyChanging));
+            }
+        }
 
         // ---- XLEdge 11.1.2 (AddinModule.cs), unchanged ------------------------------------------------------------------------
 
@@ -1693,6 +1768,714 @@ namespace XLEdge
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, nameof(NavigateToReportDataSheet));
+            }
+        }
+
+        // ---- Stage 2e: login and task pane (XLEdge 11.1.2, unchanged) ----
+
+        public ADXExcelTaskPane1 GetPaneInstance()
+        {
+
+            try
+            {
+                return (ADXExcelTaskPane1)adxExcelTaskPanesCollectionItem1.TaskPaneInstance;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Error In getting pane instance.");
+                return null;
+            }
+        }
+
+        private void LaunchExcelPane()
+        {
+            const string MethodName = "LaunchExcelPane";
+            ADXExcelTaskPane1 EdgeExcelPane;
+
+            EdgeExcelPane = GetPaneInstance();
+            try
+            {
+                if (EdgeExcelPane != null)
+                {
+                    EdgeExcelPane.Visible = !EdgeExcelPane.Visible;
+                }
+                else
+                {
+                    adxExcelTaskPanesCollectionItem1.Position = TaskPanePosition.Right;
+                    EdgeExcelPane = (ADXExcelTaskPane1)adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance();
+                    if (EdgeExcelPane != null)
+                    {
+                        EdgeExcelPane.Width = 500;
+                        EdgeExcelPane.Show();
+                        EdgeExcelPane.Visible = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"{MethodName}|Exception encountered while initializing excel task pane.|{ex.Message}");
+            }
+        }
+
+        private void XLEdgeLogin(bool togglePane)
+        {
+            const string MethodName = "LaunchExcelPane";
+            ADXExcelTaskPane1 EdgeExcelPane;
+
+            XLEdgeAppState.Instance.XLEdgePane = GetPaneInstance();
+            EdgeExcelPane = XLEdgeAppState.Instance.XLEdgePane;
+
+            if (togglePane)
+            {
+                if (EdgeExcelPane != null)
+                {
+                    // Set EdgePaneShown before flipping Visible to true so the
+                    // ADXBeforeTaskPaneShow handler (which hides the pane again while
+                    // EdgePaneShown is false, to keep it hidden until WebView2 finishes
+                    // initializing) doesn't re-hide it here.
+                    bool willShow = !EdgeExcelPane.Visible;
+
+                    try
+                    {
+                        if (willShow)
+                        {
+                            XLEdgeAppState.Instance.EdgePaneShown = true;
+                        }
+
+                        EdgeExcelPane.Visible = willShow;
+                    }
+                    finally
+                    {
+                        if (willShow)
+                        {
+                            XLEdgeAppState.Instance.EdgePaneShown = false;
+                        }
+                    }
+                }
+
+                return;
+            }
+
+            try
+            {
+                XLEdgeAppState.Instance.EdgePaneShown = true;
+
+                if (EdgeExcelPane != null)
+                {
+                    if (!EdgeExcelPane.Visible)
+                    {
+                        EdgeExcelPane.Visible = true;
+                    }
+                    EdgeExcelPane.Activate();
+                    _ = EdgeExcelPane.RefreshLoginNavigationAsync();
+                    return;
+                }
+
+                adxExcelTaskPanesCollectionItem1.Position = TaskPanePosition.Right;
+                EdgeExcelPane = (ADXExcelTaskPane1)adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance();
+                if (EdgeExcelPane != null)
+                {
+                    EdgeExcelPane.Width = 550;
+                    EdgeExcelPane.Show();
+                    EdgeExcelPane.Visible = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"{MethodName}|Exception encountered while initializing excel task pane.|{ex.Message}");
+            }
+            finally
+            {
+                XLEdgeAppState.Instance.EdgePaneShown = false;
+            }
+        }
+
+        public bool NavigateReportsToAddress(string name, string address)
+        {
+            try
+            {
+                return WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    string normalizedAddress = NormalizeAddress(address);
+                    if (string.IsNullOrWhiteSpace(normalizedAddress))
+                    {
+                        return false;
+                    }
+                    XLEdgeAppState.Instance.LoginUrl = normalizedAddress;
+                    XLEdgeAppState.Instance.LoginUrlName = name;
+                    XLEdgeLogin(false);
+                    return true;
+                });
+            }
+            catch (Exception ex)
+            {
+                SafeLogException(ex, "Exception occured while navigating reports task pane");
+                return false;
+            }
+        }
+
+        private static string NormalizeAddress(string address)
+        {
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                return string.Empty;
+            }
+
+            string normalized = address.Trim().TrimEnd('\r', '\n', '/', '\\', ' ');
+            string[] patterns = { "/bypass-saml-login-flow", "/bypass-sso-login-flow" };
+
+            foreach (string pattern in patterns)
+            {
+                normalized = Regex.Replace(normalized, Regex.Escape(pattern), string.Empty, RegexOptions.IgnoreCase);
+            }
+
+            return normalized;
+        }
+
+        /// <summary>
+        /// Ported from XLEdgeProcedures.vb's RibbonInitialize: resets the ribbon to its logged-out
+        /// default state (Login enabled, every other report-action button disabled). Called by
+        /// XLEdgeServerConfiguration (the Server Configuration window) after deleting an instance,
+        /// matching VB's FormConfiguration.CmdDelete_Click - only when the ribbon is currently showing
+        /// "Login" (i.e. the user isn't logged in), a no-op reset otherwise makes no visible difference.
+        /// </summary>
+        public void RibbonInitialize()
+        {
+            try
+            {
+                Excel.Application excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
+                if (excelApp == null)
+                {
+                    return;
+                }
+
+                RibEdgeLogin.Enabled = true;
+                RibEdgeRefresh.Enabled = false;
+                RibEdgeRefreshAll.Enabled = false;
+                RibEdgeShowHide.Enabled = false;
+                RibEdgeOptions.Enabled = false;
+                RibEdgeHelp.Enabled = false;
+                RibEdgeParamRefresh.Enabled = false;
+                RibEdgeParamRefreshBook.Enabled = false;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(RibbonInitialize));
+            }
+        }
+
+        public bool loginButtonVisibility()
+        {
+           return RibEdgeLogin.Visible;
+        }
+
+        private void RibLogin_OnClick(object sender, object control, bool pressed) //RibLogin Code
+        {
+            try
+            {
+                IntPtr excelHandle = ExcelApplicationHelper.GetExcelWindowHandle();
+
+                SafeInvokeWpf(() =>
+                {
+                    var win = new XLEdgeServerConfiguration();
+                    if (excelHandle != IntPtr.Zero)
+                    {
+                        win.ShowDialogWithOwner(excelHandle);
+                    }
+                    else
+                    {
+                        win.ShowDialog();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private void RibEdgeAbout_OnClick(object sender, object control, bool pressed)
+        {
+            IntPtr excelHandle = IntPtr.Zero;
+            if (ExcelApplicationHelper.TryGetActiveExcelApplication(out Excel.Application excelApp))
+            {
+                excelHandle = new IntPtr(excelApp.Hwnd);
+            }
+
+            SafeInvokeWpf(() =>
+            {
+                var win = new XLEdgeAbout();
+                if (excelHandle != IntPtr.Zero)
+                {
+                    win.ShowDialogWithOwner(excelHandle);
+                }
+                else
+                {
+                    win.ShowDialog();
+                }
+            });
+        }
+
+        private async Task LogOffAllTaskPanesAsync(CancellationToken token)
+        {
+            if (adxExcelTaskPanesCollectionItem1.TaskPaneInstances.Count <= 0)
+            {
+                return;
+            }
+
+            foreach (ADXExcelTaskPane1 xlTaskpane in adxExcelTaskPanesCollectionItem1.TaskPaneInstances)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                try
+                {
+                    await xlTaskpane.LogoutAsync(XLEdgeAppState.Instance.LoginUrl, token);
+                    await Task.Delay(200, token);
+                    xlTaskpane.HidePaneSafe();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "Error while logging off task pane.");
+                }
+            }
+        }
+
+        private async Task LogoffFromXLEdgeAddin()
+        {
+            XLEdgeWaitWindow waitWindow = null;
+            CancellationTokenSource linkedCts = null;
+
+            try
+            {
+                // Uses the single shared app-wide WPF dispatcher (UiDispatcher.Current, same as every
+                // other wait/busy window in this add-in - see ReportGenerator.CreateAndShowWaitWindow)
+                // rather than an arbitrary open workbook's task pane dispatcher. Picking "the first
+                // available" task pane here was fragile with multiple workbooks open - if that
+                // particular pane's dispatcher wasn't ready/valid for any reason, the wait window
+                // silently never showed. Showing the wait window is a UX nicety only - any failure to
+                // show it is caught and logged on its own here so it can never block the actual logoff
+                // work below.
+                try
+                {
+                    await UiDispatcher.RunAsync(() =>
+                    {
+                        waitWindow = new XLEdgeWaitWindow();
+
+                        PackIconFontAwesomeKind icon = PackIconFontAwesomeKind.DoorOpenSolid;
+                        waitWindow.SetProcessTitle("Logging Off", icon);
+                        waitWindow.SetProcessMessage("Please wait...");
+                        waitWindow.Show();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "LogoffFromAddin|Failed to show wait window - continuing logoff without it.");
+                    waitWindow = null;
+                }
+
+                linkedCts = waitWindow != null
+                    ? CancellationTokenSource.CreateLinkedTokenSource(waitWindow.Token)
+                    : new CancellationTokenSource();
+
+                using (linkedCts)
+                {
+                    try
+                    {
+                        await LogOffAllTaskPanesAsync(linkedCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        LogUtility.LogWarn("LogoffFromAddin|Cancelled by user.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "LogoffFromAddin|Error during logoff.");
+            }
+            finally
+            {
+                if (waitWindow != null)
+                {
+                    try
+                    {
+                        await waitWindow.Dispatcher.InvokeAsync(() =>
+                        {
+                            if (waitWindow.IsVisible)
+                            {
+                                waitWindow.RequestClose();
+                            }
+                        });
+
+                        await Task.Delay(150);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Error closing XLEdgeWaitWindow.");
+                    }
+                }
+            }
+
+            // Ported from AddinModule.vb's LogOffAllTaskPanesAsync - tell the sibling GLSense add-in
+            // this session logged out before clearing our own login state below.
+            try
+            {
+                NotifyGLSenseOfLogout();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "LogoffFromXLEdgeAddin|Failed to notify GLSense of logout.");
+            }
+
+            XLEdgeAppState.Instance.IsLoginCompleted = false;
+            XLEdgeAppState.Instance.LoginToken = string.Empty;
+            XLEdgeAppState.Instance.LoginUserName = string.Empty;
+            XLEdgeAppState.Instance.LoginUrl = string.Empty;
+            XLEdgeAppState.Instance.LoginUrlName = string.Empty;
+            XLEdgeAppState.Instance.LoginToken = string.Empty;
+            XLEdgeAppState.Instance.LoginFromGLSense = false;
+            XLEdgeAppState.Instance.LoginSentToGLSense = false;
+            XLEdgeAppState.Instance.DebugLogs = false;
+            XLEdgeAppState.Instance.EdgePaneShown = false;
+
+            RibSheetLabel.Caption = " ";
+
+            XLEdgePreferencesManager.Instance.ResetRuntimeFromSaved();
+        }
+
+        /// <summary>
+        /// Entry point invoked by the sibling GLSense add-in (via COM reflection:
+        /// InvokeMember("LogoffFromAddin", ...)) when the user logs out of GLSense, so this
+        /// XLEdge session gets logged out in lockstep - the reverse direction of
+        /// InvokedFromGLSense above. GLSense's caller (AddinModule.RibLogout_OnClick) invokes
+        /// this synchronously via late-bound COM reflection and discards the result (same
+        /// fire-and-forget pattern it already uses), so this is a thin public wrapper around
+        /// the existing LogoffFromXLEdgeAddin/ApplyRibbonState sequence already used by this
+        /// add-in's own Logout ribbon button (RibEdgeLogout_OnClick) - no change to that
+        /// existing logic, just exposing it under the name GLSense already expects to call.
+        /// Previously GLSense called InvokeMember("LogoffFromAddin", ...), but no method with
+        /// that exact name existed on this class (the real method is the private
+        /// LogoffFromXLEdgeAddin) - IDispatch could only report DISP_E_UNKNOWNNAME ("COM
+        /// object that has been separated from its underlying RCW cannot be used" as
+        /// GLSense's wrapper reported it), silently skipping the entire logoff so GLSense
+        /// logged itself out while this XLEdge session stayed logged in.
+        /// </summary>
+        public void LogoffFromAddin()
+        {
+            const string MethodName = "LogoffFromAddin";
+            LogUtility.LogDebug($"{MethodName}|Logout invoked from GLSense.");
+
+            _ = LogoffFromAddinAsync();
+        }
+
+        private async Task LogoffFromAddinAsync()
+        {
+            try
+            {
+                await LogoffFromXLEdgeAddin();
+                ApplyRibbonState("LoggedOut");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "LogoffFromAddin|Error during logoff invoked from GLSense.");
+            }
+        }
+
+        private async void RibEdgeLogout_OnClick(object sender, object control, bool pressed)
+        {
+
+            await LogoffFromXLEdgeAddin();
+
+            ApplyRibbonState("LoggedOut");
+        }
+
+        private void RibEdgeShowHide_OnClick(object sender, object control, bool pressed)
+        {
+            try
+            {
+                if (!XLEdgeAppState.Instance.IsLoginCompleted)
+                {
+                    MessageFunctions.XLEdgeMessage("Please log in to the instance.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                    return;
+                }
+
+                XLEdgeLogin(true);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Ported from AddinModule.vb's RibEdgeParamRefreshBook_OnClick. Scans the workbook for all
+        /// non-child "_E" report tables belonging to the currently logged-in instance, collects their
+        /// run ids, and asks the hosted web app (via a DOM hook it exposes) to re-run all of them with
+        /// their current parameters.
+        /// </summary>
+        private void RibEdgeParamRefreshBook_OnClick(object sender, object control, bool pressed)
+        {
+            const string MethodName = "RibEdgeParamRefreshBook_OnClick";
+            try
+            {
+                if (!ExcelApplicationHelper.TryGetActiveExcelApplication(out Excel.Application excelApp) || excelApp.ActiveWorkbook == null)
+                {
+                    return;
+                }
+
+                var runIds = new List<string>();
+
+                foreach (Excel.Worksheet ws in excelApp.ActiveWorkbook.Worksheets)
+                {
+                    try
+                    {
+                        if (ws.ListObjects.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        Excel.ListObject tableObj = ws.ListObjects[1];
+                        string tableName = tableObj.Name ?? string.Empty;
+
+                        if (!tableName.StartsWith("ORB_", StringComparison.OrdinalIgnoreCase) ||
+                            !tableName.EndsWith("_E", StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        if (!TryResolveInstanceAndChildFlag(ws, tableObj, tableName, out bool isChild))
+                        {
+                            continue; // Belongs to a different logged-in instance - skip it.
+                        }
+
+                        if (isChild)
+                        {
+                            continue;
+                        }
+
+                        string[] parts = tableName.Split('_');
+                        if (parts.Length > 2)
+                        {
+                            runIds.Add(parts[2]);
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.ReleaseComObject(ws);
+                    }
+                }
+
+                if (runIds.Count == 0)
+                {
+                    return;
+                }
+
+                string refreshRunIds = string.Join("-", runIds);
+                ADXExcelTaskPane1 paneInst = GetPaneInstance();
+                if (paneInst == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (!paneInst.Visible)
+                    {
+                        XLEdgeAppState.Instance.EdgePaneShown = true;
+                        LaunchExcelPane();
+                    }
+
+                    _ = RefreshBookParametersAsync(refreshRunIds, paneInst);
+                }
+                finally
+                {
+                    XLEdgeAppState.Instance.EdgePaneShown = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, MethodName);
+            }
+        }
+
+        private static async Task RefreshBookParametersAsync(string runId, ADXExcelTaskPane1 taskPane)
+        {
+            try
+            {
+                if (taskPane == null)
+                {
+                    return;
+                }
+
+                await taskPane.ExecuteScriptAsync(
+                    $"document.querySelector('[reruntype=xledgeworkbookrerun]').setAttribute('runIds', '{runId}');");
+                await taskPane.ExecuteScriptAsync(
+                    "document.querySelector('[reruntype=xledgeworkbookrerun]').click();");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(RefreshBookParametersAsync));
+            }
+        }
+
+        /// <summary>
+        /// Ported from AddinModule.vb's RibEdgeParamRefresh_OnClick. Validates the active sheet's report
+        /// table belongs to the current instance and isn't a child (drilldown) report, then asks the
+        /// hosted web app to re-run it with its current parameters.
+        /// </summary>
+        private void RibEdgeParamRefresh_OnClick(object sender, object control, bool pressed)
+        {
+            const string MethodName = "RibEdgeParamRefresh_OnClick";
+            try
+            {
+                if (!ExcelApplicationHelper.TryGetActiveExcelApplication(out Excel.Application excelApp))
+                {
+                    return;
+                }
+
+                Excel.Worksheet sht = excelApp.ActiveSheet as Excel.Worksheet;
+                ADXExcelTaskPane1 paneInst = GetPaneInstance();
+
+                if (sht == null || sht.ListObjects.Count == 0)
+                {
+                    if (RibEdgeLogout.Visible && paneInst != null)
+                    {
+                        XLEdgeAppState.Instance.EdgePaneShown = true;
+                        LaunchExcelPane();
+                    }
+                    return;
+                }
+
+                Excel.ListObject tableObj = sht.ListObjects[1];
+                string tableName = tableObj.Name ?? string.Empty;
+
+                if (!tableName.EndsWith("_E", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                if (!TryResolveInstanceAndChildFlag(sht, tableObj, tableName, out bool isChild, showMismatchMessage: true))
+                {
+                    return; // Instance mismatch - message already shown.
+                }
+
+                if (isChild)
+                {
+                    MessageFunctions.XLEdgeMessage("Re-Run wont work for the child reports.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                    return;
+                }
+
+                string[] parts = tableName.Split('_');
+                if (parts.Length <= 2)
+                {
+                    return;
+                }
+
+                string refreshRunId = parts[2];
+
+                if (paneInst == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (!paneInst.Visible)
+                    {
+                        XLEdgeAppState.Instance.EdgePaneShown = true;
+                        LaunchExcelPane();
+                    }
+
+                    _ = RefreshParametersAsync(refreshRunId, paneInst);
+                }
+                finally
+                {
+                    XLEdgeAppState.Instance.EdgePaneShown = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, MethodName);
+            }
+        }
+
+        private static async Task RefreshParametersAsync(string runId, ADXExcelTaskPane1 taskPane)
+        {
+            try
+            {
+                if (taskPane == null)
+                {
+                    return;
+                }
+
+                await taskPane.ExecuteScriptAsync(
+                    $"document.getElementById('XLEdgeParamRefresh').setAttribute('runId', '{runId}');");
+                await taskPane.ExecuteScriptAsync(
+                    "document.getElementById('XLEdgeParamRefresh').click();");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(RefreshParametersAsync));
+            }
+        }
+
+        private void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj)
+        {
+            // Ported from VB.NET's AdxExcelAppEvents1_WorkbookActivate (AddinModule.vb:2423-2438) -
+            // this block was missing from the C# port entirely. With multiple workbooks open, each
+            // gets its own task pane instance; if the user logs in via one workbook's pane, a
+            // DIFFERENT already-open workbook's own pane can still be sitting on the login form
+            // (created/last touched before the shared login token existed). VB re-navigates that
+            // pane straight to Home via the token-based redirect on every workbook activation, so
+            // switching to that window fixes it automatically instead of requiring the user to log
+            // in again there. Runs unconditionally, in its own try/catch exactly like VB's - not
+            // gated on IsLoginCompleted below, since a valid LoginToken can exist independently of
+            // that flag's timing.
+            try
+            {
+                ADXExcelTaskPane1 edgeExcelPane = GetPaneInstance();
+                string loginUrl = XLEdgeAppState.Instance.LoginUrl;
+
+                if (edgeExcelPane != null && edgeExcelPane.Visible && edgeExcelPane.WebCtrl != null &&
+                    !(edgeExcelPane.WebCtrl.Source?.ToString().Contains("excel=Y#Home") ?? false) &&
+                    !string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.LoginToken))
+                {
+                    edgeExcelPane.Activate();
+                    edgeExcelPane.Text = loginUrl;
+                    edgeExcelPane.WebCtrl.Source = new Uri(loginUrl + "/web/public/excel-auth-redirect");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(adxExcelAppEvents1_WorkbookActivate));
+            }
+
+            // Wrapped in try/catch for the same reason as adxExcelAppEvents1_SheetActivate above.
+            try
+            {
+                if (!XLEdgeAppState.Instance.IsLoginCompleted)
+                {
+                    return;
+                }
+
+                if (hostObj is Excel.Workbook workbook)
+                {
+                    ApplyRibbonState(workbook);
+                    return;
+                }
+
+                ApplyRibbonState("ApplySheetActiveState");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(adxExcelAppEvents1_WorkbookActivate));
             }
         }
     }

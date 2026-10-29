@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -394,7 +394,10 @@ namespace XLEdge.Tests
         private readonly System.Collections.Generic.List<string> _messages = new System.Collections.Generic.List<string>();
         private System.Windows.Threading.DispatcherTimer _answering;
 
-        /// <summary>From now on every XLEdge message box the core shows is recorded and answered (Yes/OK) - they are modal.</summary>
+        /// <summary>
+        /// From now on every XLEdge message box the core shows is recorded and answered (Yes/OK) - they are modal - and the login
+        /// windows (Server Configuration, About) are recorded as "window:name" and closed.
+        /// </summary>
         public void AnswerMessages()
         {
             Type messageWindow = CoreType("XLEdge.Views.XLEdgeMessageWindow");
@@ -404,7 +407,15 @@ namespace XLEdge.Tests
                 if (System.Windows.Application.Current == null) return;
                 foreach (System.Windows.Window window in System.Windows.Application.Current.Windows.Cast<System.Windows.Window>().ToList())
                 {
-                    if (!messageWindow.IsInstanceOfType(window) || !window.IsVisible) continue;
+                    if (!window.IsVisible) continue;
+                    // The login windows (Server Configuration, About): recorded by name and closed.
+                    if (window.GetType().Name == "XLEdgeServerConfiguration" || window.GetType().Name == "XLEdgeAbout")
+                    {
+                        _messages.Add("window:" + window.GetType().Name);
+                        window.Close();
+                        continue;
+                    }
+                    if (!messageWindow.IsInstanceOfType(window)) continue;
                     _messages.Add(((System.Windows.Controls.TextBlock)window.FindName("MsgText"))?.Text);
                     messageWindow.GetProperty("Result").SetValue(window, System.Windows.MessageBoxResult.Yes);
                     window.Close();

@@ -1,90 +1,81 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Web.WebView2.Core;
 using XLEdge.Contracts;
 
 namespace XLEdge.Addin.Core.Pane
 {
     /// <summary>
-    /// One <see cref="PaneContentWindow"/> per Excel window, created on the calling thread (Excel's main thread: a call from the
-    /// shell runs on the shell's thread). All of them share one WebView2 environment per core AppDomain, with today's XLEdge
-    /// options and user data folder.
+    /// One <see cref="ADXExcelTaskPane1"/> (11.1.2's pane, as the content of the shell's pane) per Excel window, created on the
+    /// calling thread (Excel's main thread: a call from the shell runs on the shell's thread). Their WebView2s share one
+    /// environment per core AppDomain (11.1.2's, with today's options and user data folder).
     /// </summary>
     internal sealed class TaskPaneContentHost
     {
         private readonly IXLEdgeContext _context;
-        private readonly Dictionary<IntPtr, PaneContentWindow> _windows = new Dictionary<IntPtr, PaneContentWindow>();
-        private Task<CoreWebView2Environment> _environment;
+        private readonly Dictionary<IntPtr, ADXExcelTaskPane1> _panes = new Dictionary<IntPtr, ADXExcelTaskPane1>();
 
         public TaskPaneContentHost(IXLEdgeContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
         }
 
-        public int Count => _windows.Count;
+        public int Count => _panes.Count;
+
+        /// <summary>The pane of an Excel window, or null.</summary>
+        public ADXExcelTaskPane1 Pane(IntPtr excelWindow) =>
+            excelWindow != IntPtr.Zero && _panes.TryGetValue(excelWindow, out ADXExcelTaskPane1 pane) && !pane.IsDisposed ? pane : null;
+
+        /// <summary>Every pane, in creation order (11.1.2's TaskPaneInstances).</summary>
+        public IList<ADXExcelTaskPane1> Panes => _panes.Values.Where(p => !p.IsDisposed).ToList();
 
         /// <summary>
-        /// The content window for <paramref name="excelWindow"/> (created and started on first use). Zero (the shell could not
-        /// read the Excel window) gets nothing: a shared Zero key would hand one pane's content to another.
+        /// The content window for <paramref name="excelWindow"/> (created on first use; creating its handle starts the WebView2 and
+        /// the login navigation, as 11.1.2's pane did). Zero (the shell could not read the Excel window) gets nothing: a shared
+        /// Zero key would hand one pane's content to another.
         /// </summary>
         public IntPtr Create(IntPtr excelWindow)
         {
             if (excelWindow == IntPtr.Zero) return IntPtr.Zero;
-            if (_windows.TryGetValue(excelWindow, out PaneContentWindow existing))
+            if (_panes.TryGetValue(excelWindow, out ADXExcelTaskPane1 existing))
             {
                 if (!existing.IsDisposed && existing.IsHandleCreated) return existing.Handle;
                 // Its pane was destroyed (Excel window closed) and took the child window with it: the form and its WebView2
                 // are still alive here, so dispose them before replacing them.
-                _windows.Remove(excelWindow);
+                _panes.Remove(excelWindow);
                 existing.Dispose();
                 Log(l => l.LogDebug("PaneContent: discarded content whose window was destroyed."));
             }
-
-            var window = new PaneContentWindow(_context, Environment);
-            try { window.Show(); }
+            var pane = new ADXExcelTaskPane1(excelWindow);
+            // Registered first: creating the handle runs 11.1.2's HandleCreated, which may already ask for this pane.
+            _panes[excelWindow] = pane;
+            try
+            {
+                // The form's own Show (ADXExcelTaskPane1.Show is the ADX pane's): creates the handle, off-screen, not activated.
+                ((System.Windows.Forms.Form)pane).Show();
+            }
             catch
             {
-                window.Dispose();
+                _panes.Remove(excelWindow);
+                pane.Dispose();
                 throw;
             }
-            _windows[excelWindow] = window;
-            window.Start();
-            return window.Handle;
+            return pane.Handle;
         }
 
-        public void Shown(IntPtr excelWindow)
-        {
-            if (_windows.TryGetValue(excelWindow, out PaneContentWindow window) && !window.IsDisposed) window.OnShown();
-        }
+        public void Shown(IntPtr excelWindow) => Pane(excelWindow)?.OnShownByShell();
 
         public void Close(IntPtr excelWindow)
         {
-            if (!_windows.TryGetValue(excelWindow, out PaneContentWindow window)) return;
-            _windows.Remove(excelWindow);
-            window.Dispose();
+            if (!_panes.TryGetValue(excelWindow, out ADXExcelTaskPane1 pane)) return;
+            _panes.Remove(excelWindow);
+            pane.Dispose();
         }
 
         public void CloseAll()
         {
-            foreach (IntPtr excelWindow in _windows.Keys.ToList()) Close(excelWindow);
+            foreach (IntPtr excelWindow in _panes.Keys.ToList()) Close(excelWindow);
         }
-
-        private Task<CoreWebView2Environment> Environment()
-        {
-            if (_environment == null || _environment.IsFaulted || _environment.IsCanceled)
-                _environment = CoreWebView2Environment.CreateAsync(null, _context.Paths.BrowserDataPath, EnvironmentOptions());
-            return _environment;
-        }
-
-        /// <summary>
-        /// Today's XLEdge options, and they must stay exactly these in every core version: a reloaded or rolled-back core, or a
-        /// second Excel running another core, shares the user data folder and its browser process, and a different set of
-        /// options fails with 0x8007139F.
-        /// </summary>
-        internal static CoreWebView2EnvironmentOptions EnvironmentOptions() =>
-            new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
 
         private void Log(Action<ILogger> write)
         {

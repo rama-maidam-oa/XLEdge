@@ -117,6 +117,7 @@
     <Compile Include="AddinModule.cs" />
     <Compile Include="AddinModule.Dispatch.cs" />
     <Compile Include="Infrastructure\ExcelThreadContext.cs" />
+    <Compile Include="Infrastructure\SessionLogin.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />
     <Compile Include="Helpers\ReportGenerator.cs" />
     <Compile Include="Helpers\ParamsControlSheetBuilder.cs" />
@@ -124,7 +125,6 @@
     <Compile Include="Helpers\DrilldownRequestBuilder.cs" />
     <Compile Include="Helpers\ReportParameterRequestSerializer.cs" />
     <Compile Include="Helpers\ProgressCoordinator.cs" />
-    <Compile Include="Pane\ICorePane.cs" />
     <Compile Include="Helpers\APIHelper.cs" />
     <Compile Include="Helpers\ExcelWindowHelper.cs" />
     <Compile Include="Helpers\EnhancedDragDropHelper.cs" />
@@ -149,6 +149,12 @@
     </Compile>
     <Compile Include="Views\XLEdgeMessageWindow.xaml.cs">
       <DependentUpon>XLEdgeMessageWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeAbout.xaml.cs">
+      <DependentUpon>XLEdgeAbout.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeServerConfiguration.xaml.cs">
+      <DependentUpon>XLEdgeServerConfiguration.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\XLEdgeOptions.xaml.cs">
       <DependentUpon>XLEdgeOptions.xaml</DependentUpon>
@@ -189,12 +195,11 @@
     <Compile Include="XLApp.cs" />
     <Compile Include="XLEdgeAppPaths.cs" />
     <Compile Include="XLEdgeAppState.cs" />
-    <Compile Include="Pane\PaneContentWindow.cs">
+    <Compile Include="ADXExcelTaskPane1.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Pane\TaskPaneContentHost.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <EmbeddedResource Include="Pane\SpikePage.html" />
     <Compile Include="..\XLEdgeSharedVersion.cs">
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>
@@ -237,6 +242,14 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\XLEdgeMessageWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeAbout.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeServerConfiguration.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

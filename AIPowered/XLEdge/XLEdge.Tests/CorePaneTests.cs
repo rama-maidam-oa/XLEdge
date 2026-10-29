@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
@@ -11,13 +11,17 @@ using XLEdge.Shared;
 namespace XLEdge.Tests
 {
     /// <summary>
-    /// The Stage 1 spike, automated: the built core, in its own AppDomain, hosts a WebView2 per Excel window in a window the
-    /// shell re-parents into its pane (a WinForms form stands in for the ADX pane). Needs the WebView2 Runtime (Edge).
+    /// The task pane, automated: the built core, in its own AppDomain, hosts XLEdge 11.1.2's pane (ADXExcelTaskPane1, a WebView2)
+    /// per Excel window in a window the shell re-parents into its pane (a WinForms form stands in for the ADX pane, a FakeRibbon
+    /// for the shell's panes, <see cref="InstanceServer"/> for the XLEdge instance). Needs the WebView2 Runtime (Edge).
     /// </summary>
     [TestClass]
     public class CorePaneTests
     {
         private static readonly TimeSpan PageTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>11.1.2 logs every title change (debug): the instance page's "ready" means the pane navigated and loaded it.</summary>
+        private const string Ready = "Document title changed: ready";
 
         /// <summary>The built package, installed into a temp profile and loaded; disposed = core shut down and unloaded.</summary>
         internal sealed class LoadedCore : IDisposable
@@ -25,12 +29,18 @@ namespace XLEdge.Tests
             private readonly AddinDomainLoader _loader = new AddinDomainLoader();
             private bool _unloaded;
 
-            public LoadedCore(TempFolder temp, string profile = "data")
+            /// <param name="instance">The instance the previous core of this session was logged in to (its pane navigates there).</param>
+            /// <param name="session">The session values a previous core left (a reload), instead of <paramref name="instance"/>.</param>
+            public LoadedCore(TempFolder temp, string profile = "data", InstanceServer instance = null, string session = null)
             {
                 var paths = new PathProvider(temp.Combine("inst"), temp.Combine(profile));
                 paths.Ensure();
                 Log = new RecordingLogger();
-                Context = new FakeContext(paths) { Logger = Log };
+                Context = new FakeContext(paths) { Logger = Log, DebugMode = true };
+                Ribbon = new CoreRibbonFacadeTests.FakeRibbon();
+                Context.SetRibbonController(Ribbon);
+                if (session != null) Context.SetSessionValue("XLEdge.Login", session);
+                else if (instance != null) Context.SetSessionValue("XLEdge.Login", "{\"LoginUrl\":\"" + instance.Url + "\",\"LoginUrlName\":\"Test\"}");
                 string folder = CorePackageTests.PackageFolder;
                 Release = new UpdateBootstrapper().ExtractAndCatalog(Context,
                     File.ReadAllText(Path.Combine(folder, "manifest.json")), File.ReadAllBytes(Directory.GetFiles(folder, "*.zip").Single()), "Install");
@@ -41,6 +51,7 @@ namespace XLEdge.Tests
 
             public RecordingLogger Log { get; }
             public FakeContext Context { get; }
+            public CoreRibbonFacadeTests.FakeRibbon Ribbon { get; }
             public ResolvedRelease Release { get; }
             public IXLEdgeAddin Addin { get; }
 
@@ -108,21 +119,115 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void EmbeddedContent_LoadsTheSpikePage_AndTheTitleBusWorks()
+        public void EmbeddedContent_OpensTheInstance_AndItsTitleCommandsReachThePane()
         {
             Win32Test.OnSta(() =>
             {
                 using (var t = new TempFolder())
-                using (var core = new LoadedCore(t))
+                using (var instance = new InstanceServer { AfterReady = "document.title='Probe|x';" })
+                using (var core = new LoadedCore(t, instance: instance))
                 using (var pane = NewPane())
                 {
                     IntPtr content = core.Addin.CreateTaskPaneContent(pane.Handle);
                     Assert.IsTrue(PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height));
                     core.Addin.OnTaskPaneShown(pane.Handle);
-                    // The page sends "ready" while it loads, so the command can arrive before NavigationCompleted: wait for both.
-                    Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), core.Log.Dump());
-                    Assert.IsTrue(core.WaitForLog("PaneContent: navigation completed (success=True", PageTimeout), core.Log.Dump());
+                    Assert.IsTrue(core.WaitForLog(Ready, PageTimeout), core.Log.Dump());
+                    // 11.1.2's command switch, reached: an unknown command is logged and ignored.
+                    Assert.IsTrue(core.WaitForLog("unrecognized command 'Probe' - ignored", PageTimeout), core.Log.Dump());
+                    Assert.IsTrue(instance.Requests.Any(r => r.StartsWith("GET /?excel=Y ", StringComparison.Ordinal)), "11.1.2's login URL: " + string.Join(" | ", instance.Requests));
+                    // 11.1.2's AfterTaskPaneShow: the pane at least 530 wide; its caption is the instance.
+                    Assert.AreEqual(530, core.Ribbon.GetTaskPaneWidth(pane.Handle));
+                    Assert.AreEqual(instance.Url, core.Ribbon.PaneCaption[pane.Handle]);
                     Assert.IsFalse(core.Log.Lines.Any(l => l.StartsWith("ERROR") || l.StartsWith("EXCEPTION")), core.Log.Dump());
+                }
+            });
+        }
+
+        [TestMethod]
+        public void TitleCommands_FromAPageOfAnotherOrigin_AreIgnored()
+        {
+            // Any page can set document.title, and the pane can be sent anywhere: commands count only from the instance (spec §6).
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var elsewhere = new InstanceServer { AfterReady = "document.title='Probe|elsewhere';" })
+                using (var instance = new InstanceServer())
+                using (var core = new LoadedCore(t, instance: instance))
+                using (var pane = NewPane())
+                {
+                    instance.AfterReady = "location.href='" + elsewhere.Url + "/page';";
+                    core.Addin.CreateTaskPaneContent(pane.Handle);
+                    Assert.IsTrue(core.WaitForLog("ADXExcelTaskPane1: title of a page outside the instance ignored (" + elsewhere.Url + "/page)", PageTimeout), core.Log.Dump());
+                    Win32Test.Pump(TimeSpan.FromSeconds(1));
+                    Assert.IsFalse(core.Log.Contains("unrecognized command 'Probe'"), core.Log.Dump());
+                }
+            });
+        }
+
+        [TestMethod]
+        public void TheHomePage_CompletesTheLogin_AndTheNextCoreIsStillLoggedIn()
+        {
+            // 11.1.2: "excel=Y#Home" completes the login, the cookie gives the token, the token goes with every API call. A reload
+            // (a new core) keeps all of it, from the shell's session values.
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var instance = new InstanceServer { Cookie = "XL-AUTH-TOKEN=tok123; Path=/", AfterReady = "if (location.hash != '#Home') location.hash = 'Home';" })
+                using (var pane = NewPane())
+                {
+                    string session;
+                    using (var core = new LoadedCore(t, instance: instance))
+                    {
+                        core.Addin.CreateTaskPaneContent(pane.Handle);
+                        Assert.IsTrue(Win32Test.PumpUntil(() => instance.Requests.Any(r => r.StartsWith("POST /web/secure/get-broadcast-msg", StringComparison.Ordinal)), PageTimeout),
+                            "the broadcast messages are asked for after the login: " + string.Join(" | ", instance.Requests) + core.Log.Dump());
+                        string broadcast = instance.Requests.First(r => r.StartsWith("POST /web/secure/get-broadcast-msg", StringComparison.Ordinal));
+                        StringAssert.Contains(broadcast, "Authorization: Bearer tok123");
+                        CollectionAssert.Contains(core.Ribbon.Calls, "Visible:RibEdgeLogout=True", "11.1.2's LoggedIn ribbon");
+                        core.Addin.CloseTaskPaneContent(pane.Handle);
+                        core.Unload();
+                        session = core.Context.GetSessionValue("XLEdge.Login");
+                    }
+                    StringAssert.Contains(session, "\"LoginToken\":\"tok123\"");
+                    StringAssert.Contains(session, "\"IsLoginCompleted\":true");
+
+                    using (var next = new LoadedCore(t, session: session))
+                    {
+                        Assert.IsTrue(next.Log.Contains("AddinEntry.Initialize: the login of the previous core is back."), next.Log.Dump());
+                        CollectionAssert.Contains(next.Ribbon.Calls, "Visible:RibEdgeLogout=True", "the next core starts LoggedIn");
+                    }
+                }
+            });
+        }
+
+        [TestMethod]
+        public void Logout_LogsEveryPaneOut_HidesThem_AndTheNextCoreIsLoggedOut()
+        {
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var instance = new InstanceServer())
+                using (var excel1 = NewPane())
+                using (var excel2 = NewPane())
+                {
+                    string session;
+                    using (var core = new LoadedCore(t, instance: instance))
+                    {
+                        core.Addin.CreateTaskPaneContent(excel1.Handle);
+                        core.Addin.CreateTaskPaneContent(excel2.Handle);
+                        Assert.IsTrue(Win32Test.PumpUntil(() => core.Log.Lines.Count(l => l.Contains(Ready)) == 2, PageTimeout), core.Log.Dump());
+                        core.Addin.OnRibbonAction("RibEdgeLogout", null);
+                        Assert.IsTrue(Win32Test.PumpUntil(() => core.Ribbon.Calls.Contains($"PaneVisible:{excel2.Handle}=False"), PageTimeout),
+                            "every pane is hidden: " + string.Join(" | ", core.Ribbon.Calls) + core.Log.Dump());
+                        CollectionAssert.Contains(core.Ribbon.Calls, $"PaneVisible:{excel1.Handle}=False");
+                        Assert.AreEqual(2, instance.Requests.Count(r => r.StartsWith("GET /web/secure/applogout ", StringComparison.Ordinal)), string.Join(" | ", instance.Requests));
+                        Win32Test.PumpUntil(() => !core.Addin.IsBusy(), PageTimeout);
+                        core.Addin.CloseTaskPaneContent(excel1.Handle);
+                        core.Addin.CloseTaskPaneContent(excel2.Handle);
+                        core.Unload();
+                        session = core.Context.GetSessionValue("XLEdge.Login");
+                    }
+                    Assert.IsNull(session, "a logout leaves no login for the next core");
                 }
             });
         }
@@ -143,13 +248,14 @@ namespace XLEdge.Tests
             Win32Test.OnSta(() =>
             {
                 using (var t = new TempFolder())
+                using (var instance = new InstanceServer())
                 using (var pane = NewPane())
                 {
                     var before = Win32Test.ProcessWindows();
-                    var core = new LoadedCore(t);
+                    var core = new LoadedCore(t, instance: instance);
                     IntPtr content = core.Addin.CreateTaskPaneContent(pane.Handle);
                     PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height);
-                    Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), core.Log.Dump());
+                    Assert.IsTrue(core.WaitForLog(Ready, PageTimeout), core.Log.Dump());
                     DetachAndUnload(core, pane, content);
                     AssertNothingOfTheCoreLeft(before, core);
                 }
@@ -172,7 +278,7 @@ namespace XLEdge.Tests
                     PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height);
                     DetachAndUnload(core, pane, content);
                     AssertNothingOfTheCoreLeft(before, core);
-                    Assert.IsFalse(core.Log.Contains("the WebView2 could not be started"), "closing during start-up is not a failure: " + core.Log.Dump());
+                    Assert.IsFalse(core.Log.Lines.Any(l => l.StartsWith("EXCEPTION") && l.Contains("Failed to initialize WebView2")), "closing during start-up is not a failure: " + core.Log.Dump());
                 }
             });
         }
@@ -229,17 +335,18 @@ namespace XLEdge.Tests
             Win32Test.OnSta(() =>
             {
                 using (var t = new TempFolder())
-                using (var core = new LoadedCore(t))
+                using (var instance = new InstanceServer())
+                using (var core = new LoadedCore(t, instance: instance))
                 using (var pane = NewPane())
                 {
                     IntPtr content = core.Addin.CreateTaskPaneContent(pane.Handle);
                     PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height);
-                    Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), core.Log.Dump());
+                    Assert.IsTrue(core.WaitForLog(Ready, PageTimeout), core.Log.Dump());
                     foreach (var process in BrowserProcessList(core.Context.Paths.BrowserDataPath))
                     {
                         try { process.Kill(); } catch (Exception) { /* exited meanwhile */ }
                     }
-                    Assert.IsTrue(core.WaitForLog("PaneContent: WebView2 process failed", PageTimeout), core.Log.Dump());
+                    Assert.IsTrue(core.WaitForLog("WebView2 process failed. Kind=", PageTimeout), core.Log.Dump());
                     core.Addin.OnTaskPaneShown(pane.Handle);
                     Assert.AreEqual(content, core.Addin.CreateTaskPaneContent(pane.Handle), "the pane keeps its (empty) content; Excel is unaffected");
                 }
@@ -254,7 +361,8 @@ namespace XLEdge.Tests
             Win32Test.OnSta(() =>
             {
                 using (var t = new TempFolder())
-                using (var core = new LoadedCore(t))
+                using (var instance = new InstanceServer())
+                using (var core = new LoadedCore(t, instance: instance))
                 {
                     IntPtr key, stale;
                     string udf = core.Context.Paths.BrowserDataPath;
@@ -263,7 +371,7 @@ namespace XLEdge.Tests
                         key = pane.Handle;
                         stale = core.Addin.CreateTaskPaneContent(key);
                         PaneEmbedding.Embed(stale, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height);
-                        Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), core.Log.Dump());
+                        Assert.IsTrue(core.WaitForLog(Ready, PageTimeout), core.Log.Dump());
                     }
                     Assert.IsFalse(Win32Test.IsWindow(stale), "destroying the pane destroys its child content");
                     int renderersBefore = Renderers(udf);
@@ -274,7 +382,7 @@ namespace XLEdge.Tests
                         IntPtr fresh = core.Addin.CreateTaskPaneContent(key);
                         Assert.AreNotEqual(stale, fresh);
                         PaneEmbedding.Embed(fresh, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height);
-                        Assert.IsTrue(Win32Test.PumpUntil(() => core.Log.Lines.Count(l => l.Contains("PaneContent: command 'ready'")) == 2, PageTimeout), core.Log.Dump());
+                        Assert.IsTrue(Win32Test.PumpUntil(() => core.Log.Lines.Count(l => l.Contains(Ready)) == 2, PageTimeout), core.Log.Dump());
                         // The stale form was disposed with its WebView2, so only the fresh page's renderer is left.
                         Assert.IsTrue(Win32Test.PumpUntil(() => Renderers(udf) == 1, TimeSpan.FromSeconds(15)), $"renderers: {Renderers(udf)}");
                     }
@@ -337,14 +445,15 @@ namespace XLEdge.Tests
             Win32Test.OnSta(() =>
             {
                 using (var t = new TempFolder())
+                using (var instance = new InstanceServer())
                 using (var pane = NewPane())
                 {
                     foreach (string round in new[] { "first", "second" })
                     {
-                        var core = new LoadedCore(t);
+                        var core = new LoadedCore(t, instance: instance);
                         IntPtr content = core.Addin.CreateTaskPaneContent(pane.Handle);
                         Assert.IsTrue(PaneEmbedding.Embed(content, pane.Handle, pane.ClientSize.Width, pane.ClientSize.Height), round);
-                        Assert.IsTrue(core.WaitForLog("PaneContent: command 'ready'", PageTimeout), round + ": " + core.Log.Dump());
+                        Assert.IsTrue(core.WaitForLog(Ready, PageTimeout), round + ": " + core.Log.Dump());
                         Assert.IsFalse(core.Log.Lines.Any(l => l.StartsWith("ERROR") || l.StartsWith("EXCEPTION")), round + ": " + core.Log.Dump());
                         DetachAndUnload(core, pane, content);
                     }

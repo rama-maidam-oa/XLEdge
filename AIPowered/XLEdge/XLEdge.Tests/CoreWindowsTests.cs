@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -137,6 +137,9 @@ namespace XLEdge.Tests
                             ["XLEdge.Views.XLEdgeOptions"] = probe.OpenWindow("XLEdge.Views.XLEdgeOptions"),
                             ["XLEdge.Views.XLEdgeWaitWindow"] = probe.OpenWindow("XLEdge.Views.XLEdgeWaitWindow", new object[] { null }),
                             ["XLEdge.Views.AppOverlay"] = probe.OpenWindow("XLEdge.Views.AppOverlay"),
+                            // Stage 2e
+                            ["XLEdge.Views.XLEdgeServerConfiguration"] = probe.OpenWindow("XLEdge.Views.XLEdgeServerConfiguration"),
+                            ["XLEdge.Views.XLEdgeAbout"] = probe.OpenWindow("XLEdge.Views.XLEdgeAbout"),
                         };
                         foreach (var kv in opened)
                             StringAssert.StartsWith(kv.Value, "loaded=True", kv.Key + ": " + kv.Value);

@@ -73,6 +73,7 @@
     <Compile Include="CoreHelperGoldenTests.cs" />
     <Compile Include="CorePackageTests.cs" />
     <Compile Include="CorePaneTests.cs" />
+    <Compile Include="InstanceServer.cs" />
     <Compile Include="CorePortParityTests.cs" />
     <Compile Include="CorePreferencesTests.cs" />
     <Compile Include="CoreProbe.cs" />

@@ -10,8 +10,8 @@ namespace XLEdge
     /// <summary>
     /// Today's XLEdge session state (same members), for code ported into the core. Differences forced by the AppDomain
     /// boundary: Excel is the core's own RCW (CoreServices; a stale one is dropped and re-requested from the shell instead
-    /// of searched for in the running-object table), DebugLogs is the shell's Debug toggle, and the task pane is not held
-    /// here (it lives in the shell; Stage 2e). State lives in the core's AppDomain, so a reload starts from defaults.
+    /// of searched for in the running-object table), DebugLogs is the shell's Debug toggle, and XLEdgePane is the core's
+    /// content of the shell's pane (Stage 2e). State lives in the core's AppDomain, so a reload starts from defaults.
     /// </summary>
     public sealed class XLEdgeAppState
     {
@@ -213,6 +213,9 @@ namespace XLEdge
         /// navigation back to the "excel=Y#Home" landing page within the same session. See
         /// AddinModule.NotifyGLSenseOfLogin.</summary>
         public bool LoginSentToGLSense { get; set; } = false;
+
+        /// <summary>The active Excel window's pane as XLEdgeLogin last found it (11.1.2's member).</summary>
+        public ADXExcelTaskPane1 XLEdgePane { get; set; }
         /// <summary>
         /// The shell's Debug toggle (IXLEdgeContext.DebugMode), so the ribbon button, the shell's logger and ported code
         /// always agree. False when the core is not attached.

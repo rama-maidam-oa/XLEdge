@@ -41,6 +41,8 @@ namespace XLEdge.Tests
             // Stage 2d
             @"Helpers\ReportGenerator.cs", @"Helpers\ParamsControlSheetBuilder.cs", @"Helpers\XLEdgeParamsBuilder.cs", @"Helpers\DrilldownRequestBuilder.cs",
             @"Helpers\ReportParameterRequestSerializer.cs", @"Helpers\ProgressCoordinator.cs",
+            // Stage 2e
+            @"Views\XLEdgeServerConfiguration.xaml", @"Views\XLEdgeServerConfiguration.xaml.cs", @"Views\XLEdgeAbout.xaml", @"Views\XLEdgeAbout.xaml.cs",
         };
 
         /// <summary>Images, compared byte for byte (WPF resources).</summary>
@@ -59,7 +61,7 @@ namespace XLEdge.Tests
         internal static readonly string[] Adapted =
         {
             @"Utilities\LogUtility.cs", "XLEdgeAppPaths.cs", "XLEdgeAppState.cs", @"Helpers\XLEdgeRibbonHelper.cs", @"Helpers\ExcelApplicationHelper.cs",
-            "AddinModule.cs",
+            "AddinModule.cs", "ADXExcelTaskPane1.cs",
         };
 
         /// <summary>
@@ -84,7 +86,44 @@ namespace XLEdge.Tests
             "string BuildRefreshParamsPayload(Excel.Workbook workbook, Excel.Worksheet sheet, Excel.ListObject tableObj)",
             "void RibControlSheet_OnClick(", "void adxExcelAppEvents1_SheetFollowHyperlink(object sender, object sheet, object hyperlink)",
             "Task HandleAttachmentDownloadAsync(string screenTip)", "void NavigateToReportDataSheet(Excel.Worksheet dataSheet)",
+            // Stage 2e: login and the task pane
+            "ADXExcelTaskPane1 GetPaneInstance()", "void LaunchExcelPane()", "void XLEdgeLogin(bool togglePane)",
+            "bool NavigateReportsToAddress(string name, string address)", "string NormalizeAddress(string address)",
+            "void RibbonInitialize()", "bool loginButtonVisibility()", "void RibLogin_OnClick(", "void RibEdgeAbout_OnClick(",
+            "Task LogOffAllTaskPanesAsync(CancellationToken token)", "Task LogoffFromXLEdgeAddin()", "void LogoffFromAddin()",
+            "Task LogoffFromAddinAsync()", "void RibEdgeLogout_OnClick(", "void RibEdgeShowHide_OnClick(",
+            "void RibEdgeParamRefreshBook_OnClick(", "Task RefreshBookParametersAsync(string runId, ADXExcelTaskPane1 taskPane)",
+            "void RibEdgeParamRefresh_OnClick(", "Task RefreshParametersAsync(string runId, ADXExcelTaskPane1 taskPane)",
+            "void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj)",
         };
+
+        /// <summary>
+        /// Stage 2e: 11.1.2's task pane (ADXExcelTaskPane1) is the core's pane content; these of its methods keep 11.1.2's text
+        /// (its header replaces the ADX pane members; HookWebViewEvents adds the instance-origin check and is not listed).
+        /// </summary>
+        internal static readonly string[] PaneMethods =
+        {
+            "void ADXExcelTaskPane1_HandleCreated(object sender, EventArgs e)", "void ADXExcelTaskPane1_ADXAfterTaskPaneShow(",
+            "void HidePaneSafe()", "void RefreshWebViewHeight()", "Task RunOnUIAsync(Action action)", "Task RunOnUIAsync(Func<Task> func)",
+            "Task<T> RunOnUIAsync<T>(Func<T> func)", "Task<T> RunOnUIAsync<T>(Func<Task<T>> func)",
+            "void SafeFireAndForget(Func<Task> taskFactory, string context)", "Task EnsureWebViewInitializedAsync()",
+            "Task<CoreWebView2Environment> GetOrCreateSharedEnvironmentAsync()", "Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()",
+            "Task InitializeWebViewInternalAsync()", "Task NavigateToLoginUrlAsync()", "Task<bool> LogoutAsync(string loginUrl, CancellationToken token)",
+            "Task ExecuteScriptAsync(string script)", "void CoreWebView2_PermissionRequested(", "void CoreWebView2_ProcessFailed(",
+            "void WebCtrl_SourceChanged(", "void HandleExcelHomeSource()", "Task ProcessCookiesAsync()", "void UpdateDialogLauncherState()",
+            "Task ProcessBroadcastMessagesAsync()", "Task<string> BroadcastMessageFromApi(", "Task<string> FetchApiResponseAsync(",
+            "string FormatBroadcastMessages(string rawResponse)", "string BuildMessageString(List<BroadcastMessage> messages)",
+            "void SyncLoginToGLSense()", "void UpdateExcelTabLabel()", "void WebView_CoreWebView2InitializationCompleted(",
+            "void WebView_WebResourceRequested(", "void WebView_DocumentTitleChanged(object sender, object e)", "bool IsCellInEditModeAndWarn()",
+            "Task<string?> FetchWorkbookRerunIdsAsync()", "Task NavigateToLoginUrlSafeAsync()", "Task NavigateBlankAsync()",
+            "Task RefreshLoginNavigationAsync()", "void SetPaneCaption(string caption)", "void ReleaseFocusToExcel()",
+        };
+
+        /// <summary>The ADX types a ported method may name differently in the core (it has no Add-in Express).</summary>
+        private static string WithoutAdx(string text) => text
+            .Replace("IRibbonControl control", "object control")
+            .Replace("ADXAfterTaskPaneShowEventArgs e", "EventArgs e")
+            .Replace("AddinExpress.XL.ADXExcelTaskPanePosition.Right", "TaskPanePosition.Right");
 
         /// <summary>The method's text, from its declaration line (8-space indent, an access modifier) to the brace that closes it.</summary>
         internal static string MethodText(string source, string signature)
@@ -109,20 +148,25 @@ namespace XLEdge.Tests
             return null;
         }
 
-        [TestMethod]
-        public void AddinModuleMethods_MatchXLEdge11_1_2()
+        private static void AssertMethodsMatch(string file, string[] signatures)
         {
-            string original = Normalized(Path.Combine(Today, "AddinModule.cs")), core = Normalized(Path.Combine(Core, "AddinModule.cs"));
+            string original = Normalized(Path.Combine(Today, file)), core = Normalized(Path.Combine(Core, file));
             var problems = new List<string>();
-            foreach (string signature in AddinModuleMethods)
+            foreach (string signature in signatures)
             {
-                string before = MethodText(original, signature), after = MethodText(core, signature.Replace("IRibbonControl control", "object control"));
+                string before = MethodText(original, signature), after = MethodText(core, WithoutAdx(signature));
                 if (before == null) problems.Add("not in 11.1.2: " + signature);
                 else if (after == null) problems.Add("not in the core: " + signature);
-                else if (before.Replace("IRibbonControl control", "object control") != after) problems.Add("differs from 11.1.2: " + signature);
+                else if (WithoutAdx(before) != after) problems.Add("differs from 11.1.2: " + signature);
             }
-            Assert.AreEqual(0, problems.Count, string.Join(Environment.NewLine, problems));
+            Assert.AreEqual(0, problems.Count, file + ": " + string.Join(Environment.NewLine, problems));
         }
+
+        [TestMethod]
+        public void AddinModuleMethods_MatchXLEdge11_1_2() => AssertMethodsMatch("AddinModule.cs", AddinModuleMethods);
+
+        [TestMethod]
+        public void PaneMethods_MatchXLEdge11_1_2() => AssertMethodsMatch("ADXExcelTaskPane1.cs", PaneMethods);
 
         private static string Normalized(string path) => File.ReadAllText(path).TrimStart('﻿').Replace("\r\n", "\n");
 

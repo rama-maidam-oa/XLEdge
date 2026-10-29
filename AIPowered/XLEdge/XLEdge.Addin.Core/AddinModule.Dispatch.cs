@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using XLEdge.Utilities;
@@ -24,26 +24,30 @@ namespace XLEdge
             ["RibControlSheet"] = (m, pressed) => m.RibControlSheet_OnClick(null, null, pressed),
             ["RibEdgeIncludeOutputData"] = (m, pressed) => m.RibEdgeIncludeOutputData_OnClick(null, null, pressed),
             ["RibEdgeDebug"] = (m, pressed) => m.RibEdgeDebug_OnClick(null, null, pressed),
-        };
-
-        /// <summary>Ribbon actions whose handlers need the task pane or the login (Stage 2e); the AddinEntry spike handles Login/ShowHide.</summary>
-        private static readonly HashSet<string> NotYetInTheCore = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "RibEdgeLogout", "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeAbout", "RibEdgeLogout_PropertyChanging",
+            // Stage 2e: login and the task pane.
+            ["RibEdgeLogin"] = (m, pressed) => m.RibLogin_OnClick(null, null, pressed),
+            ["RibEdgeLogout"] = (m, pressed) => m.RibEdgeLogout_OnClick(null, null, pressed),
+            ["RibEdgeShowHide"] = (m, pressed) => m.RibEdgeShowHide_OnClick(null, null, pressed),
+            ["RibEdgeParamRefresh"] = (m, pressed) => m.RibEdgeParamRefresh_OnClick(null, null, pressed),
+            ["RibEdgeParamRefreshBook"] = (m, pressed) => m.RibEdgeParamRefreshBook_OnClick(null, null, pressed),
+            ["RibEdgeAbout"] = (m, pressed) => m.RibEdgeAbout_OnClick(null, null, pressed),
         };
 
         /// <summary>A forwarded ribbon click; false when no 11.1.2 handler takes it.</summary>
         internal bool OnRibbonAction(string action, object parameter)
         {
+            // The shell forwards Logout's property changes with the property's name (ADXRibbonControlPropertyType).
+            if (action == "RibEdgeLogout_PropertyChanging")
+            {
+                RibEdgeLogout_PropertyChanging(parameter as string);
+                return true;
+            }
             if (action != null && RibbonHandlers.TryGetValue(action, out Action<AddinModule, bool> handler))
             {
                 handler(this, parameter is bool pressed && pressed);
                 return true;
             }
-            if (NotYetInTheCore.Contains(action ?? string.Empty))
-                LogUtility.LogInfo($"AddinModule: ribbon action '{action}' is not in the core yet (Stage 2e).");
-            else
-                LogUtility.LogWarn($"AddinModule: no handler for ribbon action '{action}'.");
+            LogUtility.LogWarn($"AddinModule: no handler for ribbon action '{action}'.");
             return false;
         }
 
@@ -118,37 +122,9 @@ namespace XLEdge
                 case "WorkbookActivate":
                 {
                     Excel.Workbook workbook = Workbook(target.Workbook);
-                    if (workbook != null) WorkbookActivated(workbook);
+                    if (workbook != null) adxExcelAppEvents1_WorkbookActivate(null, workbook);
                     return;
                 }
-            }
-        }
-
-        /// <summary>
-        /// 11.1.2's adxExcelAppEvents1_WorkbookActivate without its first block, which re-navigates the task pane (Stage 2e); the
-        /// ribbon-state block is 11.1.2's.
-        /// </summary>
-        private void WorkbookActivated(object hostObj)
-        {
-            // Wrapped in try/catch for the same reason as adxExcelAppEvents1_SheetActivate above.
-            try
-            {
-                if (!XLEdgeAppState.Instance.IsLoginCompleted)
-                {
-                    return;
-                }
-
-                if (hostObj is Excel.Workbook workbook)
-                {
-                    ApplyRibbonState(workbook);
-                    return;
-                }
-
-                ApplyRibbonState("ApplySheetActiveState");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "adxExcelAppEvents1_WorkbookActivate");
             }
         }
 

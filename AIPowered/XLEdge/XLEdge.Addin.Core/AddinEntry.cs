@@ -31,12 +31,13 @@ namespace XLEdge.Addin.Core
                 // XLEdge 11.1.2 code reaches the ribbon through XLEdgeRibbonHelper.Current.
                 _ = new XLEdgeRibbonHelper(context.RibbonController);
                 ExcelThreadContext.Initialize();
-                _module = new AddinModule(XLEdgeRibbonHelper.Current);
+                _panes = new TaskPaneContentHost(context);
+                _module = new AddinModule(XLEdgeRibbonHelper.Current, _panes);
+                RestoreSessionLogin();
                 _module.ApplyStartRibbonState();
                 LoadPreferences();
                 DeleteTempFiles();
                 StartWpfUi();
-                _panes = new TaskPaneContentHost(context);
                 Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
             }
             catch (Exception ex)
@@ -52,10 +53,7 @@ namespace XLEdge.Addin.Core
                 Logger?.LogDebug($"AddinEntry.OnRibbonAction: '{action}'.");
                 ExcelThreadContext.Run(() =>
                 {
-                    // Stage 1 spike wiring (Stage 2e brings today's login and pane logic): Login opens the pane, Show/Hide toggles it.
-                    if (action == "RibEdgeLogin") _context?.RibbonController?.ShowTaskPane();
-                    else if (action == "RibEdgeShowHide") _context?.RibbonController?.ToggleTaskPane();
-                    else _module?.OnRibbonAction(action, parameter);
+                    _module?.OnRibbonAction(action, parameter);
                 });
             }
             catch (Exception ex) { Log(ex, "AddinEntry.OnRibbonAction"); }
@@ -77,6 +75,7 @@ namespace XLEdge.Addin.Core
             try
             {
                 KeepSessionOptions();
+                KeepSessionLogin();
                 // No deferred sheet delete may fire into the unloaded AppDomain.
                 _module?.Shutdown();
                 _module = null;
@@ -111,6 +110,22 @@ namespace XLEdge.Addin.Core
         {
             try { XLEdgeTempFileCleaner.DeleteAllTempFiles(); }
             catch (Exception ex) { Log(ex, "AddinEntry.Initialize (temp files)"); }
+        }
+
+        private void KeepSessionLogin()
+        {
+            try { SessionLogin.Keep(_context); }
+            catch (Exception ex) { Log(ex, "AddinEntry.Shutdown (session login)"); }
+        }
+
+        /// <summary>Before the start ribbon state: a login the previous core left makes this one start LoggedIn.</summary>
+        private void RestoreSessionLogin()
+        {
+            try
+            {
+                if (SessionLogin.Restore(_context)) Logger?.LogInfo("AddinEntry.Initialize: the login of the previous core is back.");
+            }
+            catch (Exception ex) { Log(ex, "AddinEntry.Initialize (session login)"); }
         }
 
         private const string SessionOptionsKey = "XLEdge.SessionOptions";

@@ -83,12 +83,18 @@ namespace XLEdge.Tests
             {
                 p.AnswerMessages();
                 foreach (string button in new[] { "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeOptions", "RibEdgeDialogBoxLauncher", "RibEdgeHelp",
-                                                  "RibControlSheet", "RibEdgeIncludeOutputData", "RibEdgeDebug" })
+                                                  "RibControlSheet", "RibEdgeIncludeOutputData", "RibEdgeDebug",
+                                                  // Stage 2e
+                                                  "RibEdgeLogin", "RibEdgeShowHide", "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeAbout" })
                     p.EntryRibbonAction(button, true);
+                p.EntryRibbonAction("RibEdgeLogout_PropertyChanging", "Visible");
                 p.StopAnsweringMessages();
                 var log = (RecordingLogger)context.Logger;
                 Assert.IsFalse(log.Contains("no handler for ribbon action"), log.Dump());
                 Assert.IsTrue(context.DebugMode, "RibEdgeDebug: debug logging follows the button");
+                string[] shown = p.MessagesShown();
+                CollectionAssert.Contains(shown, "window:XLEdgeServerConfiguration", "Login opens 11.1.2's Server Configuration window");
+                CollectionAssert.Contains(shown, "window:XLEdgeAbout", "About opens 11.1.2's About window");
                 CollectionAssert.Contains(log.Events, "flush:Debug session ended", "RibEdgeDebug flushes the open buffers, as 11.1.2");
             });
         }
@@ -227,18 +233,14 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void UnknownAndNotYetPortedActions_AreLoggedAndIgnored()
+        public void UnknownActionsAndEvents_AreLoggedAndIgnored()
         {
             WithCore((p, context) =>
             {
                 p.EntryRibbonAction("NoSuchButton", null);
-                p.EntryRibbonAction("RibEdgeAbout", null);
-                p.EntryRibbonAction("RibEdgeLogout_PropertyChanging", "Visible");
                 Assert.IsTrue(p.EntryExcelEvent("NoSuchEvent", new object[] { "x" }));
                 var log = (RecordingLogger)context.Logger;
                 Assert.IsTrue(log.Contains("no handler for ribbon action 'NoSuchButton'"), log.Dump());
-                Assert.IsTrue(log.Contains("ribbon action 'RibEdgeAbout' is not in the core yet"), log.Dump());
-                Assert.IsTrue(log.Contains("ribbon action 'RibEdgeLogout_PropertyChanging' is not in the core yet"), log.Dump());
                 Assert.IsTrue(log.Contains("no handler for Excel event 'NoSuchEvent'"), log.Dump());
                 Assert.IsFalse(log.Lines.Any(l => l.StartsWith("EXCEPTION") || l.StartsWith("ERROR")), log.Dump());
             });
