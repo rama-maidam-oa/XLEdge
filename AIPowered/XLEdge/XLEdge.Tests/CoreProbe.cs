@@ -338,6 +338,23 @@ namespace XLEdge.Tests
 
         public void StopAnsweringMessages() => _answering?.Stop();
 
+        /// <summary>AddinModule.UpdateTabLabel on the active sheet of the core's Excel, as ProgressCoordinator calls it after a report run.</summary>
+        public void UpdateTabLabelOfTheActiveSheet()
+        {
+            dynamic excel = CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "ExcelApp");
+            object module = CallStatic("XLEdge.AddinModule", "CurrentInstance");
+            object sheet = excel.ActiveSheet;
+            Unwrap(() => module.GetType().GetMethod("UpdateTabLabel").Invoke(module, new[] { sheet }));
+        }
+
+        /// <summary>The sheet an Excel event naming (sheet, workbook) resolves to in the core: "workbook!its first table", or "null".</summary>
+        public string ResolveEventSheet(string sheetName, string workbookName)
+        {
+            object module = CallStatic("XLEdge.AddinModule", "CurrentInstance");
+            dynamic sheet = Unwrap(() => module.GetType().GetMethod("Sheet", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(module, new object[] { sheetName, workbookName }));
+            return sheet == null ? "null" : (string)sheet.Parent.Name + "!" + (string)sheet.ListObjects[1].Name;
+        }
+
         /// <summary>Lets the dispatcher of this thread (in this domain) run everything queued down to Background.</summary>
         private static void PumpWpf()
         {

@@ -369,11 +369,11 @@ namespace XLEdge
                 LogError("AddinModule: returning the keyboard focus to the worksheet failed.", ex);
             }
             var target = range as Excel.Range;
-            ForwardEvent("SheetSelectionChange", () => new object[] { SheetName(sheet), Address(target), CellCount(target) });
+            ForwardEvent("SheetSelectionChange", () => new object[] { SheetName(sheet), Address(target), CellCount(target), WorkbookName(sheet) });
         }
 
         private void adxExcelAppEvents1_SheetActivate(object sender, object hostObj) =>
-            ForwardEvent("SheetActivate", () => new object[] { SheetName(hostObj) });
+            ForwardEvent("SheetActivate", () => new object[] { SheetName(hostObj), WorkbookName(hostObj) });
 
         private void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj) =>
             ForwardEvent("WorkbookActivate", () => new object[] { (hostObj as Excel.Workbook)?.Name });
@@ -395,12 +395,12 @@ namespace XLEdge
                 {
                     if (range != null) Marshal.ReleaseComObject(range);
                 }
-                return new object[] { SheetName(sheet), cell, Safe(() => link?.ScreenTip), Safe(() => link?.SubAddress), Safe(() => link?.TextToDisplay) };
+                return new object[] { SheetName(sheet), cell, Safe(() => link?.ScreenTip), Safe(() => link?.SubAddress), Safe(() => link?.TextToDisplay), WorkbookName(sheet) };
             });
         }
 
         private void AdxExcelAppEvents1_SheetBeforeDelete(object sender, object sheet) =>
-            ForwardEvent("SheetBeforeDelete", () => new object[] { SheetName(sheet) });
+            ForwardEvent("SheetBeforeDelete", () => new object[] { SheetName(sheet), WorkbookName(sheet) });
 
         private void ForwardEvent(string eventName, Func<object[]> args)
         {
@@ -427,6 +427,25 @@ namespace XLEdge
         }
 
         private static string SheetName(object sheet) => Safe(() => (sheet as Excel.Worksheet)?.Name);
+
+        /// <summary>
+        /// The sheet's workbook, last in every sheet event's arguments (a sheet name alone is ambiguous with several workbooks open;
+        /// last, so a core that reads fewer arguments is unaffected).
+        /// </summary>
+        private static string WorkbookName(object sheet)
+        {
+            Excel.Workbook workbook = null;
+            try
+            {
+                workbook = (sheet as Excel.Worksheet)?.Parent as Excel.Workbook;
+                return workbook?.Name;
+            }
+            catch (COMException) { return null; }
+            finally
+            {
+                if (workbook != null) Marshal.ReleaseComObject(workbook);
+            }
+        }
         private static string Address(Excel.Range range) => Safe(() => range?.Address[false, false]);
         private static long CellCount(Excel.Range range) { try { return range == null ? 0 : Convert.ToInt64(range.CountLarge); } catch (COMException) { return 0; } }
 

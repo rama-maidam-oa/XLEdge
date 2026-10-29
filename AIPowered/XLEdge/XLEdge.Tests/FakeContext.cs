@@ -25,7 +25,9 @@ namespace XLEdge.Tests
         public string ShellVersion { get; set; } = "11.1.2.0";
         public void SetRibbonController(IRibbonController controller) => RibbonController = controller;
         public object GetGLSenseAddinInstance() => null;
-        public IntPtr GetExcelDispatch() => IntPtr.Zero;
+        /// <summary>As the shell hands Excel over (an AddRef'ed IDispatch) when ExcelApp is a COM object - a real Excel in the Excel tests.</summary>
+        public IntPtr GetExcelDispatch() =>
+            ExcelApp != null && System.Runtime.InteropServices.Marshal.IsComObject(ExcelApp) ? System.Runtime.InteropServices.Marshal.GetIDispatchForObject(ExcelApp) : IntPtr.Zero;
         // As the shell's XLEdgeContext: null keys are ignored, a null value removes.
         private readonly System.Collections.Generic.Dictionary<string, string> _session = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
         public string GetSessionValue(string key) { if (key == null) return null; lock (_session) return _session.TryGetValue(key, out string v) ? v : null; }
