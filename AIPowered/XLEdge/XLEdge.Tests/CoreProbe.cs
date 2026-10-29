@@ -162,6 +162,31 @@ namespace XLEdge.Tests
 
         public string[] EntryOpenWindowTitles() => _entry.GetOpenWindowTitles();
 
+        /// <summary>This domain's ServicePointManager after the core's ApiHelper type is initialised (its static constructor).</summary>
+        public string ServicePointSettingsAfterApiHelper()
+        {
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(CoreType("XLEdge.Helpers.ApiHelper").TypeHandle);
+            return $"limit={System.Net.ServicePointManager.DefaultConnectionLimit} expect100={System.Net.ServicePointManager.Expect100Continue} " +
+                   $"idle={System.Net.ServicePointManager.MaxServicePointIdleTime} protocols={System.Net.ServicePointManager.SecurityProtocol}";
+        }
+
+        /// <summary>ApiHelper.ServerAPI from this domain, with a login token set: "ok:&lt;body&gt;" or "throws &lt;type&gt;: &lt;message&gt;".</summary>
+        public string CallServerApi(string url, string postData, string token)
+        {
+            OnSingleton("XLEdge.XLEdgeAppState", "Instance", "LoginToken", token);
+            MethodInfo serverApi = CoreType("XLEdge.Helpers.ApiHelper").GetMethod("ServerAPI");
+            try
+            {
+                var task = (System.Threading.Tasks.Task<string>)serverApi.Invoke(null, new object[] { url, "application/json", postData, "POST", default(System.Threading.CancellationToken) });
+                return "ok:" + task.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Exception e = ex is TargetInvocationException tie && tie.InnerException != null ? tie.InnerException : ex;
+                return "throws " + e.GetType().FullName + ": " + e.Message;
+            }
+        }
+
         /// <summary>
         /// Opens a core window (non-modal) on this STA thread and lets WPF load and lay it out; a user control is hosted in a
         /// plain window. Returns "loaded=..., size=WxH" - a XAML or resource failure throws instead.

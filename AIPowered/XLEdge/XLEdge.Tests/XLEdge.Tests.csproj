@@ -64,6 +64,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddinDomainLoaderTests.cs" />
+    <Compile Include="CoreApiTests.cs" />
     <Compile Include="ContractSurfaceTests.cs" />
     <Compile Include="CoreHostTests.cs" />
     <Compile Include="XLEdgeContextTests.cs" />
