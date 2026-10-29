@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -38,6 +38,9 @@ namespace XLEdge.Tests
             @"Views\XLEdgeGLAccountsWindow.xaml", @"Views\XLEdgeGLAccountsWindow.xaml.cs", @"Views\XLEdgeLoginDetails.xaml", @"Views\XLEdgeLoginDetails.xaml.cs",
             @"Views\XLEdgeMessageWindow.xaml", @"Views\XLEdgeMessageWindow.xaml.cs", @"Views\XLEdgeOptions.xaml", @"Views\XLEdgeOptions.xaml.cs",
             @"Views\XLEdgeWaitWindow.xaml", @"Views\XLEdgeWaitWindow.xaml.cs",
+            // Stage 2d
+            @"Helpers\ReportGenerator.cs", @"Helpers\ParamsControlSheetBuilder.cs", @"Helpers\XLEdgeParamsBuilder.cs", @"Helpers\DrilldownRequestBuilder.cs",
+            @"Helpers\ReportParameterRequestSerializer.cs", @"Helpers\ProgressCoordinator.cs",
         };
 
         /// <summary>Images, compared byte for byte (WPF resources).</summary>
@@ -56,7 +59,70 @@ namespace XLEdge.Tests
         internal static readonly string[] Adapted =
         {
             @"Utilities\LogUtility.cs", "XLEdgeAppPaths.cs", "XLEdgeAppState.cs", @"Helpers\XLEdgeRibbonHelper.cs", @"Helpers\ExcelApplicationHelper.cs",
+            "AddinModule.cs",
         };
+
+        /// <summary>
+        /// Stage 2d: AddinModule's handlers live in the core's plain XLEdge.AddinModule class (no ADX there). Each one listed here keeps
+        /// 11.1.2's text exactly - signature line to closing brace - except the ADX ribbon-control type in handler signatures.
+        /// </summary>
+        internal static readonly string[] AddinModuleMethods =
+        {
+            "void SafeInvokeWpf(System.Action action)", "void SafeLogException(Exception ex, string context = null)",
+            "void adxExcelAppEvents1_SheetSelectionChange(object sender, object sheet, object range)",
+            "void TryShowCalendarControl(Excel.Worksheet selectedSheet, Excel.Range selectedRange)",
+            "void TryShowSegmentSelectionWindow(Excel.Worksheet selectedSheet, Excel.Range selectedRange)",
+            "void RibEdgeOptions_OnClick(", "void RibEdgeDialogBoxLauncher_OnAction(", "void RibEdgeHelp_OnClick(",
+            "void UpdateTabLabel(Excel.Worksheet workSheet)", "void RibEdgeIncludeOutputData_OnClick(", "void RibEdgeDebug_OnClick(",
+            "void AdxExcelAppEvents1_SheetBeforeDelete(object sender, object sheet)", "void DeleteTimer_Tick(object sender, EventArgs e)",
+            "Excel.Worksheet FindSheetWithTableName(Excel.Workbook workbook, string tableName)", "void DeleteHashNamedRanges()",
+            "void DeleteNamedCache()", "string SafeRefersTo(Excel.Name nm)", "bool NmSheetExists(string sheetName, Excel.Workbook workbook)",
+            "void adxExcelAppEvents1_SheetActivate(object sender, object hostObj)",
+            "void ApplyRibbonState(string stateName)", "void ApplyRibbonState(Excel.Workbook workbook)",
+            "void RibEdgeRefresh_OnClick(", "void RibEdgeRefreshAll_OnClick(",
+            "bool TryResolveInstanceAndChildFlag(Excel.Worksheet sheet, Excel.ListObject tableObj, string tableName, out bool isChild, bool showMismatchMessage = false)",
+            "string BuildRefreshParamsPayload(Excel.Workbook workbook, Excel.Worksheet sheet, Excel.ListObject tableObj)",
+            "void RibControlSheet_OnClick(", "void adxExcelAppEvents1_SheetFollowHyperlink(object sender, object sheet, object hyperlink)",
+            "Task HandleAttachmentDownloadAsync(string screenTip)", "void NavigateToReportDataSheet(Excel.Worksheet dataSheet)",
+        };
+
+        /// <summary>The method's text, from its declaration line (8-space indent, an access modifier) to the brace that closes it.</summary>
+        internal static string MethodText(string source, string signature)
+        {
+            string[] lines = source.Split('\n');
+            int start = Array.FindIndex(lines, l => l.StartsWith("        ") && !l.StartsWith("         ") && l.Contains(signature) &&
+                                                    System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s{8}(public|private|internal|protected)\b"));
+            if (start < 0) return null;
+            int depth = 0;
+            bool opened = false;
+            var text = new System.Text.StringBuilder();
+            for (int i = start; i < lines.Length; i++)
+            {
+                text.Append(lines[i]).Append('\n');
+                foreach (char ch in lines[i])
+                {
+                    if (ch == '{') { depth++; opened = true; }
+                    else if (ch == '}') depth--;
+                }
+                if (opened && depth == 0) return text.ToString();
+            }
+            return null;
+        }
+
+        [TestMethod]
+        public void AddinModuleMethods_MatchXLEdge11_1_2()
+        {
+            string original = Normalized(Path.Combine(Today, "AddinModule.cs")), core = Normalized(Path.Combine(Core, "AddinModule.cs"));
+            var problems = new List<string>();
+            foreach (string signature in AddinModuleMethods)
+            {
+                string before = MethodText(original, signature), after = MethodText(core, signature.Replace("IRibbonControl control", "object control"));
+                if (before == null) problems.Add("not in 11.1.2: " + signature);
+                else if (after == null) problems.Add("not in the core: " + signature);
+                else if (before.Replace("IRibbonControl control", "object control") != after) problems.Add("differs from 11.1.2: " + signature);
+            }
+            Assert.AreEqual(0, problems.Count, string.Join(Environment.NewLine, problems));
+        }
 
         private static string Normalized(string path) => File.ReadAllText(path).TrimStart('﻿').Replace("\r\n", "\n");
 

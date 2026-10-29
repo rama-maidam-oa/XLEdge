@@ -207,6 +207,8 @@
       <Project>{8C5E3A59-222D-4CA9-9E9B-47FAD033984A}</Project>
       <Name>XLEdge.Addin.Core</Name>
       <Private>False</Private>
+      <!-- Not compiled against either: the core has its own XLEdge.AddinModule (Stage 2d), which would clash with the shell's. -->
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

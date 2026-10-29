@@ -114,7 +114,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
+    <Compile Include="AddinModule.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />
+    <Compile Include="Helpers\ReportGenerator.cs" />
+    <Compile Include="Helpers\ParamsControlSheetBuilder.cs" />
+    <Compile Include="Helpers\XLEdgeParamsBuilder.cs" />
+    <Compile Include="Helpers\DrilldownRequestBuilder.cs" />
+    <Compile Include="Helpers\ReportParameterRequestSerializer.cs" />
+    <Compile Include="Helpers\ProgressCoordinator.cs" />
+    <Compile Include="Pane\ICorePane.cs" />
     <Compile Include="Helpers\APIHelper.cs" />
     <Compile Include="Helpers\ExcelWindowHelper.cs" />
     <Compile Include="Helpers\EnhancedDragDropHelper.cs" />
