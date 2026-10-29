@@ -34,6 +34,13 @@ namespace XLEdge.Hosting
         void AttachAll();
     }
 
+    /// <summary>The shell's session values (IXLEdgeContext.GetSessionValue/SetSessionValue) as CoreHost manages them.</summary>
+    internal interface ISessionBag
+    {
+        /// <summary>Forgets every session value (a core that does not know them is loaded, so they would go stale).</summary>
+        void ClearSession();
+    }
+
     /// <summary>What RibbonController needs from the shell (AddinModule in the add-in, a fake in tests).</summary>
     internal interface IShellCommands
     {

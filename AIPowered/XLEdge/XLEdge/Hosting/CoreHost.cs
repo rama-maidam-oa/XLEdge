@@ -197,8 +197,22 @@ namespace XLEdge.Hosting
 
         // ---- helpers -------------------------------------------------------------------
 
+        /// <summary>The first contract whose cores read and keep session values (IXLEdgeContext.GetSessionValue).</summary>
+        private const int FirstContractWithSessionValues = 3;
+
         private Exception TryLoad(ResolvedRelease release)
         {
+            // An older core (Release History) neither reads nor keeps session values: by the time a newer core loads again
+            // they would be stale (e.g. session-only options coming back over options saved in the meantime).
+            if (release.ContractVersion < FirstContractWithSessionValues && _context is ISessionBag bag)
+            {
+                try
+                {
+                    bag.ClearSession();
+                    Log(l => l.LogDebug($"CoreHost: core contract {release.ContractVersion} keeps no session values - cleared them."));
+                }
+                catch (Exception ex) { Log(l => l.LogWarn("CoreHost: could not clear the session values: " + ex.Message)); }
+            }
             _context.Version = release.Version;
             _context.ReleaseDate = release.ReleaseDate;
             _context.ActiveFolderName = release.FolderName;

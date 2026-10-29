@@ -169,6 +169,32 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void FileChangedElsewhere_BetweenReloads_TheFileWins()
+        {
+            // Saved options leave nothing in the session: another Excel (or an older core) may change the file before the next load.
+            using (var core = new Core())
+            {
+                CoreSession(core.Context, p => p.SetOptions("0111101", save: true));
+                Assert.IsNull(core.Context.GetSessionValue("XLEdge.SessionOptions"), "nothing kept when the options in force are the saved ones");
+                System.IO.File.WriteAllText(core.File, Golden("0000011"));
+                Assert.AreEqual("0000011", CoreSession(core.Context));
+            }
+        }
+
+        [TestMethod]
+        public void SessionOptionsWithoutAnOption_KeepItsSavedValue()
+        {
+            // Session options kept by an older core lack an option a later release added: that one keeps its saved value, not false.
+            using (var core = new Core())
+            {
+                System.IO.File.WriteAllText(core.File, "{\"parameterValues\":false,\"scheduledOutputs\":false,\"refreshSync\":false,\"changeSheetName\":false,\"calendarCtrlDisplay\":false,\"segmentSelectionWindowDisplay\":true,\"preserveFormats\":true}");
+                core.Context.SetSessionValue("XLEdge.SessionOptions",
+                    "{\"parameterValues\":true,\"scheduledOutputs\":false,\"refreshSync\":false,\"changeSheetName\":false,\"calendarCtrlDisplay\":false,\"segmentSelectionWindowDisplay\":true}");
+                Assert.AreEqual("1000011", CoreSession(core.Context));
+            }
+        }
+
+        [TestMethod]
         public void AnExcelRestart_GetsOnlyTheSavedOptions()
         {
             using (var core = new Core())

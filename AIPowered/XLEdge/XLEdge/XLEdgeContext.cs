@@ -12,7 +12,7 @@ namespace XLEdge
     /// What the shell gives the core: Excel, the logger and folders (owned here, in the shell's AppDomain), the ribbon, and the
     /// loaded release. Lives for the whole Excel session and survives core reloads.
     /// </summary>
-    internal sealed class XLEdgeContext : MarshalByRefObject, IXLEdgeContext, IDisposable
+    internal sealed class XLEdgeContext : MarshalByRefObject, IXLEdgeContext, Hosting.ISessionBag, IDisposable
     {
         private const string GLSenseProgId = "GLSense.AddinModule";
         private readonly Logger _logger;
@@ -101,6 +101,8 @@ namespace XLEdge
             if (value == null) _session.TryRemove(key, out _);
             else _session[key] = value;
         }
+
+        public void ClearSession() => _session.Clear();
 
         /// <summary>See <see cref="IXLEdgeContext.GetExcelDispatch"/>: AddRef'ed, the core releases it.</summary>
         public IntPtr GetExcelDispatch()

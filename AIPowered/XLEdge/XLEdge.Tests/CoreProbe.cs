@@ -215,10 +215,45 @@ namespace XLEdge.Tests
             object created = Unwrap(() => ctor.Invoke(args));
             var window = created as System.Windows.Window ?? new System.Windows.Window { Title = typeName, Content = created, Width = 400, Height = 300 };
             window.ShowActivated = false;
+            string name = typeName;
+            _opened.Add(name);
+            window.Closed += (s, e) => _closed.Add(name);
             Unwrap(() => { window.Show(); return null; });
             PumpWpf();
             return $"loaded={window.IsLoaded}, size={(int)window.ActualWidth}x{(int)window.ActualHeight}";
         }
+
+        private readonly System.Collections.Generic.List<string> _opened = new System.Collections.Generic.List<string>();
+        private readonly System.Collections.Generic.List<string> _closed = new System.Collections.Generic.List<string>();
+
+        /// <summary>Windows opened by <see cref="OpenWindow"/> that never raised Closed (a window that vetoed its closing).</summary>
+        public string[] WindowsNotClosed() => _opened.Except(_closed).ToArray();
+
+        /// <summary>Source URIs of every merged resource dictionary of this domain's Application (nested ones included).</summary>
+        public string[] ResourceDictionarySources()
+        {
+            var sources = new System.Collections.Generic.List<string>();
+            void Walk(System.Windows.ResourceDictionary dictionary)
+            {
+                if (dictionary.Source != null) sources.Add(dictionary.Source.OriginalString);
+                foreach (var merged in dictionary.MergedDictionaries) Walk(merged);
+            }
+            if (System.Windows.Application.Current != null) Walk(System.Windows.Application.Current.Resources);
+            return sources.ToArray();
+        }
+
+        /// <summary>IsBusy as asked from inside a modal core dialog (the reload's check, if Excel's message loop ran it then).</summary>
+        public bool IsBusyInsideAModalDialog()
+        {
+            // A real XLEdge dialog (a bare Window clashes with the theme's window style under WPF-UI).
+            var dialog = (System.Windows.Window)Activator.CreateInstance(CoreType("XLEdge.Views.XLEdgeLoginDetails"));
+            bool busy = false;
+            dialog.Dispatcher.BeginInvoke(new Action(() => { busy = _entry.IsBusy(); dialog.Close(); }), System.Windows.Threading.DispatcherPriority.Background);
+            dialog.ShowDialog();
+            return busy;
+        }
+
+        public bool EntryIsBusy() => _entry.IsBusy();
 
         /// <summary>Lets the dispatcher of this thread (in this domain) run everything queued down to Background.</summary>
         private static void PumpWpf()

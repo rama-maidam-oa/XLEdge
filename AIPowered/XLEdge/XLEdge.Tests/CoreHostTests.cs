@@ -131,6 +131,28 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void LoadingACoreThatPredatesTheSessionBag_ClearsIt()
+        {
+            // Such a core (Release History rollback) neither reads nor keeps session values; whatever is in the bag is stale by
+            // the time a newer core loads again (e.g. session-only options would come back over options saved meanwhile).
+            var s = new Setup();
+            s.Context.SetSessionValue("XLEdge.SessionOptions", "{}");
+            s.Catalog.StartRelease = new ResolvedRelease { Version = "v2", ReleaseDate = "d", FolderName = "vOld", ContractVersion = 2 };
+            Assert.IsTrue(s.Host.Start());
+            Assert.IsNull(s.Context.GetSessionValue("XLEdge.SessionOptions"));
+        }
+
+        [TestMethod]
+        public void LoadingACoreWithTheSessionBag_KeepsIt()
+        {
+            var s = new Setup();
+            s.Context.SetSessionValue("XLEdge.SessionOptions", "{}");
+            s.Catalog.StartRelease = new ResolvedRelease { Version = "v3", ReleaseDate = "d", FolderName = "vNew", ContractVersion = 3 };
+            Assert.IsTrue(s.Host.Start());
+            Assert.AreEqual("{}", s.Context.GetSessionValue("XLEdge.SessionOptions"));
+        }
+
+        [TestMethod]
         public void Start_NothingToLoad_ShowsErrorAndStaysUsable()
         {
             var s = new Setup();

@@ -111,9 +111,24 @@ namespace XLEdge.Addin.Core
             {
                 string json = _context?.GetSessionValue(SessionOptionsKey);
                 if (string.IsNullOrEmpty(json)) return;
-                var options = System.Text.Json.JsonSerializer.Deserialize<XLEdge.Models.XLEdgeUserPreferences>(json,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (options != null) XLEdgePreferencesManager.Instance.ApplyRuntime(options);
+                // Starting from the saved options, so one an older core did not know keeps its saved value instead of false.
+                XLEdge.Models.XLEdgeUserPreferences options = XLEdgePreferencesManager.Instance.Current;
+                using (var document = System.Text.Json.JsonDocument.Parse(json))
+                {
+                    System.Text.Json.JsonElement root = document.RootElement;
+                    bool Read(string name, bool saved) =>
+                        root.ValueKind == System.Text.Json.JsonValueKind.Object && root.TryGetProperty(name, out System.Text.Json.JsonElement value) &&
+                        (value.ValueKind == System.Text.Json.JsonValueKind.True || value.ValueKind == System.Text.Json.JsonValueKind.False)
+                            ? value.GetBoolean() : saved;
+                    options.ParameterValues = Read("parameterValues", options.ParameterValues);
+                    options.ScheduledOutputs = Read("scheduledOutputs", options.ScheduledOutputs);
+                    options.RefreshSync = Read("refreshSync", options.RefreshSync);
+                    options.ChangeSheetName = Read("changeSheetName", options.ChangeSheetName);
+                    options.CalendarCtrlDisplay = Read("calendarCtrlDisplay", options.CalendarCtrlDisplay);
+                    options.SegmentSelectionWindowDisplay = Read("segmentSelectionWindowDisplay", options.SegmentSelectionWindowDisplay);
+                    options.PreserveFormats = Read("preserveFormats", options.PreserveFormats);
+                }
+                XLEdgePreferencesManager.Instance.ApplyRuntime(options);
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Initialize (session options)"); }
         }
@@ -134,9 +149,17 @@ namespace XLEdge.Addin.Core
                     // Every core window first (they would otherwise be torn down mid-operation by the dispatcher shutdown).
                     foreach (System.Windows.Window window in app.Windows.Cast<System.Windows.Window>().ToList())
                     {
-                        try { window.Close(); }
+                        try
+                        {
+                            // The wait window refuses a plain Close (users cannot close it); RequestClose is its own way out,
+                            // which also cancels the operation it is waiting for.
+                            if (window is XLEdge.Views.XLEdgeWaitWindow wait) wait.RequestClose();
+                            else window.Close();
+                        }
                         catch (Exception ex) { Log(ex, "AddinEntry.Shutdown (closing a window)"); }
                     }
+                    var stillOpen = app.Windows.Cast<System.Windows.Window>().Select(w => w.GetType().Name).ToList();
+                    if (stillOpen.Count > 0) Logger?.LogWarn("AddinEntry.Shutdown: windows still open, closed by the dispatcher shutdown: " + string.Join(", ", stillOpen));
                     dispatcher.InvokeShutdown();
                 };
                 if (dispatcher.CheckAccess()) close();
@@ -208,7 +231,19 @@ namespace XLEdge.Addin.Core
             }
         }
 
-        public bool IsBusy() => false;
+        /// <summary>
+        /// Busy while a core dialog's modal loop runs on Excel's thread: a reload then would unload the AppDomain under it. (Report
+        /// runs join in Stage 2d.)
+        /// </summary>
+        public bool IsBusy()
+        {
+            try { return System.Windows.Interop.ComponentDispatcher.IsThreadModal; }
+            catch (Exception ex)
+            {
+                Log(ex, "AddinEntry.IsBusy");
+                return false;
+            }
+        }
 
         public override object InitializeLifetimeService() => null;
 

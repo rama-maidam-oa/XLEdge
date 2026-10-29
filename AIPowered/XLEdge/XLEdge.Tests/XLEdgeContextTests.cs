@@ -76,6 +76,60 @@ namespace XLEdge.Tests
             }
         }
 
+        /// <summary>Uses a context from another AppDomain, the way a core does (through the remoting proxy).</summary>
+        public sealed class RemoteSessionUser : MarshalByRefObject
+        {
+            public string SetThenGet(XLEdge.Contracts.IXLEdgeContext context, string key, string value)
+            {
+                context.SetSessionValue(key, value);
+                return context.GetSessionValue(key);
+            }
+        }
+
+        [TestMethod]
+        public void SessionBag_SetGetOverwriteRemove_AndNullKeys()
+        {
+            using (var t = new TempFolder())
+            using (var context = new XLEdgeContext(new object(), new PathProvider(t.Combine("inst"), t.Combine("data"))))
+            {
+                Assert.IsNull(context.GetSessionValue("a"));
+                context.SetSessionValue("a", "1");
+                Assert.AreEqual("1", context.GetSessionValue("a"));
+                context.SetSessionValue("a", "2");
+                Assert.AreEqual("2", context.GetSessionValue("a"));
+                Assert.IsNull(context.GetSessionValue("A"), "keys are case-sensitive");
+                context.SetSessionValue("a", null);
+                Assert.IsNull(context.GetSessionValue("a"));
+                context.SetSessionValue(null, "x");
+                Assert.IsNull(context.GetSessionValue(null));
+
+                context.SetSessionValue("b", "kept");
+                ((XLEdge.Hosting.ISessionBag)context).ClearSession();
+                Assert.IsNull(context.GetSessionValue("b"));
+            }
+        }
+
+        [TestMethod]
+        public void SessionBag_WorksFromTheCoresAppDomain()
+        {
+            using (var t = new TempFolder())
+            using (var context = new XLEdgeContext(new object(), new PathProvider(t.Combine("inst"), t.Combine("data"))))
+            {
+                var domain = AppDomain.CreateDomain("SessionUser", null, new AppDomainSetup { ApplicationBase = System.IO.Path.GetDirectoryName(typeof(RemoteSessionUser).Assembly.Location) });
+                try
+                {
+                    var user = (RemoteSessionUser)domain.CreateInstanceAndUnwrap(typeof(RemoteSessionUser).Assembly.FullName, typeof(RemoteSessionUser).FullName);
+                    Assert.AreEqual("v", user.SetThenGet(context, "k", "v"));
+                    Assert.AreEqual("v", context.GetSessionValue("k"), "kept on the shell's side");
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+                Assert.AreEqual("v", context.GetSessionValue("k"), "and survives the other domain's unload");
+            }
+        }
+
         [TestMethod]
         public void Context_Dispose_ReleasesTheLogFile()
         {
