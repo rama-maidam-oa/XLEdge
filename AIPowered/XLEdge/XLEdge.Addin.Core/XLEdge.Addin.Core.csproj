@@ -43,6 +43,25 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="MahApps.Metro.IconPacks.Core, Version=6.0.0.0, Culture=neutral, PublicKeyToken=0c0d510f9915137a, processorArchitecture=MSIL">
+      <HintPath>..\packages\MahApps.Metro.IconPacks.Core.6.2.1\lib\net47\MahApps.Metro.IconPacks.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="MahApps.Metro.IconPacks.FontAwesome, Version=6.0.0.0, Culture=neutral, PublicKeyToken=0c0d510f9915137a, processorArchitecture=MSIL">
+      <HintPath>..\packages\MahApps.Metro.IconPacks.FontAwesome.6.2.1\lib\net47\MahApps.Metro.IconPacks.FontAwesome.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Xaml.Behaviors, Version=1.1.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Xaml.Behaviors.Wpf.1.1.142\lib\net462\Microsoft.Xaml.Behaviors.dll</HintPath>
+    </Reference>
+    <Reference Include="Wpf.Ui, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
+      <HintPath>..\packages\WPF-UI.4.3.0\lib\net481\Wpf.Ui.dll</HintPath>
+    </Reference>
+    <Reference Include="Wpf.Ui.Abstractions, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
+      <HintPath>..\packages\WPF-UI.Abstractions.4.3.0\lib\net481\Wpf.Ui.Abstractions.dll</HintPath>
+    </Reference>
+    <Reference Include="WindowsFormsIntegration" />
+    <Reference Include="Microsoft.Web.WebView2.Wpf, Version=1.0.4022.49, Culture=neutral, PublicKeyToken=2a8ab48044d2601e, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Web.WebView2.1.0.4022.49\lib\net462\Microsoft.Web.WebView2.Wpf.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.10.0.9\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
     </Reference>
@@ -95,6 +114,38 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
+    <Compile Include="Helpers\ApiOperationHelper.cs" />
+    <Compile Include="Helpers\APIHelper.cs" />
+    <Compile Include="Helpers\ExcelWindowHelper.cs" />
+    <Compile Include="Helpers\EnhancedDragDropHelper.cs" />
+    <Compile Include="Utilities\DpiAwareWindow.cs" />
+    <Compile Include="Utilities\MessageFunctions.cs" />
+    <Compile Include="Utilities\WpfUiBootstrapper.cs" />
+    <Compile Include="Converters\WidthPercentageConverter.cs" />
+    <Compile Include="Views\AppOverlay.xaml.cs">
+      <DependentUpon>AppOverlay.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeCalendar.xaml.cs">
+      <DependentUpon>XLEdgeCalendar.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeDrilldownReports.xaml.cs">
+      <DependentUpon>XLEdgeDrilldownReports.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeGLAccountsWindow.xaml.cs">
+      <DependentUpon>XLEdgeGLAccountsWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeLoginDetails.xaml.cs">
+      <DependentUpon>XLEdgeLoginDetails.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeMessageWindow.xaml.cs">
+      <DependentUpon>XLEdgeMessageWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeOptions.xaml.cs">
+      <DependentUpon>XLEdgeOptions.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\XLEdgeWaitWindow.xaml.cs">
+      <DependentUpon>XLEdgeWaitWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Helpers\ApiErrorMessageExtractor.cs" />
     <Compile Include="Helpers\XLEdgeValueFormatter.cs" />
     <Compile Include="Helpers\ApiResponseHelper.cs" />
@@ -151,6 +202,46 @@
   <!-- No reference to XLEdge.Loader.Core: the shell creates RemoteLoader in the core's AppDomain from the shell's own copy
        (CreateInstanceFromAndUnwrap), so release zips never carry a loader. -->
 
+  <ItemGroup>
+    <Page Include="Themes\GlobalStyles.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\AppOverlay.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeCalendar.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeDrilldownReports.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeGLAccountsWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeLoginDetails.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeMessageWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeOptions.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\XLEdgeWaitWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Resource Include="Images\orbit_logo.png" />
+    <Resource Include="Images\OrbitGLSense.ico" />
+    <Resource Include="Images\orbit_bitmap.bmp" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <ItemGroup>
     <None Include="packages.config" />

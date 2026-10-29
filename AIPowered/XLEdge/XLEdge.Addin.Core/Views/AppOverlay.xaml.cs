@@ -1,0 +1,1015 @@
+﻿using MahApps.Metro.IconPacks;
+using System;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
+using XLEdge.Utilities;
+
+namespace XLEdge.Views
+{
+    /// <summary>
+    /// Interaction logic for AppOverlay.xaml
+    /// </summary>
+    public partial class AppOverlay : UserControl
+    {
+        // Attached property to mark elements blurred by this overlay (across instances)
+        public static readonly DependencyProperty BlurAppliedProperty =
+            DependencyProperty.RegisterAttached("BlurApplied", typeof(bool), typeof(AppOverlay), new PropertyMetadata(false));
+
+        public static void SetBlurApplied(UIElement element, bool value)
+        {
+            try
+            {
+                element?.SetValue(BlurAppliedProperty, value);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"SetBlurApplied failed: {ex.Message}");
+            }
+        }
+
+        public static bool GetBlurApplied(UIElement element)
+        {
+            try
+            {
+                return (bool)(element?.GetValue(BlurAppliedProperty) ?? false);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"GetBlurApplied failed: {ex.Message}");
+                return false;
+            }
+        }
+        // Keep track of elements that were blurred so we can restore them
+        private readonly System.Collections.Generic.List<(UIElement Element, Effect OriginalEffect, bool OriginalHitTest)> _blurredElements = new();
+
+        // Tracks WebView2 elements temporarily hidden so overlays can render above them
+        // (WebView2 renders outside WPF's composition layer regardless of Panel.ZIndex).
+        private readonly System.Collections.Generic.List<UIElement> _hiddenWebViewElements = new();
+
+        // Tracks which overlay types (Toast/Busy/Confirm) currently require WebView2 siblings to be
+        // hidden, so WebView2 is hidden/restored only when the combined active state changes and
+        // multiple overlays can be shown concurrently without interfering with each other.
+        private bool _toastHidesWebView2;
+        private bool _busyHidesWebView2;
+        private bool _confirmHidesWebView2;
+
+        private DispatcherTimer _busyTimer;
+        private DateTime? _busyStart;
+        private DispatcherTimer _toastTimer;
+        private TaskCompletionSource<bool> _activeToastTcs;
+        private RoutedEventHandler YesHandler, NoHandler, CancelHandler, BusyCancelHandler;
+        private EventHandler _hideBusyHandler;
+
+        /// <summary>
+        /// Raised whenever a toast actually goes away - manual close-button click, timer auto-dismiss,
+        /// or an explicit DismissToast() call - regardless of which Show*/ShowToastAsync method
+        /// displayed it. AppOverlay itself has no knowledge of Excel/WebView2 - it's embedded only in
+        /// plain popup windows (XLEdgeAbout/XLEdgeServerConfiguration/XLEdgeWaitWindow), never
+        /// alongside a live WebView2 since the task pane hosts WebView2 as a native WinForms control
+        /// with no AppOverlay in its tree at all (see ADXExcelTaskPane1.cs) - so there is currently no
+        /// subscriber that needs a WebView2 focus-reclaim on toast dismissal. Kept as a plain
+        /// notification event in case a future host needs it again.
+        /// </summary>
+        public event Action ToastDismissed;
+
+        private void RaiseToastDismissed()
+        {
+            try
+            {
+                ToastDismissed?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ToastDismissed handler failed: {ex.Message}");
+            }
+        }
+
+        public AppOverlay()
+        {
+            InitializeComponent();
+        }
+
+        public bool IsBusyVisible => BusyOverlay.Visibility == Visibility.Visible;
+        public bool IsConfirmVisible => ConfirmOverlay.Visibility == Visibility.Visible;
+
+        /// <summary>
+        /// Diagnostic only: logs the toast's actual post-layout dimensions and the close button's
+        /// own state, scheduled after a real layout pass (DispatcherPriority.Loaded) so
+        /// ActualWidth/Height aren't still the stale pre-layout values. Added to investigate a
+        /// reported "close button invisible at 150% DPI only (visible at 100/125/175%)" bug -
+        /// nothing in this file's own code branches on DPI at all, so this captures whatever WPF's
+        /// own layout/rendering actually produced at runtime rather than guessing blind.
+        /// </summary>
+        private void LogToastLayoutDiagnostics()
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var dpi = VisualTreeHelper.GetDpi(this);
+                    double? colWidth = null;
+                    if (BtnCloseToast?.Parent is Grid grid && grid.ColumnDefinitions.Count > 2)
+                    {
+                        colWidth = grid.ColumnDefinitions[2].ActualWidth;
+                    }
+
+                    LogUtility.LogDebug(
+                        $"ToastLayoutDiagnostics: dpi={dpi.PixelsPerInchX} (scale={dpi.DpiScaleX:F2}), " +
+                        $"Toast actual={Toast?.ActualWidth:F0}x{Toast?.ActualHeight:F0}, MaxHeight={Toast?.MaxHeight:F0}, " +
+                        $"BtnCloseToast actual={BtnCloseToast?.ActualWidth:F0}x{BtnCloseToast?.ActualHeight:F0}, " +
+                        $"Visibility={BtnCloseToast?.Visibility}, IsVisible={BtnCloseToast?.IsVisible}, " +
+                        $"Opacity={BtnCloseToast?.Opacity}, columnActualWidth={colWidth:F0}");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"LogToastLayoutDiagnostics error: {ex.Message}");
+                }
+            }), DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// Sets the toast's MaxHeight based on the parent container's current height, so the toast
+        /// sizes correctly against available space and can grow with its content.
+        /// </summary>
+        private void UpdateToastMaxHeight()
+        {
+            if (Toast == null)
+            {
+                return;
+            }
+
+            try
+            {
+                double availableHeight = 0;
+
+                if (this.Parent is FrameworkElement parentElement && parentElement.ActualHeight > 0)
+                {
+                    availableHeight = parentElement.ActualHeight;
+                }
+                else if (this.ActualHeight > 0)
+                {
+                    availableHeight = this.ActualHeight;
+                }
+                else
+                {
+                    // Last-resort fallback (e.g. the very first call, before anything has ever been
+                    // measured) - better than leaving the toast pinned to a tiny/zero height.
+                    availableHeight = SystemParameters.WorkArea.Height;
+                }
+
+                Toast.MaxHeight = availableHeight * 0.9;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"Failed to update toast max height: {ex.Message}");
+            }
+        }
+
+        // === Toast ===
+        public void ShowToast(string message, PackIconFontAwesomeKind icon, Brush color, int durationSeconds = 60)
+        {
+            if (Toast == null) return;
+
+            // Bug fix ("busy overlay spins forever on any error"): this whole body used to run
+            // unguarded. Toast/busy-overlay updates are called from deep inside report-generation
+            // error handlers (see ReportGenerator.DisplayErrorAsync) - if any single step here threw
+            // (blur/visual-tree walking, a stale visual, etc.), the exception escaped all the way out
+            // through the fire-and-forget wrapper that kicked off the report, which only logs and
+            // never hides the busy spinner - so the error toast we were trying to show would silently
+            // never appear, and the spinner already on screen would be stuck forever. Catching here
+            // means a cosmetic failure can never prevent the error from being surfaced.
+            try
+            {
+                CollapseBusyOverlayForToast();
+
+                this.Visibility = Visibility.Visible;
+                UpdateToastMaxHeight();
+                Toast.Visibility = Visibility.Visible;
+                Toast.Opacity = 1;
+                Toast.BeginAnimation(Border.OpacityProperty, null);
+                Panel.SetZIndex(Toast, 10001);
+
+                // Block input to underlying UI while toast is visible
+                if (ToastOverlay != null)
+                {
+                    ToastOverlay.Visibility = Visibility.Visible;
+                    try
+                    {
+                        // Ensure overlay and its close button take keyboard focus immediately so
+                        // users can interact with the toast without waiting for WebView2 restoration.
+                        ToastOverlay.Focus();
+                        try
+                        {
+                            // Use Send priority to force immediate focus transfer before returning
+                            Dispatcher.InvokeAsync(() =>
+                            {
+                                try { BtnCloseToast?.Focus(); System.Windows.Input.Keyboard.Focus(BtnCloseToast); } catch { }
+                            }, DispatcherPriority.Send);
+                        }
+                        catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogWarn($"Could not focus ToastOverlay: {ex.Message}");
+                    }
+                }
+
+                // Apply blur to underlying sibling elements (mirror/blur effect)
+                ApplyBlurToSiblings();
+
+                ToastMessage.Text = message;
+                ToastIcon.Kind = icon;
+                ToastIcon.Foreground = color;
+
+                Panel.SetZIndex(this, 9999);
+
+                _toastTimer?.Stop();
+                _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
+                _toastTimer.Tick += OnToastTimerTick;
+                _toastTimer.Start();
+
+                LogToastLayoutDiagnostics();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ShowToast failed: {ex.Message}");
+            }
+        }
+
+        public void ShowSuccess(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleCheckSolid, Brushes.LimeGreen, 60);
+        public void ShowError(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleXmarkSolid, Brushes.Red, 60);
+        public void ShowWarning(string message) => ShowToast(message, PackIconFontAwesomeKind.TriangleExclamationSolid, Brushes.Orange, 60);
+        public void ShowInfo(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleInfoSolid, Brushes.DodgerBlue, 60);
+
+        public Task ShowToastAsync(string message, PackIconFontAwesomeKind icon, Brush color, int durationSeconds = 60)
+        {
+            // Same reasoning as ShowToast above: this is the toast shown from awaited error paths
+            // (DisplayErrorAsync's non-wait-window branch, broadcast messages, etc.) - if setup here
+            // throws before returning a Task, the caller awaiting this would hang indefinitely with
+            // the busy overlay/spinner never resolving. Catching and returning a completed Task keeps
+            // the caller (and, upstream, the report-generation cleanup that runs after it) moving.
+            try
+            {
+                _activeToastTcs?.TrySetResult(true);
+                var tcs = new TaskCompletionSource<bool>();
+                _activeToastTcs = tcs;
+
+                CollapseBusyOverlayForToast();
+
+                this.Visibility = Visibility.Visible;
+                UpdateToastMaxHeight();
+                Toast.Visibility = Visibility.Visible;
+                Toast.Opacity = 1;
+                Toast.BeginAnimation(Border.OpacityProperty, null);
+                Panel.SetZIndex(Toast, 10001);
+
+                // Block input to underlying UI while toast is visible
+                if (ToastOverlay != null)
+                {
+                    ToastOverlay.Visibility = Visibility.Visible;
+                    try
+                    {
+                        // Ensure toast overlay and close button get immediate focus so the user
+                        // can close/dismiss the toast without delay.
+                        ToastOverlay.Focus();
+                        try
+                        {
+                            Dispatcher.InvokeAsync(() =>
+                            {
+                                try { BtnCloseToast?.Focus(); System.Windows.Input.Keyboard.Focus(BtnCloseToast); } catch { }
+                            }, DispatcherPriority.Send);
+                        }
+                        catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogWarn($"Could not focus ToastOverlay: {ex.Message}");
+                    }
+                }
+
+                // Apply blur to underlying sibling elements (mirror/blur effect)
+                ApplyBlurToSiblings();
+
+                ToastMessage.Text = message;
+                ToastIcon.Kind = icon;
+                ToastIcon.Foreground = color;
+
+                Panel.SetZIndex(this, 9999);
+
+                LogToastLayoutDiagnostics();
+
+                _toastTimer?.Stop();
+                _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
+                _toastTimer.Tick += (s, e) =>
+                {
+                    _toastTimer.Stop();
+                    var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.5));
+                    fade.Completed += (s2, e2) =>
+                    {
+                        Toast.Opacity = 0;
+                        // Hide the input blocker when toast fades out
+                        if (ToastOverlay != null)
+                            ToastOverlay.Visibility = Visibility.Collapsed;
+
+                        // Remove blur from siblings
+                        RemoveBlurFromSiblings();
+                        if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
+                            this.Visibility = Visibility.Collapsed;
+                        tcs.TrySetResult(true);
+                        if (_activeToastTcs == tcs)
+                            _activeToastTcs = null;
+                        RaiseToastDismissed();
+                    };
+                    Toast.BeginAnimation(Border.OpacityProperty, fade);
+                };
+                _toastTimer.Start();
+
+                return tcs.Task;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ShowToastAsync failed: {ex.Message}");
+                return Task.CompletedTask;
+            }
+        }
+
+        public async Task ShowSuccessAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleCheckSolid, Brushes.LimeGreen, 60);
+        }
+
+        public async Task ShowErrorAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleXmarkSolid, Brushes.Red, 60);
+        }
+
+        public async Task ShowWarningAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.TriangleExclamationSolid, Brushes.Orange, 60);
+        }
+
+        public async Task ShowInfoAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleInfoSolid, Brushes.DodgerBlue, 60);
+        }
+
+        public void DismissToast()
+        {
+            if (Toast == null || Toast.Visibility != Visibility.Visible)
+                return;
+
+            _toastTimer?.Stop();
+            _activeToastTcs?.TrySetResult(true);
+            _activeToastTcs = null;
+            Toast.BeginAnimation(Border.OpacityProperty, null);
+            Toast.Opacity = 0;
+            Toast.Visibility = Visibility.Collapsed;
+
+            if (ToastOverlay != null)
+                ToastOverlay.Visibility = Visibility.Collapsed;
+
+            // Remove blur from siblings
+            RemoveBlurFromSiblings();
+
+            if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
+                this.Visibility = Visibility.Collapsed;
+
+            RaiseToastDismissed();
+        }
+        private void OnToastTimerTick(object sender, EventArgs e)
+        {
+            _toastTimer.Stop();
+            // Immediately dismiss toast and remove blur when timer elapses
+            DismissToast();
+        }
+
+        private void BtnCloseToast_Click(object sender, RoutedEventArgs e)
+        {
+            // Immediately dismiss toast and remove blur when user clicks close
+            _toastTimer?.Stop();
+            _activeToastTcs?.TrySetResult(true);
+            _activeToastTcs = null;
+            DismissToast();
+        }
+
+        // === Busy Overlay ===
+        public async Task ShowBusyasynTask(string message = "Please wait...", Func<Task> cancelAction = null)
+        {
+            ShowBusyasyn(message, cancelAction);
+            await Task.CompletedTask;
+        }
+        public void ShowBusyasyn(string message = "Please wait...", Func<Task> cancelAction = null)
+        {
+            // Bug fix ("busy overlay spins forever on any error"): same reasoning as ShowToast/
+            // ShowToastAsync above. ShowBusyasyn is called repeatedly for every progress-message
+            // update during report generation (ReportGenerator.SetMessage) with no try/catch at any of
+            // those call sites - if this ever threw, the exception escaped straight out of the
+            // fire-and-forget report-generation task, which only logs it, leaving the busy spinner
+            // that's already on screen stuck forever with no error ever shown.
+            try
+            {
+                BusyMessage.Text = message ?? "Please wait...";
+                this.Visibility = Visibility.Visible;
+                this.Opacity = 1.0;
+                Panel.SetZIndex(this, 9999);
+
+                // Bring to front of parent container
+                if (this.Parent is UIElement parent)
+                    Panel.SetZIndex(parent, 0);
+
+                BusyOverlay.Visibility = Visibility.Visible;
+                BusyOverlay.Opacity = 1;
+                BusyOverlay.IsHitTestVisible = true;
+
+                // Hide WebView2 siblings while the busy overlay is visible
+                SetWebView2HiddenState(ref _busyHidesWebView2, true);
+
+                if (BusyCancelHandler != null)
+                {
+                    BtnCancelBusy.Click -= BusyCancelHandler;
+                    BusyCancelHandler = null;
+                }
+
+                BusyCancelHandler = async (sender, e) =>
+                {
+                    BtnCancelBusy.IsEnabled = false;
+                    try
+                    {
+                        // Run async cancel if provided
+                        if (cancelAction != null)
+                            await cancelAction();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Busy cancel handler");
+                    }
+                    finally
+                    {
+                        await HideBusyAsync();
+                    }
+                };
+
+                BtnCancelBusy.Click += BusyCancelHandler;
+                BtnCancelBusy.Visibility = Visibility.Visible;
+                BtnCancelBusy.IsEnabled = true;
+
+                // Start elapsed timer
+                try
+                {
+                    _busyStart = DateTime.UtcNow;
+                    BusyElapsed.Text = "Time Elapsed: 00:00:00";
+
+                    _busyTimer?.Stop();
+                    _busyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    _busyTimer.Tick += (s, e) =>
+                    {
+                        if (_busyStart == null) return;
+                        var span = DateTime.UtcNow - _busyStart.Value;
+                        BusyElapsed.Text = $"Time Elapsed: {FormatTimeSpan(span)}";
+                    };
+                    _busyTimer.Start();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "Start busy timer");
+                }
+
+                if (this.Resources["ShowBusy"] is Storyboard sb)
+                    sb.Begin(this);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ShowBusyasyn failed: {ex.Message}");
+            }
+        }
+        private async void BtnHideBusy_Click(object sender, RoutedEventArgs e)
+        {
+            await HideBusyAsync();
+        }
+        public async Task HideBusyAsync()
+        {
+            var tcs = new TaskCompletionSource<bool>();
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (this.Resources["HideBusy"] is not Storyboard sb)
+                {
+                    // Fallback: if storyboard missing, hide immediately. No "ShowBusy"/"HideBusy"
+                    // Storyboard resources are actually defined anywhere in this control's XAML (only
+                    // ToastSlideIn/ToastSlideOut exist), so this "fallback" is in fact the ONLY path
+                    // HideBusyAsync ever takes.
+                    //
+                    // Bug fixed here: this used to collapse `this.Visibility` (the whole overlay root -
+                    // Toast, Busy and Confirm all live under it) unconditionally, with no check for
+                    // whether a Toast/Confirm was currently showing - unlike the storyboard-completion
+                    // branch below, which already guards this correctly but was unreachable dead code.
+                    // Concretely: CreateReportFromTitleAsync's catch block calls DisplayErrorAsync (shows
+                    // an error Toast) immediately followed by CleanupAsync, which calls HideBusyAsync to
+                    // dismiss the earlier "Downloading report data..." busy spinner - which, via this
+                    // fallback, collapsed the just-shown error Toast a few milliseconds after it
+                    // appeared. Worse, collapsing the root this way skipped RemoveBlurFromSiblings(), so
+                    // _toastHidesWebView2 was never cleared and the WebView2 task pane content stayed
+                    // Visibility.Hidden - genuinely blank/unusable - until the Toast's own independent
+                    // 60-second timer eventually elapsed and called DismissToast(), which is the only
+                    // thing that actually restores WebView2. Matches the reported symptom exactly: the
+                    // toast flashes and disappears immediately, but the task pane itself stays blank for
+                    // the full 60-second toast duration even though Excel's ribbon/worksheet stay usable.
+                    StopBusyTimer();
+                    BusyOverlay.Visibility = Visibility.Collapsed;
+                    SetWebView2HiddenState(ref _busyHidesWebView2, false);
+
+                    if (Math.Abs(Toast.Opacity - 0) < 0.0001 && ConfirmOverlay.Visibility != Visibility.Visible)
+                        this.Visibility = Visibility.Collapsed;
+
+                    tcs.TrySetResult(true);
+                    return;
+                }
+
+                // Remove previous handler to prevent multiple triggers
+                if (_hideBusyHandler != null)
+                    sb.Completed -= _hideBusyHandler;
+
+                _hideBusyHandler = (s, e) =>
+                {
+                    StopBusyTimer();
+
+                    BusyOverlay.Visibility = Visibility.Collapsed;
+                    SetWebView2HiddenState(ref _busyHidesWebView2, false);
+
+                    // Hide root only if no other overlay is visible
+                    if (Math.Abs(Toast.Opacity - 0) < 0.0001 && ConfirmOverlay.Visibility != Visibility.Visible)
+                        this.Visibility = Visibility.Collapsed;
+
+                    sb.Completed -= _hideBusyHandler; // Clean up handler
+                    _hideBusyHandler = null;
+
+                    tcs.TrySetResult(true);
+                };
+
+                sb.Completed += _hideBusyHandler;
+
+                // Ensure it stays visible during fade
+                BusyOverlay.Visibility = Visibility.Visible;
+                BusyOverlay.IsHitTestVisible = false; // allow clicks to pass during fade
+                sb.Begin(this, true); // true = controllable animation
+            });
+
+            await tcs.Task;
+        }
+
+        /// <summary>
+        /// Immediately collapses the busy overlay if it's visible, so a toast about to be shown
+        /// isn't hidden behind it. BusyOverlay and ToastOverlay share the same Panel.ZIndex (10000)
+        /// in AppOverlay.xaml, and BusyOverlay is declared later, so without this a toast fired
+        /// while a busy spinner is up would render underneath the busy overlay's dark scrim -
+        /// the taskpane just looks stuck/blurred with no visible message. Skips the normal
+        /// HideBusyAsync fade since the toast is about to cover the same area anyway.
+        /// </summary>
+        private void CollapseBusyOverlayForToast()
+        {
+            if (BusyOverlay.Visibility != Visibility.Visible) return;
+
+            StopBusyTimer();
+            BusyOverlay.Visibility = Visibility.Collapsed;
+            SetWebView2HiddenState(ref _busyHidesWebView2, false);
+        }
+
+        private void StopBusyTimer()
+        {
+            try
+            {
+                _busyTimer?.Stop();
+                _busyTimer = null;
+                _busyStart = null;
+                if (BusyElapsed != null)
+                    BusyElapsed.Text = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Stop busy timer");
+            }
+        }
+
+        private static string FormatTimeSpan(TimeSpan span)
+        {
+            // Format as HH:MM:SS
+            return string.Format("{0:D2}:{1:D2}:{2:D2}", (int)span.TotalHours, span.Minutes, span.Seconds);
+        }
+
+
+        // === Confirmation ===
+        public void ShowConfirm(string message, Action yesAction, Action noAction = null, Action cancelAction = null)
+        {
+            ConfirmText.Text = message;
+            ConfirmOverlay.Visibility = Visibility.Visible;
+            this.Visibility = Visibility.Visible;
+            Panel.SetZIndex(this, 9999);
+            SetWebView2HiddenState(ref _confirmHidesWebView2, true);
+
+            ConfirmPopup.RenderTransform = new ScaleTransform(0.8, 0.8);
+
+            if (YesHandler != null) BtnYes.Click -= YesHandler;
+            if (NoHandler != null) BtnNo.Click -= NoHandler;
+            if (CancelHandler != null) BtnCancel.Click -= CancelHandler;
+
+            YesHandler = (s, e) => { HideConfirm(); yesAction?.Invoke(); };
+            NoHandler = (s, e) => { HideConfirm(); noAction?.Invoke(); };
+            CancelHandler = (s, e) => { HideConfirm(); cancelAction?.Invoke(); };
+
+            BtnYes.Click += YesHandler;
+            BtnNo.Click += NoHandler;
+            BtnCancel.Click += CancelHandler;
+
+            if (this.Resources["ShowConfirm"] is Storyboard sb)
+                sb.Begin(this);
+        }
+
+        public Task<bool?> ShowConfirmAsync(string message)
+        {
+            var tcs = new TaskCompletionSource<bool?>();
+
+            ConfirmText.Text = message;
+            ConfirmOverlay.Visibility = Visibility.Visible;
+            this.Visibility = Visibility.Visible;
+            Panel.SetZIndex(this, 9999);
+            SetWebView2HiddenState(ref _confirmHidesWebView2, true);
+
+            ConfirmPopup.RenderTransform = new ScaleTransform(0.8, 0.8);
+
+            if (YesHandler != null) BtnYes.Click -= YesHandler;
+            if (NoHandler != null) BtnNo.Click -= NoHandler;
+            if (CancelHandler != null) BtnCancel.Click -= CancelHandler;
+
+            YesHandler = (s, e) => { HideConfirm(); tcs.TrySetResult(true); };
+            NoHandler = (s, e) => { HideConfirm(); tcs.TrySetResult(false); };
+            CancelHandler = (s, e) => { HideConfirm(); tcs.TrySetResult(null); };
+
+            BtnYes.Click += YesHandler;
+            BtnNo.Click += NoHandler;
+            BtnCancel.Click += CancelHandler;
+
+            if (this.Resources["ShowConfirm"] is Storyboard sb)
+                sb.Begin(this);
+
+            return tcs.Task;
+        }
+
+        private void HideConfirm()
+        {
+            if (this.Resources["HideConfirm"] is Storyboard sb)
+            {
+                EventHandler onComplete = null;
+                onComplete = (s, e) =>
+                {
+                    ConfirmOverlay.Visibility = Visibility.Collapsed;
+                    SetWebView2HiddenState(ref _confirmHidesWebView2, false);
+                    if (BusyOverlay.Visibility != Visibility.Visible && Math.Abs(Toast.Opacity - 0) < 0.0001)
+                        this.Visibility = Visibility.Collapsed;
+
+                    sb.Completed -= onComplete;
+                };
+
+                sb.Completed += onComplete;
+                sb.Begin(this);
+            }
+            else
+            {
+                // Fallback when storyboard is missing
+                ConfirmOverlay.Visibility = Visibility.Collapsed;
+                SetWebView2HiddenState(ref _confirmHidesWebView2, false);
+                if (BusyOverlay.Visibility != Visibility.Visible && Math.Abs(Toast.Opacity - 0) < 0.0001)
+                    this.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // Add helper methods for blur
+        private void ApplyBlurToSiblings()
+        {
+            try
+            {
+                // find parent panel that contains this overlay
+                if (this.Parent is Panel parentPanel)
+                {
+                    _blurredElements.Clear();
+                    foreach (UIElement child in parentPanel.Children)
+                    {
+                        if (child == this) continue;
+
+                        var originalEffect = child.Effect;
+                        var originalHit = child.IsHitTestVisible;
+
+                        // store original state
+                        _blurredElements.Add((child, originalEffect, originalHit));
+
+                        // apply blur and disable hit testing (overlay + blocker will handle input)
+                        child.Effect = new BlurEffect { Radius = 6 };
+                        child.IsHitTestVisible = false;
+                        SetBlurApplied(child, true);
+                    }
+                }
+                else
+                {
+                    // fallback: try window content
+                    var wnd = Window.GetWindow(this);
+                    if (wnd?.Content is Panel wndPanel)
+                    {
+                        _blurredElements.Clear();
+                        foreach (UIElement child in wndPanel.Children)
+                        {
+                            if (child == this) continue;
+
+                            var originalEffect = child.Effect;
+                            var originalHit = child.IsHitTestVisible;
+                            _blurredElements.Add((child, originalEffect, originalHit));
+
+                            child.Effect = new BlurEffect { Radius = 6 };
+                            child.IsHitTestVisible = false;
+                            SetBlurApplied(child, true);
+                        }
+                    }
+                }
+
+                SetWebView2HiddenState(ref _toastHidesWebView2, true);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ApplyBlurToSiblings failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates whether a given overlay type needs WebView2 hidden, and hides or restores
+        /// WebView2 only when the combined active state across all overlay types actually changes.
+        /// </summary>
+        private void SetWebView2HiddenState(ref bool flag, bool hidden)
+        {
+            bool wasAnyActive = _toastHidesWebView2 || _busyHidesWebView2 || _confirmHidesWebView2;
+            flag = hidden;
+            bool isAnyActive = _toastHidesWebView2 || _busyHidesWebView2 || _confirmHidesWebView2;
+
+            if (!wasAnyActive && isAnyActive)
+            {
+                HideWebView2DescendantsOfSiblings();
+            }
+            else if (wasAnyActive && !isAnyActive)
+            {
+                RestoreHiddenWebView2Descendants();
+            }
+        }
+
+        /// <summary>
+        /// Finds this overlay's sibling elements and hides any WebView2 descendants of each.
+        /// </summary>
+        private void HideWebView2DescendantsOfSiblings()
+        {
+            try
+            {
+                _hiddenWebViewElements.Clear();
+
+                if (this.Parent is Panel parentPanel)
+                {
+                    foreach (UIElement sibling in parentPanel.Children)
+                    {
+                        if (sibling == this) continue;
+                        HideWebView2Descendants(sibling);
+                    }
+                    ForceNativeRepaint();
+                    return;
+                }
+
+                var wnd = Window.GetWindow(this);
+                if (wnd?.Content is Panel wndPanel)
+                {
+                    foreach (UIElement sibling in wndPanel.Children)
+                    {
+                        if (sibling == this) continue;
+                        HideWebView2Descendants(sibling);
+                    }
+                }
+
+                ForceNativeRepaint();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"HideWebView2DescendantsOfSiblings failed: {ex.Message}");
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_ERASE = 0x0004;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+        private const uint RDW_UPDATENOW = 0x0100;
+
+        /// <summary>
+        /// User-confirmed: after WebView2 is hidden, the pixels it last painted stay stuck on
+        /// screen - covering whatever WPF content (e.g. the toast's own close button) is
+        /// underneath - until something else forces a full native repaint (confirmed: widening the
+        /// task pane makes the button reappear immediately, and it never appears on its own).
+        /// WPF's own Visibility/IsVisible/layout state is already correct at the moment this
+        /// happens (see LogToastLayoutDiagnostics - always Visibility=Visible, IsVisible=True) -
+        /// this is specifically the "airspace" limitation already documented elsewhere in this
+        /// file: an HwndHost-backed control like WebView2 is composited by Windows/DWM outside
+        /// WPF's own rendering pipeline, so hiding it at the WPF property level does not
+        /// necessarily invalidate the screen region it previously painted.
+        ///
+        /// Forces exactly the kind of full native repaint a resize would trigger, without actually
+        /// resizing anything: RedrawWindow with RDW_INVALIDATE|RDW_ERASE clears the stale pixels,
+        /// RDW_ALLCHILDREN covers the WebView2 HWND (a child of this control's own HwndSource),
+        /// and RDW_UPDATENOW forces it to happen synchronously rather than waiting for the next
+        /// natural paint cycle.
+        /// </summary>
+        private void ForceNativeRepaint()
+        {
+            try
+            {
+                var hwndSource = System.Windows.Interop.HwndSource.FromVisual(this) as System.Windows.Interop.HwndSource;
+                if (hwndSource != null && hwndSource.Handle != IntPtr.Zero)
+                {
+                    bool result = RedrawWindow(hwndSource.Handle, IntPtr.Zero, IntPtr.Zero, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+                    LogUtility.LogDebug($"ForceNativeRepaint: RedrawWindow on handle {hwndSource.Handle} returned {result}");
+                }
+                else
+                {
+                    LogUtility.LogDebug("ForceNativeRepaint: no HwndSource found for this visual - nothing to repaint.");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"ForceNativeRepaint failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Recursively finds any WebView2 descendants of <paramref name="root"/> and temporarily
+        /// hides them (Visibility.Hidden) so this overlay renders on top of them.
+        /// </summary>
+        private void HideWebView2Descendants(DependencyObject root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (root is Microsoft.Web.WebView2.Wpf.WebView2 webView)
+                {
+                    if (webView.Visibility == Visibility.Visible)
+                    {
+                        webView.Visibility = Visibility.Hidden;
+                        _hiddenWebViewElements.Add(webView);
+                    }
+                    return;
+                }
+
+                int childCount = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+                for (int i = 0; i < childCount; i++)
+                {
+                    HideWebView2Descendants(System.Windows.Media.VisualTreeHelper.GetChild(root, i));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"HideWebView2Descendants failed: {ex.Message}");
+            }
+        }
+
+        private void RestoreHiddenWebView2Descendants()
+        {
+            if (_hiddenWebViewElements.Count == 0)
+            {
+                return;
+            }
+
+            // TEMP DIAGNOSTIC [FocusDiag]: VB.NET never had this problem because it hosts WebView2
+            // natively (WinForms, Dock=Fill) with no WPF overlay ever needing to sit visually "on top"
+            // of it - so it never had to hide/show the control at all. This WPF port hides WebView2
+            // (Visibility.Hidden) while the toast/blur overlay is shown, to work around WPF's
+            // "airspace" limitation (an HWND-backed control like WebView2 always paints on top of WPF
+            // content, so hiding it is how the overlay gets to appear above it) - and restores it here
+            // on dismiss. Setting Visibility back to Visible on a WebView2 that's been Hidden can
+            // require Chromium's renderer to resume from a throttled/backgrounded state and repaint,
+            // which is a known source of multi-second stalls distinct from a simple WPF property set.
+            // Timing this directly to confirm/rule out this specific step as the cause of the reported
+            // "focus takes 4-5s to return after closing the toast" delay.
+            var stopwatch = Stopwatch.StartNew();
+            foreach (var element in _hiddenWebViewElements)
+            {
+                try
+                {
+                    element.Visibility = Visibility.Visible;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogWarn($"Failed to restore WebView2 visibility: {ex.Message}");
+                }
+            }
+            LogUtility.LogDebug($"[FocusDiag] RestoreHiddenWebView2Descendants: Visibility=Visible set on {_hiddenWebViewElements.Count} element(s) at {stopwatch.ElapsedMilliseconds}ms");
+
+            _hiddenWebViewElements.Clear();
+        }
+
+        private void RemoveBlurFromSiblings()
+        {
+            try
+            {
+                SetWebView2HiddenState(ref _toastHidesWebView2, false);
+
+                if (_blurredElements == null || _blurredElements.Count == 0) return;
+
+                foreach (var entry in _blurredElements)
+                {
+                    try
+                    {
+                        if (entry.Element == null) continue;
+                        entry.Element.Effect = entry.OriginalEffect;
+                        entry.Element.IsHitTestVisible = entry.OriginalHitTest;
+                        SetBlurApplied(entry.Element, false);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogWarn($"Restore blur failed for element: {ex.Message}");
+                    }
+                }
+
+                _blurredElements.Clear();
+                // Fallback: if other AppOverlay instances applied blur but didn't
+                // populate our _blurredElements (different instance), clear any
+                // residual blurred elements in all windows that were tagged.
+                try
+                {
+                    if (Application.Current != null)
+                    {
+                        foreach (Window w in Application.Current.Windows)
+                        {
+                            try
+                            {
+                                var root = w?.Content as DependencyObject;
+                                if (root == null) continue;
+                                ClearBlurFromVisualTree(root);
+                            }
+                            catch (Exception ex)
+                            {
+                                LogUtility.LogWarn($"Fallback blur clear failed for window: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogWarn($"Fallback blur clear failed: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"RemoveBlurFromSiblings failed: {ex.Message}");
+            }
+        }
+
+        private void ClearBlurFromVisualTree(DependencyObject node)
+        {
+            if (node == null) return;
+
+            int children = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < children; i++)
+            {
+                try
+                {
+                    var child = System.Windows.Media.VisualTreeHelper.GetChild(node, i);
+                    if (child is UIElement ui)
+                    {
+                        try
+                        {
+                            if (GetBlurApplied(ui) || (ui.Effect is BlurEffect))
+                            {
+                                ui.Effect = null;
+                                ui.IsHitTestVisible = true;
+                                SetBlurApplied(ui, false);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogWarn($"ClearBlurFromVisualTree - UIElement: {ex.Message}");
+                        }
+                    }
+
+                    // Recurse
+                    ClearBlurFromVisualTree(child);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogWarn($"ClearBlurFromVisualTree - child iteration: {ex.Message}");
+                }
+            }
+        }
+    }
+}

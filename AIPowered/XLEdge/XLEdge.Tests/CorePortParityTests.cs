@@ -29,7 +29,28 @@ namespace XLEdge.Tests
             @"Helpers\XLEdgeTempFileCleaner.cs", @"Helpers\CancellationTokenHelper.cs", @"Helpers\ExceptionHelper.cs", @"Helpers\ApiExceptions.cs",
             @"Helpers\XLEdgeOperatorMappings.cs", @"Helpers\EdgeRequestParser.cs", @"Helpers\SerializationHelper.cs",
             @"Models\ReportMetaModels.cs", @"Models\AllModels.cs", @"Models\ApiResult.cs", @"Utilities\StrictCertificateValidator.cs", "XLEdgeAppConstants.cs",
+            // Stage 2c
+            @"Helpers\ApiOperationHelper.cs", @"Helpers\APIHelper.cs", @"Helpers\ExcelWindowHelper.cs", @"Helpers\EnhancedDragDropHelper.cs",
+            @"Utilities\DpiAwareWindow.cs", @"Utilities\MessageFunctions.cs", @"Utilities\WpfUiBootstrapper.cs", @"Converters\WidthPercentageConverter.cs",
+            @"Themes\GlobalStyles.xaml",
+            @"Views\AppOverlay.xaml", @"Views\AppOverlay.xaml.cs",
+            @"Views\XLEdgeCalendar.xaml", @"Views\XLEdgeCalendar.xaml.cs", @"Views\XLEdgeDrilldownReports.xaml", @"Views\XLEdgeDrilldownReports.xaml.cs",
+            @"Views\XLEdgeGLAccountsWindow.xaml", @"Views\XLEdgeGLAccountsWindow.xaml.cs", @"Views\XLEdgeLoginDetails.xaml", @"Views\XLEdgeLoginDetails.xaml.cs",
+            @"Views\XLEdgeMessageWindow.xaml", @"Views\XLEdgeMessageWindow.xaml.cs", @"Views\XLEdgeOptions.xaml", @"Views\XLEdgeOptions.xaml.cs",
+            @"Views\XLEdgeWaitWindow.xaml", @"Views\XLEdgeWaitWindow.xaml.cs",
         };
+
+        /// <summary>Images, compared byte for byte (WPF resources).</summary>
+        internal static readonly string[] Binary = { @"Images\orbit_logo.png", @"Images\OrbitGLSense.ico", @"Images\orbit_bitmap.bmp" };
+
+        /// <summary>
+        /// The one change a verbatim port may carry: pack URIs name the assembly, and the core's is XLEdge.Addin.Core, not XLEdge.
+        /// </summary>
+        private static string AsInTheCore(string original) => original.Replace("/XLEdge;component/", "/XLEdge.Addin.Core;component/");
+
+        /// <summary>The csproj item type each kind of ported file must have.</summary>
+        private static string ItemType(string file) =>
+            file.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase) ? "Page" : Binary.Contains(file) ? "Resource" : "Compile";
 
         /// <summary>Ported with ledgered changes forced by the AppDomain boundary (Stage 2a rulings): must exist, may differ.</summary>
         internal static readonly string[] Adapted =
@@ -49,7 +70,13 @@ namespace XLEdge.Tests
                 string original = Path.Combine(Today, file), copy = Path.Combine(Core, file);
                 if (!File.Exists(original)) problems.Add("no original: " + file);
                 else if (!File.Exists(copy)) problems.Add("not ported: " + file);
-                else if (Normalized(original) != Normalized(copy)) problems.Add("differs from 11.1.2: " + file);
+                else if (AsInTheCore(Normalized(original)) != Normalized(copy)) problems.Add("differs from 11.1.2: " + file);
+            }
+            foreach (string file in Binary)
+            {
+                string original = Path.Combine(Today, file), copy = Path.Combine(Core, file);
+                if (!File.Exists(copy)) problems.Add("not ported: " + file);
+                else if (!File.ReadAllBytes(original).SequenceEqual(File.ReadAllBytes(copy))) problems.Add("differs from 11.1.2: " + file);
             }
             foreach (string file in Adapted.Where(f => !File.Exists(Path.Combine(Core, f))))
                 problems.Add("adapted file missing: " + file);
@@ -60,7 +87,7 @@ namespace XLEdge.Tests
         public void EveryPortedFile_IsCompiledIntoTheCore()
         {
             string project = File.ReadAllText(Path.Combine(Core, "XLEdge.Addin.Core.csproj"));
-            var missing = Verbatim.Concat(Adapted).Where(f => !project.Contains($"<Compile Include=\"{f}\"")).ToList();
+            var missing = Verbatim.Concat(Adapted).Concat(Binary).Where(f => !project.Contains($"<{ItemType(f)} Include=\"{f}\"")).ToList();
             Assert.AreEqual(0, missing.Count, "not in XLEdge.Addin.Core.csproj: " + string.Join(", ", missing));
         }
     }
