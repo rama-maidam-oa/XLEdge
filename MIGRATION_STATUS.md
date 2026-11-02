@@ -3208,3 +3208,20 @@ SubAddress, so `Range("")` threw 0x800A03EC and the download never ran. VB also 
 from the lower-cased ScreenTip. C# was not affected (attachment clicks go to
 `HandleAttachmentDownloadAsync` with the original ScreenTip before any `Range` call); the drilldown path
 in `AddinModule` now falls back to `hyperLink.Range` when `SubAddress` is empty, matching VB.
+
+## 2026-11-02: OISR-22777 - Broadcast button to view broadcast messages after login
+
+Broadcast messages were only shown once, by `ADXExcelTaskPane1.ProcessBroadcastMessagesAsync` right after
+login (and skipped when the login came from GLSense), so there was no way to see them again in the session.
+
+Added `RibEdgeBroadcast` ("Broadcast", ScreenTip "Broadcast Messages", SuperTip "Click to view the latest
+broadcast messages") to the Login group after Logout, using `broadcastmessage.png` appended to
+`ImageList_32X32` (index 11; the existing 11 images verified pixel-identical after the ImageStream
+round-trip). `RibEdgeBroadcast_OnClick` reuses `ADXExcelTaskPane1.BroadcastMessageFromApi` (now `internal`)
+and shows the messages via `MessageFunctions.XLEdgeMessage`, or "No broadcast messages available.". It is
+disabled when logged out / no permission (`XLEdgeRibbonHelper` lists, `RibbonInitialize`, designer
+`Enabled = false`) and enabled once logged in, including a login propagated from GLSense
+(`InvokedFromGLSense`). The login-time popup is unchanged.
+
+**GLSense counterpart**: same button in GLSense 11.1.2 / 11.1.3. **AIPowered XLEdge**: not done yet, noted
+in `AIPoweredXLEdge.md` to carry in.
