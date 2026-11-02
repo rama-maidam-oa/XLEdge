@@ -123,7 +123,11 @@ namespace XLEdge.Addin.Core
         {
             try
             {
-                if (SessionLogin.Restore(_context)) Logger?.LogInfo("AddinEntry.Initialize: the login of the previous core is back.");
+                if (SessionLogin.Restore(_context))
+                {
+                    Logger?.LogInfo("AddinEntry.Initialize: the login of the previous core is back.");
+                    _module?.ReattachGLSense();
+                }
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Initialize (session login)"); }
         }
@@ -248,9 +252,27 @@ namespace XLEdge.Addin.Core
             catch (Exception ex) { Log(ex, "AddinEntry.OnTaskPaneShown"); }
         }
 
-        public void OnLoginFromGLSense(string instanceName, string loginUrl, string token, string userName, bool hasXLEdgePermission) { }
+        /// <summary>GLSense logged in and hands its session over: 11.1.2's InvokedFromGLSense.</summary>
+        public void OnLoginFromGLSense(string instanceName, string loginUrl, string token, string userName, bool hasXLEdgePermission)
+        {
+            try
+            {
+                Logger?.LogDebug("AddinEntry.OnLoginFromGLSense.");
+                ExcelThreadContext.Run(() => _module?.InvokedFromGLSense(instanceName, loginUrl, token, userName, hasXLEdgePermission));
+            }
+            catch (Exception ex) { Log(ex, "AddinEntry.OnLoginFromGLSense"); }
+        }
 
-        public void OnLogoutFromGLSense() { }
+        /// <summary>GLSense logged out: 11.1.2's LogoffFromAddin (XLEdge's own logout sequence).</summary>
+        public void OnLogoutFromGLSense()
+        {
+            try
+            {
+                Logger?.LogDebug("AddinEntry.OnLogoutFromGLSense.");
+                ExcelThreadContext.Run(() => _module?.LogoffFromAddin());
+            }
+            catch (Exception ex) { Log(ex, "AddinEntry.OnLogoutFromGLSense"); }
+        }
 
         public LoginInfo GetLoginInfo() => new LoginInfo();
 

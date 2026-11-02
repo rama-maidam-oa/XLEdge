@@ -147,6 +147,11 @@ namespace XLEdge
                 get => RibbonHelper?.GetControlEnabled(_id) ?? true;
                 set => RibbonHelper?.SetControlEnabled(_id, value);
             }
+            public bool Pressed
+            {
+                get => RibbonHelper?.GetControlPressed(_id) ?? false;
+                set => RibbonHelper?.SetControlPressed(_id, value);
+            }
         }
 
         private static readonly RibbonControl RibSheetLabel = new RibbonControl("RibSheetLabel");
@@ -161,12 +166,230 @@ namespace XLEdge
         private static readonly RibbonControl RibEdgeParamRefresh = new RibbonControl("RibEdgeParamRefresh");
         private static readonly RibbonControl RibEdgeParamRefreshBook = new RibbonControl("RibEdgeParamRefreshBook");
 
-        // GLSense (Stage 2f): 11.1.2 called the sibling add-in here; until then the calls are logged only.
-        public void NotifyGLSenseOfLogin(string authToken, string loginUrl, string userName) =>
-            LogUtility.LogDebug("AddinModule.NotifyGLSenseOfLogin: GLSense login sync is not in the core yet (Stage 2f).");
+        private static readonly RibbonControl RibEdgeDialogBoxLauncher = new RibbonControl("RibEdgeDialogBoxLauncher");
+        private static readonly RibbonControl RibEdgeDebug = new RibbonControl("RibEdgeDebug");
+        private static readonly RibbonControl RibEdgeIncludeOutputData = new RibbonControl("RibEdgeIncludeOutputData");
+        private static readonly RibbonControl RibControlSheet = new RibbonControl("RibControlSheet");
+        private static readonly RibbonControl RibLoginURL = new RibbonControl("RibLoginURL");
 
-        private void NotifyGLSenseOfLogout() =>
-            LogUtility.LogDebug("AddinModule.NotifyGLSenseOfLogout: GLSense logout sync is not in the core yet (Stage 2f).");
+        // ---- GLSense (Stage 2f) -------------------------------------------------------------------------------------------
+        // 11.1.2's three methods below are unchanged; _glSenseAddinInstance is what GetGLSenseAddinObject returns.
+
+        private object _glSenseAddinInstance;
+
+        /// <summary>
+        /// Entry point invoked by the sibling GLSense add-in (via COM reflection: InvokeMember("InvokedFromGLSense", ...))
+        /// after a GLSense login completes, to hand the resulting session over to XLEdge.
+        /// Ported from VB AddinModule.vb's InvokedFromGLSense (lines 192-281).
+        /// </summary>
+        public void InvokedFromGLSense(string eeName, string eeUrl, string eeToken, string eeUser, bool hasXLEdgePermission = true)
+        {
+            const string MethodName = "InvokedFromGLSense";
+            LogUtility.LogDebug($"{MethodName}|Login invoked from GLSense. URL: {eeUrl}. User: {eeUser}.");
+
+            SafeInvokeWpf(() =>
+            {
+                ADXExcelTaskPane1 edgeExcelPane = GetPaneInstance();
+
+                if (!hasXLEdgePermission)
+                {
+                    LogUtility.LogWarn($"{MethodName}|Login from GLSense! User {eeUser} does not have access to XLEdge.");
+                    RibEdgeLogin.Enabled = false;
+                    RibControlSheet.Enabled = false;
+                    RibEdgeDebug.Enabled = false;
+                    RibEdgeIncludeOutputData.Enabled = false;
+                    RibEdgeBroadcast.Enabled = false;
+
+                    if (edgeExcelPane != null && edgeExcelPane.Visible)
+                    {
+                        edgeExcelPane.Activate();
+                        _ = edgeExcelPane.NavigateBlankAsync();
+                        edgeExcelPane.Visible = false;
+                    }
+                    return;
+                }
+
+                try
+                {
+                    if (_glSenseAddinInstance == null)
+                    {
+                        try
+                        {
+                            _glSenseAddinInstance = GetGLSenseAddinObject();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, $"{MethodName}|Failed to resolve GLSense addin object.");
+                            _glSenseAddinInstance = null;
+                        }
+                    }
+
+                    XLEdgeAppState.Instance.LoginUrlName = eeName;
+                    XLEdgeAppState.Instance.LoginUrl = eeUrl;
+                    XLEdgeAppState.Instance.LoginToken = eeToken;
+                    XLEdgeAppState.Instance.LoginUserName = eeUser;
+                    XLEdgeAppState.Instance.LoginFromGLSense = true;
+                    XLEdgeAppState.Instance.IsLoginCompleted = true;
+
+                    RibEdgeLogin.Visible = false;
+                    RibEdgeLogout.Visible = true;
+                    RibEdgeLogout.Caption = eeName;
+
+                    RibEdgeDialogBoxLauncher.Enabled = !string.IsNullOrWhiteSpace(eeUser);
+
+                    RibEdgeDebug.Enabled = true;
+                    RibEdgeDebug.Pressed = false;
+                    RibEdgeIncludeOutputData.Enabled = true;
+                    RibEdgeIncludeOutputData.Pressed = false;
+                    RibEdgeHelp.Enabled = true;
+                    RibEdgeShowHide.Enabled = true;
+                    RibEdgeOptions.Enabled = true;
+                    RibEdgeRefresh.Enabled = true;
+                    RibEdgeRefreshAll.Enabled = true;
+                    RibEdgeParamRefresh.Enabled = true;
+                    RibEdgeParamRefreshBook.Enabled = true;
+                    RibEdgeBroadcast.Enabled = true;
+
+                    if (edgeExcelPane != null && edgeExcelPane.Visible && !string.IsNullOrWhiteSpace(eeToken))
+                    {
+                        edgeExcelPane.Activate();
+                        edgeExcelPane.Text = eeUrl;
+                        _ = edgeExcelPane.RefreshLoginNavigationAsync();
+                    }
+
+                    RibLoginURL.Caption = eeUrl;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"{MethodName}|{ex.Message}");
+                }
+                finally
+                {
+                    XLEdgeAppState.Instance.EdgePaneShown = false;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Ported from ADXExcelTaskPane1.vb's WebCtrl_SourceChanged - the reverse direction of
+        /// InvokedFromGLSense: when a login completes directly through XLEdge's own WebView2 (NOT one
+        /// that originated from GLSense calling InvokedFromGLSense), notify the sibling GLSense add-in
+        /// via reflection so its own session/ribbon can stay in sync with this one. VB calls this
+        /// "GetGLCubeInformation" - the method name is misleading (it doesn't return cube info to
+        /// XLEdge; it hands GLSense the credentials it needs to load its own cube list), kept as-is to
+        /// match the sibling add-in's actual method name.
+        ///
+        /// Guarded, matching VB's own combined condition exactly: only fires once per login (via
+        /// XLEdgeAppState.LoginSentToGLSense, ported from VB's module-level "LoginSentToGLSense" flag)
+        /// and never for a login that originated FROM GLSense in the first place (LoginFromGLSense) -
+        /// GLSense already knows about its own-initiated logins.
+        /// </summary>
+        public void NotifyGLSenseOfLogin(string authToken, string loginUrl, string userName)
+        {
+            const string MethodName = nameof(NotifyGLSenseOfLogin);
+
+            if (XLEdgeAppState.Instance.LoginFromGLSense ||
+                string.IsNullOrWhiteSpace(authToken) ||
+                XLEdgeAppState.Instance.LoginSentToGLSense)
+            {
+                return;
+            }
+
+            try
+            {
+                if (_glSenseAddinInstance == null)
+                {
+                    try
+                    {
+                        _glSenseAddinInstance = GetGLSenseAddinObject();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, $"{MethodName}|Failed to resolve GLSense addin object.");
+                        _glSenseAddinInstance = null;
+                    }
+                }
+
+                if (_glSenseAddinInstance == null)
+                {
+                    return;
+                }
+
+                // Matches VB's ordering exactly: the flag is set BEFORE attempting the reflection call,
+                // so a failed/unavailable GLSense instance doesn't cause this to retry on every
+                // subsequent navigation within the same session.
+                XLEdgeAppState.Instance.LoginSentToGLSense = true;
+
+                try
+                {
+                    _glSenseAddinInstance.GetType().InvokeMember(
+                        "GetGLCubeInformation",
+                        System.Reflection.BindingFlags.InvokeMethod,
+                        null,
+                        _glSenseAddinInstance,
+                        new object[] { authToken, loginUrl, userName });
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"{MethodName}|Failed to invoke GetGLCubeInformation on GLSense addin.");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"{MethodName}|Unexpected error notifying GLSense of login.");
+            }
+        }
+
+        /// <summary>
+        /// Ported from AddinModule.vb's LogOffAllTaskPanesAsync - the symmetric logout counterpart of
+        /// NotifyGLSenseOfLogin: tells the sibling GLSense add-in (via the same cached COM object /
+        /// reflection call) that this XLEdge session has logged out, by invoking its "LogoutSession"
+        /// method. Called from LogoffFromXLEdgeAddin's state-reset block.
+        /// </summary>
+        private void NotifyGLSenseOfLogout()
+        {
+            const string MethodName = nameof(NotifyGLSenseOfLogout);
+
+            if (_glSenseAddinInstance == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _glSenseAddinInstance.GetType().InvokeMember(
+                    "LogoutSession",
+                    System.Reflection.BindingFlags.InvokeMethod,
+                    null,
+                    _glSenseAddinInstance,
+                    Array.Empty<object>());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"{MethodName}|Failed to invoke LogoutSession on GLSense addin.");
+            }
+        }
+
+        /// <summary>
+        /// 11.1.2 returned GLSense's COM object (COMAddIns item "GLSense.AddinModule", when connected). Here it is a stand-in,
+        /// <see cref="GLSenseAddin"/>, with the same two methods: the shell makes the COM call in its own AppDomain (contract 5),
+        /// so no COM object crosses the boundary. Null when GLSense is not connected, as in 11.1.2.
+        /// </summary>
+        public object GetGLSenseAddinObject()
+        {
+            try
+            {
+                XLEdge.Contracts.IXLEdgeContext context = CoreServices.Context;
+                bool connected = context != null && ExcelThreadContext.OnExcelThread(() => context.IsGLSenseConnected());
+                return connected ? new GLSenseAddin() : null;
+            }
+            catch (Exception ex)
+            {
+                // Caller treats null as "GLSense add-in not available", as in 11.1.2.
+                LogUtility.LogDebug($"{nameof(GetGLSenseAddinObject)}: failed to look for the GLSense add-in - {ex.Message}");
+                return null;
+            }
+        }
 
         /// <summary>
         /// 11.1.2's RibEdgeLogout_PropertyChanging: the tab label follows the login state. The shell forwards only Logout's Visible

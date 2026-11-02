@@ -259,6 +259,12 @@ namespace XLEdge.Tests
 
         public void EntryRibbonAction(string action, object parameter) => _entry.OnRibbonAction(action, parameter);
 
+        /// <summary>GLSense's calls, as the shell's InvokedFromGLSense / LogoffFromAddin forward them.</summary>
+        public void EntryLoginFromGLSense(string instanceName, string loginUrl, string token, string userName, bool hasXLEdgePermission) =>
+            _entry.OnLoginFromGLSense(instanceName, loginUrl, token, userName, hasXLEdgePermission);
+
+        public void EntryLogoutFromGLSense() => _entry.OnLogoutFromGLSense();
+
         public bool EntryExcelEvent(string eventName, object[] args) => _entry.OnExcelEvent(eventName, args);
 
         /// <summary>

@@ -117,6 +117,7 @@
     <Compile Include="AddinModule.cs" />
     <Compile Include="AddinModule.Dispatch.cs" />
     <Compile Include="Infrastructure\ExcelThreadContext.cs" />
+    <Compile Include="Infrastructure\GLSenseAddin.cs" />
     <Compile Include="Infrastructure\SessionLogin.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />
     <Compile Include="Helpers\ReportGenerator.cs" />

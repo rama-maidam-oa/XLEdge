@@ -97,6 +97,8 @@ namespace XLEdge.Tests
             "void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj)",
             // OISR-22777 (11.1.2, 02-Nov-2026): the Broadcast button
             "void RibEdgeBroadcast_OnClick(",
+            // Stage 2f: the GLSense sync
+            "void InvokedFromGLSense(string eeName", "void NotifyGLSenseOfLogin(string authToken", "void NotifyGLSenseOfLogout()",
         };
 
         /// <summary>

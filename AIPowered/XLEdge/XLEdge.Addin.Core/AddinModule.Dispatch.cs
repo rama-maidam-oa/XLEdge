@@ -35,6 +35,16 @@ namespace XLEdge
             ["RibEdgeBroadcast"] = (m, pressed) => m.RibEdgeBroadcast_OnClick(null, null, pressed),
         };
 
+        /// <summary>
+        /// Stage 2f: 11.1.2 kept GLSense's object from the first sync to the logout, so its logout told GLSense. A reload drops it:
+        /// when the login this core took over from the previous one was shared with GLSense, it is looked up again now.
+        /// </summary>
+        internal void ReattachGLSense()
+        {
+            if (XLEdgeAppState.Instance.LoginFromGLSense || XLEdgeAppState.Instance.LoginSentToGLSense)
+                _glSenseAddinInstance = GetGLSenseAddinObject();
+        }
+
         /// <summary>A forwarded ribbon click; false when no 11.1.2 handler takes it.</summary>
         internal bool OnRibbonAction(string action, object parameter)
         {
