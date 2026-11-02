@@ -30,7 +30,8 @@ forwarding to its core through the existing `OnRibbonAction` dispatch (no GLSens
 - Neither add-in logs a token: XLEdge's shell logs the method name only; GLSense passes the arguments as `object[]`, which its
   `OnRibbonAction` entry log prints as `System.Object[]`.
 - GLSense changes: AIPowered only, in the `11.1.2` worktree `D:\SQLLite_Test\worktrees\GLSense-11.1.2\AIPowered\GLSense`, local
-  commit, never pushed; `FinalWorkingCode` is reference only (its uncommitted `CLAUDE.md` change is the developer's — untouched).
+  commit, then cherry-picked onto `11.1.3` (main checkout `D:\SQLLite_Test\GLSense`, rebuilt there too), never pushed;
+  `FinalWorkingCode` is reference only (its uncommitted `CLAUDE.md` change is the developer's — untouched).
   GLSense's fix log (`AIPowered\GLSense\CLAUDE.md`) gets an entry, in its numbered style.
 - XLEdge: 0 errors / 0 warnings, full suite green ×3, mutants killed. GLSense: Debug + Release build with no new warnings
   (baseline counted before the change). Local commits only; no Claude attribution.
