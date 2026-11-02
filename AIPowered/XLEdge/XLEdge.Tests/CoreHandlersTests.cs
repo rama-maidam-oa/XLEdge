@@ -198,7 +198,7 @@ namespace XLEdge.Tests
             {
                 p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "ProcessRunning", true);
                 Assert.IsTrue(p.EntryIsBusy(), "a report is running");
-                Assert.IsTrue(((RecordingLogger)context.Logger).Contains("AddinEntry.IsBusy: busy (dialog open=False, handlers running=0, report running=True)."),
+                Assert.IsTrue(((RecordingLogger)context.Logger).Contains("AddinEntry.IsBusy: busy (dialog open=False, handlers running=0, background=0, report running=True)."),
                     "the reason a reload is refused is logged");
                 p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "ProcessRunning", false);
                 Assert.IsFalse(p.EntryIsBusy(), "the report finished");
@@ -251,6 +251,48 @@ namespace XLEdge.Tests
                 p.EntryRibbonAction("RibEdgeIncludeOutputData", false);
                 Assert.AreEqual(false, p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "DebugOutputData"));
             });
+        }
+
+        [TestMethod]
+        public void TrackedBackgroundWork_KeepsTheCoreBusyUntilItEnds()
+        {
+            // Stage 4: the pane's background work (title-command reports, XLSX downloads) runs in Task.Run - a reload must wait.
+            WithCore((p, _) =>
+            {
+                foreach (bool fault in new[] { false, true })
+                {
+                    p.StartTrackedWork();
+                    Assert.IsTrue(p.EntryIsBusy(), "busy while it runs");
+                    p.EndTrackedWork(fault);
+                    Assert.IsTrue(Win32Test.PumpUntil(() => !p.EntryIsBusy(), TimeSpan.FromSeconds(5)), "not busy once it ended (fault=" + fault + ")");
+                }
+            });
+        }
+
+        [TestMethod]
+        public void CountedHandler_KeepsTheCoreBusyWhileTheAsyncVoidHandlerAwaits()
+        {
+            // Stage 4: the pane's WebView2 handlers (login cookies, broadcast, title commands) are async void.
+            WithCore((p, _) =>
+            {
+                p.RaiseCountedHandler();
+                Assert.IsTrue(p.EntryIsBusy(), "busy while the handler awaits");
+                p.EndCountedHandler();
+                Assert.IsTrue(Win32Test.PumpUntil(() => !p.EntryIsBusy(), TimeSpan.FromSeconds(5)), "not busy once it ended");
+            });
+        }
+
+        [TestMethod]
+        public void PaneBackgroundWork_IsTracked()
+        {
+            string pane = File.ReadAllText(Path.Combine(Path.GetDirectoryName(typeof(CoreHandlersTests).Assembly.Location),
+                @"..\..\..\XLEdge.Addin.Core\ADXExcelTaskPane1.cs")).Replace("\r\n", "\n");
+            StringAssert.Contains(CorePortParityTests.MethodText(pane, "void SafeFireAndForget("), "ExcelThreadContext.Track(Task.Run(");
+            string hook = CorePortParityTests.MethodText(pane, "void HookWebViewEvents()");
+            StringAssert.Contains(hook, "SourceChanged += _countedSourceChanged;");
+            StringAssert.Contains(hook, "DocumentTitleChanged += _countedTitleChanged;");
+            StringAssert.Contains(pane, "ExcelThreadContext.Counted<CoreWebView2SourceChangedEventArgs>(WebCtrl_SourceChanged)");
+            StringAssert.Contains(pane, "ExcelThreadContext.Counted<object>(InstanceDocumentTitleChanged)");
         }
 
         [TestMethod]

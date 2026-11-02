@@ -110,7 +110,8 @@ namespace XLEdge.Tests
             "void ADXExcelTaskPane1_HandleCreated(object sender, EventArgs e)", "void ADXExcelTaskPane1_ADXAfterTaskPaneShow(",
             "void HidePaneSafe()", "void RefreshWebViewHeight()", "Task RunOnUIAsync(Action action)", "Task RunOnUIAsync(Func<Task> func)",
             "Task<T> RunOnUIAsync<T>(Func<T> func)", "Task<T> RunOnUIAsync<T>(Func<Task<T>> func)",
-            "void SafeFireAndForget(Func<Task> taskFactory, string context)", "Task EnsureWebViewInitializedAsync()",
+            // Not SafeFireAndForget (Stage 4): it hands its Task.Run to ExcelThreadContext.Track, so a reload waits for it.
+            "Task EnsureWebViewInitializedAsync()",
             "Task<CoreWebView2Environment> GetOrCreateSharedEnvironmentAsync()", "Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()",
             "Task InitializeWebViewInternalAsync()", "Task NavigateToLoginUrlAsync()", "Task<bool> LogoutAsync(string loginUrl, CancellationToken token)",
             "Task ExecuteScriptAsync(string script)", "void CoreWebView2_PermissionRequested(", "void CoreWebView2_ProcessFailed(",

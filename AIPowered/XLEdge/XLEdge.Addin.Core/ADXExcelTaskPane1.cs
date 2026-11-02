@@ -158,6 +158,10 @@ namespace XLEdge
         /// 11.1.2's HookWebViewEvents, with one change: the title-command handler acts only on a page of the logged-in instance
         /// (any page can set document.title, and the pane can be navigated anywhere).
         /// </summary>
+        // Stage 4: the async-void WebView2 handlers run counted (ExcelThreadContext.Counted), so a reload waits while they await.
+        private EventHandler<CoreWebView2SourceChangedEventArgs>? _countedSourceChanged;
+        private EventHandler<object>? _countedTitleChanged;
+
         private void HookWebViewEvents()
         {
             if (_webViewEventsHooked || WebCtrl?.CoreWebView2 == null)
@@ -165,16 +169,18 @@ namespace XLEdge
 
             WebCtrl.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
             WebCtrl.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
-            WebCtrl.CoreWebView2.SourceChanged -= WebCtrl_SourceChanged;
+            _countedSourceChanged ??= ExcelThreadContext.Counted<CoreWebView2SourceChangedEventArgs>(WebCtrl_SourceChanged);
+            _countedTitleChanged ??= ExcelThreadContext.Counted<object>(InstanceDocumentTitleChanged);
+            WebCtrl.CoreWebView2.SourceChanged -= _countedSourceChanged;
             WebCtrl.CoreWebView2.SourceChanged -= RememberHomeOrigin;
-            WebCtrl.CoreWebView2.DocumentTitleChanged -= InstanceDocumentTitleChanged;
+            WebCtrl.CoreWebView2.DocumentTitleChanged -= _countedTitleChanged;
             WebCtrl.CoreWebView2.WebResourceRequested -= WebView_WebResourceRequested;
 
             WebCtrl.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
             WebCtrl.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
-            WebCtrl.CoreWebView2.SourceChanged += WebCtrl_SourceChanged;
+            WebCtrl.CoreWebView2.SourceChanged += _countedSourceChanged;
             WebCtrl.CoreWebView2.SourceChanged += RememberHomeOrigin;
-            WebCtrl.CoreWebView2.DocumentTitleChanged += InstanceDocumentTitleChanged;
+            WebCtrl.CoreWebView2.DocumentTitleChanged += _countedTitleChanged;
             WebCtrl.CoreWebView2.WebResourceRequested += WebView_WebResourceRequested;
 
             WebCtrl.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
@@ -434,7 +440,8 @@ namespace XLEdge
 
         private static void SafeFireAndForget(Func<Task> taskFactory, string context)
         {
-            _ = Task.Run(async () =>
+            // Twin (Stage 4): tracked, so the core counts as busy - a reload waits - while the work runs.
+            ExcelThreadContext.Track(Task.Run(async () =>
             {
                 try
                 {
@@ -444,7 +451,7 @@ namespace XLEdge
                 {
                     LogUtility.LogException(ex, context);
                 }
-            });
+            }));
         }
 
         private async Task EnsureWebViewInitializedAsync()

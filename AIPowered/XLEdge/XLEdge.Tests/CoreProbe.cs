@@ -259,6 +259,34 @@ namespace XLEdge.Tests
 
         public void EntryRibbonAction(string action, object parameter) => _entry.OnRibbonAction(action, parameter);
 
+        private System.Threading.Tasks.TaskCompletionSource<bool> _tracked, _counted;
+
+        /// <summary>ExcelThreadContext.Track of a task that ends when <see cref="EndTrackedWork"/> is called.</summary>
+        public void StartTrackedWork()
+        {
+            _tracked = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            CallStatic("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext", "Track", _tracked.Task);
+        }
+
+        public void EndTrackedWork(bool fault)
+        {
+            if (fault) _tracked.SetException(new InvalidOperationException("background work failed"));
+            else _tracked.SetResult(true);
+        }
+
+        /// <summary>Raises an ExcelThreadContext.Counted async-void handler that awaits until <see cref="EndCountedHandler"/>.</summary>
+        public void RaiseCountedHandler()
+        {
+            _counted = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            System.Threading.Tasks.TaskCompletionSource<bool> gate = _counted;
+            EventHandler<object> handler = async (s, e) => { await gate.Task; };
+            MethodInfo counted = CoreType("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext").GetMethod("Counted").MakeGenericMethod(typeof(object));
+            var wrapped = (EventHandler<object>)counted.Invoke(null, new object[] { handler });
+            wrapped(null, null);
+        }
+
+        public void EndCountedHandler() => _counted.SetResult(true);
+
         /// <summary>ShutdownSteps.RunAll over a, b (throws), c: the steps that ran.</summary>
         public string RunShutdownStepsWithAFailingStep()
         {

@@ -319,10 +319,10 @@ namespace XLEdge.Addin.Core
             try
             {
                 bool dialog = System.Windows.Interop.ComponentDispatcher.IsThreadModal, handlers = ExcelThreadContext.Pending > 0,
-                     report = XLEdgeAppState.Instance.ProcessRunning;
-                if (dialog || handlers || report)
-                    Logger?.LogInfo($"AddinEntry.IsBusy: busy (dialog open={dialog}, handlers running={ExcelThreadContext.Pending}, report running={report}).");
-                return dialog || handlers || report;
+                     background = ExcelThreadContext.Background > 0, report = XLEdgeAppState.Instance.ProcessRunning;
+                if (dialog || handlers || background || report)
+                    Logger?.LogInfo($"AddinEntry.IsBusy: busy (dialog open={dialog}, handlers running={ExcelThreadContext.Pending}, background={ExcelThreadContext.Background}, report running={report}).");
+                return dialog || handlers || background || report;
             }
             catch (Exception ex)
             {

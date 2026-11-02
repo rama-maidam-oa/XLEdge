@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 using XLEdge.Utilities;
 
@@ -39,6 +40,26 @@ namespace XLEdge.Addin.Core.Infrastructure
         }
 
         public static void OnExcelThread(Action call) => OnExcelThread(() => { call(); return true; });
+
+        private static int _background;
+
+        /// <summary>Background tasks handed to <see cref="Track"/> that have not ended yet (Stage 4: the reload busy guard).</summary>
+        public static int Background => Volatile.Read(ref _background);
+
+        /// <summary>Counts <paramref name="task"/> in <see cref="Background"/> until it ends, whatever its outcome.</summary>
+        public static void Track(Task task)
+        {
+            if (task == null) return;
+            Interlocked.Increment(ref _background);
+            task.ContinueWith(_ => Interlocked.Decrement(ref _background), CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// A handler that runs <paramref name="handler"/> under this context (<see cref="Run"/>), so an async-void handler counts
+        /// in <see cref="Pending"/> until it ends - for events the core subscribes to itself (the pane's WebView2).
+        /// </summary>
+        public static EventHandler<T> Counted<T>(EventHandler<T> handler) => (sender, e) => Run(() => handler(sender, e));
 
         /// <summary>Async-void handlers started under this context that have not ended yet.</summary>
         public static int Pending => Volatile.Read(ref _pending);
