@@ -101,6 +101,7 @@
     <Compile Include="ReleaseHistoryStoreTests.cs" />
     <Compile Include="RibbonControllerTests.cs" />
     <Compile Include="RibbonParityTests.cs" />
+    <Compile Include="ShutdownStepsTests.cs" />
     <Compile Include="RemoteScopeCaller.cs" />
     <Compile Include="ResolverProbe.cs" />
     <Compile Include="TempFolder.cs" />

@@ -74,7 +74,12 @@ namespace XLEdge.Addin.Core.Pane
 
         public void CloseAll()
         {
-            foreach (IntPtr excelWindow in _panes.Keys.ToList()) Close(excelWindow);
+            // Each pane in its own try: one WebView2 failing to dispose must not keep the other panes alive into the unload.
+            foreach (IntPtr excelWindow in _panes.Keys.ToList())
+            {
+                try { Close(excelWindow); }
+                catch (Exception ex) { Log(l => l.LogError($"TaskPaneContentHost.CloseAll: closing the pane of window {excelWindow} failed.", ex.ToString())); }
+            }
         }
 
         private void Log(Action<ILogger> write)

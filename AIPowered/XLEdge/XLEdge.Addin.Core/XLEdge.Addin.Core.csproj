@@ -119,6 +119,7 @@
     <Compile Include="Infrastructure\ExcelThreadContext.cs" />
     <Compile Include="Infrastructure\GLSenseAddin.cs" />
     <Compile Include="Infrastructure\SessionLogin.cs" />
+    <Compile Include="Infrastructure\ShutdownSteps.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />
     <Compile Include="Helpers\ReportGenerator.cs" />
     <Compile Include="Helpers\ParamsControlSheetBuilder.cs" />

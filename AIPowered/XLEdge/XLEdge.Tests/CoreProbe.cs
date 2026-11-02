@@ -259,6 +259,20 @@ namespace XLEdge.Tests
 
         public void EntryRibbonAction(string action, object parameter) => _entry.OnRibbonAction(action, parameter);
 
+        /// <summary>ShutdownSteps.RunAll over a, b (throws), c: the steps that ran.</summary>
+        public string RunShutdownStepsWithAFailingStep()
+        {
+            var done = new System.Collections.Generic.List<string>();
+            var steps = new (string, Action)[]
+            {
+                ("a", () => done.Add("a")),
+                ("b", () => throw new InvalidOperationException("b failed")),
+                ("c", () => done.Add("c")),
+            };
+            CallStatic("XLEdge.Addin.Core.Infrastructure.ShutdownSteps", "RunAll", "AddinEntry.Shutdown", steps);
+            return string.Join(",", done);
+        }
+
         /// <summary>GLSense's calls, as the shell's InvokedFromGLSense / LogoffFromAddin forward them.</summary>
         public void EntryLoginFromGLSense(string instanceName, string loginUrl, string token, string userName, bool hasXLEdgePermission) =>
             _entry.OnLoginFromGLSense(instanceName, loginUrl, token, userName, hasXLEdgePermission);

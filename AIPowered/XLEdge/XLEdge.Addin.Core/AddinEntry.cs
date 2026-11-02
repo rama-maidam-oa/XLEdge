@@ -90,17 +90,17 @@ namespace XLEdge.Addin.Core
         {
             try
             {
-                KeepSessionOptions();
-                KeepSessionLogin();
-                // No deferred sheet delete may fire into the unloaded AppDomain.
-                _module?.Shutdown();
-                _module = null;
-                // Every window of this AppDomain goes before the domain is unloaded.
-                _panes?.CloseAll();
-                _panes = null;
-                ShutDownWpf();
-                // Last: everything above may still use Excel; the core's Excel reference must not outlive it.
-                CoreServices.Shutdown();
+                // Each step in its own try (ShutdownSteps): a failing one must not keep the later ones from running.
+                ShutdownSteps.RunAll("AddinEntry.Shutdown",
+                    ("session options", KeepSessionOptions),
+                    ("session login", KeepSessionLogin),
+                    // No deferred sheet delete may fire into the unloaded AppDomain.
+                    ("module", () => { AddinModule module = _module; _module = null; module?.Shutdown(); }),
+                    // Every window of this AppDomain goes before the domain is unloaded.
+                    ("panes", () => { TaskPaneContentHost panes = _panes; _panes = null; panes?.CloseAll(); }),
+                    ("wpf", ShutDownWpf),
+                    // Last: everything above may still use Excel; the core's Excel reference must not outlive it.
+                    ("core services", CoreServices.Shutdown));
                 Logger?.LogInfo("AddinEntry.Shutdown: XLEdge core shut down.");
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Shutdown"); }
