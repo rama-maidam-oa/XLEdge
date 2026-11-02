@@ -199,6 +199,22 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void TheCore_NeverUsesTheShellsComProxies()
+        {
+            // The context's ExcelApp and GetGLSenseAddinInstance() hand out the shell's COM objects as remoting proxies: their
+            // lease cannot be made infinite and late-bound calls through them are unreliable. The core uses its own Excel RCW
+            // (contract 2) and asks the shell to call GLSense (contract 5).
+            var proxyUse = new System.Text.RegularExpressions.Regex(@"\b(Context|context|_context)\??\.ExcelApp\b|GetGLSenseAddinInstance\(");
+            var found = Directory.GetFiles(Core, "*.cs", SearchOption.AllDirectories)
+                .Where(f => !f.Contains(@"\obj\") && !f.Contains(@"\bin\"))
+                .SelectMany(f => File.ReadAllLines(f).Select((line, i) => (f, i, line)))
+                .Where(x => proxyUse.IsMatch(x.line))
+                .Select(x => $"{x.f.Substring(Core.Length + 1)}:{x.i + 1}: {x.line.Trim()}")
+                .ToList();
+            Assert.AreEqual(0, found.Count, string.Join(Environment.NewLine, found));
+        }
+
+        [TestMethod]
         public void EveryPortedFile_IsCompiledIntoTheCore()
         {
             string project = File.ReadAllText(Path.Combine(Core, "XLEdge.Addin.Core.csproj"));
