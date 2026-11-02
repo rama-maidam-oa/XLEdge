@@ -152,6 +152,7 @@ namespace XLEdge
         private static readonly RibbonControl RibSheetLabel = new RibbonControl("RibSheetLabel");
         private static readonly RibbonControl RibEdgeLogin = new RibbonControl("RibEdgeLogin");
         private static readonly RibbonControl RibEdgeLogout = new RibbonControl("RibEdgeLogout");
+        private static readonly RibbonControl RibEdgeBroadcast = new RibbonControl("RibEdgeBroadcast");
         private static readonly RibbonControl RibEdgeRefresh = new RibbonControl("RibEdgeRefresh");
         private static readonly RibbonControl RibEdgeRefreshAll = new RibbonControl("RibEdgeRefreshAll");
         private static readonly RibbonControl RibEdgeShowHide = new RibbonControl("RibEdgeShowHide");
@@ -1962,6 +1963,7 @@ namespace XLEdge
                 RibEdgeHelp.Enabled = false;
                 RibEdgeParamRefresh.Enabled = false;
                 RibEdgeParamRefreshBook.Enabled = false;
+                RibEdgeBroadcast.Enabled = false;
             }
             catch (Exception ex)
             {
@@ -1996,6 +1998,29 @@ namespace XLEdge
             catch (Exception ex)
             {
                 LogUtility.LogException(ex);
+            }
+        }
+
+        private async void RibEdgeBroadcast_OnClick(object sender, object control, bool pressed)
+        {
+            LogUtility.LogDebug("RibEdgeBroadcast_OnClick clicked.");
+            try
+            {
+                if (!XLEdgeAppState.Instance.IsLoginCompleted || string.IsNullOrWhiteSpace(XLEdgeAppState.Instance.LoginUrl))
+                    return;
+
+                using var cts = new CancellationHelper();
+                string apiUrl = XLEdgeAppState.Instance.LoginUrl.Trim() + "/web/secure/get-broadcast-msg";
+                string broadcastMsg = await ADXExcelTaskPane1.BroadcastMessageFromApi(apiUrl, cts.GetToken());
+
+                if (string.IsNullOrWhiteSpace(broadcastMsg))
+                    MessageFunctions.XLEdgeMessage("No broadcast messages available.", MessageBoxIcon.Information);
+                else
+                    MessageFunctions.XLEdgeMessage(broadcastMsg, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Error showing broadcast messages.");
             }
         }
 

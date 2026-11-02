@@ -11,7 +11,7 @@ namespace XLEdge.Tests
     /// <summary>
     /// A stand-in XLEdge instance on localhost for the pane (TcpListener: needs no URL reservation): its pages, the requests it got.
     /// Every page sets document.title to "ready" once loaded, then runs <see cref="AfterReady"/> (script) - how a test drives the
-    /// title commands and the login. /web/secure/get-broadcast-msg answers "[]"; /web/secure/applogout a plain page.
+    /// title commands and the login. /web/secure/get-broadcast-msg answers <see cref="Broadcast"/> ("[]"); /web/secure/applogout a plain page.
     /// </summary>
     internal sealed class InstanceServer : IDisposable
     {
@@ -29,6 +29,9 @@ namespace XLEdge.Tests
 
         /// <summary>Script the page runs after its "ready" title (null: nothing).</summary>
         public string AfterReady { get; set; }
+
+        /// <summary>What /web/secure/get-broadcast-msg answers (JSON).</summary>
+        public string Broadcast { get; set; } = "[]";
 
         /// <summary>A Set-Cookie value sent with the page (null: none).</summary>
         public string Cookie { get; set; }
@@ -79,7 +82,7 @@ namespace XLEdge.Tests
                     if (path.StartsWith("/web/secure/get-broadcast-msg", StringComparison.Ordinal))
                     {
                         contentType = "application/json";
-                        payload = "[]";
+                        payload = Broadcast;
                     }
                     else if (path.StartsWith("/favicon", StringComparison.Ordinal))
                     {

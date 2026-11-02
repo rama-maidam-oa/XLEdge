@@ -1,7 +1,7 @@
 # AIPowered XLEdge — migration status and how to continue
 
 Resume with: **"continue AIPoweredXLEdge.md"**. Read this file first, then the spec and the next stage's plan, and pick up at
-"Next step" below. Last updated: 2026-10-29, after Stage 2e (commit `fd0f2c9`).
+"Next step" below. Last updated: 2026-11-02, after OISR-22777 (Broadcast button) was carried in from 11.1.2.
 
 ## What this is
 
@@ -44,8 +44,9 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 | 2c | Windows, theme, WPF-UI, ApiHelper in the core; session bag (contract 3) so session-only options survive a reload | `1eb92ed` |
 | 2d | Report engine verbatim (ReportGenerator, ParamsControlSheetBuilder, XLEdgeParamsBuilder, DrilldownRequestBuilder, ReportParameterRequestSerializer, ProgressCoordinator); core `XLEdge.AddinModule` with 11.1.2's handlers (method-parity test); ribbon/Excel-event dispatch; `ExcelThreadContext` (continuations on Excel's thread, IsBusy while handlers/reports run) | `e7fa5aa` |
 | 2e | 11.1.2's task pane (`ADXExcelTaskPane1`) as the core's pane content; Server Configuration + About; login, logout of all panes, Show/Hide, Param Refresh; contract 4 (pane of a given Excel window); title commands only from the instance's origin; login survives a reload (session value `XLEdge.Login`) | `fd0f2c9` |
+| 22777 | 11.1.2 merged into this branch (reference = 11.1.2 at `eb78362`); OISR-22777 **Broadcast** ribbon button: shell ribbon regenerated (`make_designer.py` / `make_resx.py`), click forwarded to the core's verbatim `RibEdgeBroadcast_OnClick`, state lists (core helper + shell `RibbonControlIds`), `RibbonInitialize`; new test: every shell ribbon click forwards its own id | see `git log` |
 
-Test suite now: **285 tests — 279 pass, 6 Inconclusive** (the real-Excel tests, see "Machine notes").
+Test suite now: **287 tests — 281 pass, 6 Inconclusive** (the real-Excel tests, see "Machine notes").
 
 ## Next step (where we stopped)
 
@@ -58,6 +59,8 @@ Test suite now: **285 tests — 279 pass, 6 Inconclusive** (the real-Excel tests
    5. Hide the pane → Reload Add-in → Show/Hide: pane back, logged in. Reload with the pane open: logs in by itself.
    6. Logout: every pane hides; next Login asks for credentials.
    7. Number/date formats on a non-English region (OISR-22663/22696); empty attachment cells (OISR-22766/22767).
+   8. Broadcast (OISR-22777): disabled logged out, enabled after Login; click shows the instance's messages or
+      "No broadcast messages available."; still enabled after a Reload Add-in while logged in.
    Fix whatever it finds (with a test) before 2f.
 2. Then **Stage 2f** — on the developer's "proceed".
 
@@ -71,6 +74,8 @@ Test suite now: **285 tests — 279 pass, 6 Inconclusive** (the real-Excel tests
     replace the logging stubs `AddinModule.NotifyGLSenseOfLogin` / `NotifyGLSenseOfLogout` with real calls through
     `IXLEdgeContext.GetGLSenseAddinInstance()` (not `Marshal.GetActiveObject`); shell keeps `InvokedFromGLSense` public/COM-visible
     and forwards to the core (spec §6.5).
+  - With `InvokedFromGLSense`, port 11.1.2's two OISR-22777 lines: `RibEdgeBroadcast.Enabled = true` on a GLSense login,
+    `false` on no-permission (the core already has the `RibEdgeBroadcast` RibbonControl field).
 - **3** — remaining pane/login items not covered by 2e, if the Excel check finds any (spec §5 phase 3 was pulled into 2e).
 - **4 — Remoting hardening** (spec §5): leases, cached Workbook/Sheet in async chains, fire-and-forget entry points, Shutdown of
   running reports, 5 s unload cap review, IsBusy guard review.

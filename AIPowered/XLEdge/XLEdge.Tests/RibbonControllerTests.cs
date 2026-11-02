@@ -24,6 +24,7 @@ namespace XLEdge.Tests
         {
             private FakeControl RibEdgeLogin = new FakeControl("idLogin");
             private FakeControl RibEdgeLogout = new FakeControl("idLogout");
+            private FakeControl RibEdgeBroadcast = new FakeControl("idBroadcast");
             private FakeControl RibEdgeDialogBoxLauncher = new FakeControl("idDbl");
             private FakeControl RibEdgeRefresh = new FakeControl("idRefresh");
             private FakeControl RibEdgeRefreshAll = new FakeControl("idRefreshAll");
@@ -71,7 +72,8 @@ namespace XLEdge.Tests
         }
 
         private static readonly string[] Feature8 =
-            { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp" };
+            { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp",
+              "RibEdgeBroadcast" }; // OISR-22777: Broadcast follows the login like the other eight
 
         [TestMethod]
         public void PaneOfAnExcelWindow_GoesToThatWindowsPane()

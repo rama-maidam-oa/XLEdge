@@ -131,7 +131,9 @@ namespace XLEdge.Tests
                 foreach (string button in new[] { "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeOptions", "RibEdgeDialogBoxLauncher", "RibEdgeHelp",
                                                   "RibControlSheet", "RibEdgeIncludeOutputData", "RibEdgeDebug",
                                                   // Stage 2e
-                                                  "RibEdgeLogin", "RibEdgeShowHide", "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeAbout" })
+                                                  "RibEdgeLogin", "RibEdgeShowHide", "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeAbout",
+                                                  // OISR-22777
+                                                  "RibEdgeBroadcast" })
                     p.EntryRibbonAction(button, true);
                 p.EntryRibbonAction("RibEdgeLogout_PropertyChanging", "Visible");
                 p.StopAnsweringMessages();
@@ -261,6 +263,37 @@ namespace XLEdge.Tests
                     p.EntryRibbonAction(button, null);
                 p.StopAnsweringMessages();
                 CollectionAssert.AreEqual(Enumerable.Repeat("Please log in to the instance.", 3).ToArray(), p.MessagesShown());
+            });
+        }
+
+        [TestMethod]
+        public void Broadcast_ShowsTheInstancesMessages_AsInXLEdge11_1_2()
+        {
+            // OISR-22777: the ribbon's Broadcast button asks the instance for its messages and shows them, or says there are none.
+            WithCore((p, _) =>
+            {
+                using (var instance = new InstanceServer())
+                {
+                    p.AnswerMessages();
+                    p.EntryRibbonAction("RibEdgeBroadcast", null);
+                    Assert.IsFalse(Win32Test.PumpUntil(() => p.MessagesShown().Length > 0, TimeSpan.FromSeconds(1)), "logged out: nothing shown");
+
+                    p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "LoginUrl", instance.Url + " ");
+                    p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "IsLoginCompleted", true);
+                    p.EntryRibbonAction("RibEdgeBroadcast", null);
+                    Assert.IsTrue(Win32Test.PumpUntil(() => p.MessagesShown().Length == 1, TimeSpan.FromSeconds(15)), "no messages");
+
+                    instance.Broadcast = "[{\"msgType\":\"Alert\",\"message\":\"Maintenance at 6 PM\"},{\"message\":\"Welcome\"}]";
+                    p.EntryRibbonAction("RibEdgeBroadcast", null);
+                    Assert.IsTrue(Win32Test.PumpUntil(() => p.MessagesShown().Length == 2, TimeSpan.FromSeconds(15)), "two messages");
+                    p.StopAnsweringMessages();
+
+                    CollectionAssert.AreEqual(new[] { "No broadcast messages available.", "1.) Alert : Maintenance at 6 PM" + Environment.NewLine + "2.) Info : Welcome" },
+                                              p.MessagesShown());
+                    Assert.AreEqual(2, instance.Requests.Count(r => r.StartsWith("POST /web/secure/get-broadcast-msg ", StringComparison.Ordinal)),
+                                    "one request per click once logged in, none before");
+                    Assert.IsFalse(p.EntryIsBusy());
+                }
             });
         }
 

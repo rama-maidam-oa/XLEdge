@@ -185,6 +185,7 @@ namespace XLEdge
 
         private void RibLogin_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeLogin);
         private void RibEdgeLogout_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeLogout);
+        private void RibEdgeBroadcast_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeBroadcast);
         private void RibEdgeLogout_PropertyChanging(object sender, ADXRibbonPropertyChangingEventArgs e)
         {
             // Today's add-in updates the sheet label only when Logout is shown or hidden (the login state changed).

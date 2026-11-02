@@ -10,6 +10,7 @@ namespace XLEdge
     {
         public const string RibEdgeLogin = "RibEdgeLogin";
         public const string RibEdgeLogout = "RibEdgeLogout";
+        public const string RibEdgeBroadcast = "RibEdgeBroadcast";
         public const string RibLoginURL = "RibLoginURL";
         public const string RibEdgeDialogBoxLauncher = "RibEdgeDialogBoxLauncher";
         public const string RibEdgeRefresh = "RibEdgeRefresh";
@@ -33,7 +34,7 @@ namespace XLEdge
         public static readonly ReadOnlyCollection<string> LoggedOutDisabled = new ReadOnlyCollection<string>(new[]
         {
             RibEdgeDialogBoxLauncher, RibEdgeRefresh, RibEdgeRefreshAll, RibEdgeParamRefresh, RibEdgeShowHide,
-            RibEdgeIncludeOutputData, RibEdgeOptions, RibEdgeHelp,
+            RibEdgeIncludeOutputData, RibEdgeOptions, RibEdgeHelp, RibEdgeBroadcast,
         });
 
         /// <summary>Enabled while logged out.</summary>
@@ -47,6 +48,7 @@ namespace XLEdge
         {
             RibEdgeDialogBoxLauncher, RibEdgeRefresh, RibEdgeRefreshAll, RibEdgeParamRefresh, RibEdgeShowHide,
             RibEdgeIncludeOutputData, RibEdgeOptions, RibEdgeHelp, RibEdgeLogin, RibEdgeDebug, RibControlSheet, RibEdgeAbout,
+            RibEdgeBroadcast,
         });
     }
 }

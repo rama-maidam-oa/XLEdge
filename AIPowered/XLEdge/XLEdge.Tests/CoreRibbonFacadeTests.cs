@@ -145,7 +145,7 @@ namespace XLEdge.Tests
             {
                 core.Context.DebugMode = true;
                 core.Call("ApplyState", "LoggedOut");
-                var expected = Feature8.Select(id => $"Enabled:{id}=False")
+                var expected = Feature8.Concat(new[] { "RibEdgeBroadcast" }).Select(id => $"Enabled:{id}=False")
                     .Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }.Select(id => $"Enabled:{id}=True"))
                     .Concat(new[] { "Visible:RibEdgeLogin=True", "Visible:RibEdgeLogout=False", "Pressed:RibEdgeDebug=False", "Pressed:RibEdgeIncludeOutputData=False",
                         "Label:RibEdgeLogin=Login", "InvalidateAll" }).ToArray();
@@ -164,7 +164,7 @@ namespace XLEdge.Tests
                 core.Context.DebugMode = true;
                 core.Call("ApplyState", "NoXLEdePermission");
                 var expected = new[] { "Pressed:RibEdgeIncludeOutputData=False", "Pressed:RibEdgeDebug=False" }
-                    .Concat(Feature8.Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }).Select(id => $"Enabled:{id}=False"))
+                    .Concat(Feature8.Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout", "RibEdgeBroadcast" }).Select(id => $"Enabled:{id}=False"))
                     .Concat(new[] { "InvalidateAll" }).ToArray();
                 CollectionAssert.AreEqual(expected, core.Ribbon.Calls);
                 Assert.IsFalse(core.Context.DebugMode, "an un-pressed Debug button means debug logging is off");
@@ -178,7 +178,7 @@ namespace XLEdge.Tests
             {
                 core.Probe.OnSingleton(State, "Instance", "LoginUrlName", "Production");
                 core.Call("ApplyState", "LoggedIn");
-                var expected = Feature8.Select(id => $"Enabled:{id}=True")
+                var expected = Feature8.Concat(new[] { "RibEdgeBroadcast" }).Select(id => $"Enabled:{id}=True")
                     .Concat(new[] { "Visible:RibEdgeLogin=False", "Visible:RibEdgeLogout=True", "Pressed:RibEdgeIncludeOutputData=False",
                         "Label:RibEdgeLogout=Production", "InvalidateAll" }).ToArray();
                 CollectionAssert.AreEqual(expected, core.Ribbon.Calls, "not logged in yet: no workbook-dependent state");

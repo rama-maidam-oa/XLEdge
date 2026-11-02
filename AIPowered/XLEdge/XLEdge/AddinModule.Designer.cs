@@ -36,7 +36,8 @@ namespace XLEdge
             this.ImageList_HotReload16 = new System.Windows.Forms.ImageList(this.components);
             this.ImageList_HotReload32 = new System.Windows.Forms.ImageList(this.components);
             this.RibEdgeLogout = new AddinExpress.MSO.ADXRibbonButton(this.components);
-            this.RibLoginURL = new AddinExpress.MSO.ADXRibbonLabel(this.components);
+            this.RibEdgeBroadcast = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibLoginURL =new AddinExpress.MSO.ADXRibbonLabel(this.components);
             this.RibEdgeDialogBoxLauncher = new AddinExpress.MSO.ADXRibbonDialogBoxLauncher(this.components);
             this.adxRibbonGroup2 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibEdgeRefresh = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -84,6 +85,7 @@ namespace XLEdge
             this.adxRibbonGroup1.Caption = "Login";
             this.adxRibbonGroup1.Controls.Add(this.RibEdgeLogin);
             this.adxRibbonGroup1.Controls.Add(this.RibEdgeLogout);
+            this.adxRibbonGroup1.Controls.Add(this.RibEdgeBroadcast);
             this.adxRibbonGroup1.Controls.Add(this.RibLoginURL);
             this.adxRibbonGroup1.Controls.Add(this.RibEdgeDialogBoxLauncher);
             this.adxRibbonGroup1.Id = "adxRibbonGroup_e94df3d8ba104947b30c6d3bc39c8901";
@@ -118,6 +120,7 @@ namespace XLEdge
             this.ImageList_32X32.Images.SetKeyName(8, "create-control-panel-01.png");
             this.ImageList_32X32.Images.SetKeyName(9, "About.png");
             this.ImageList_32X32.Images.SetKeyName(10, "Help.png");
+            this.ImageList_32X32.Images.SetKeyName(11, "broadcastmessage.png");
             // 
             // ImageList_HotReload16
             // 
@@ -142,6 +145,20 @@ namespace XLEdge
             this.RibEdgeLogout.SuperTip = "Click to logout";
             this.RibEdgeLogout.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibEdgeLogout_OnClick);
             this.RibEdgeLogout.PropertyChanging += new AddinExpress.MSO.ADXRibbonPropertyChanging_EventHandler(this.RibEdgeLogout_PropertyChanging);
+            //
+            // RibEdgeBroadcast
+            //
+            this.RibEdgeBroadcast.Caption = "Broadcast";
+            this.RibEdgeBroadcast.Enabled = false;
+            this.RibEdgeBroadcast.Id = "adxRibbonButton_4f0b6d2c8e1a4c7f9a3e5b8d2c6f1a90";
+            this.RibEdgeBroadcast.Image = 11;
+            this.RibEdgeBroadcast.ImageList = this.ImageList_32X32;
+            this.RibEdgeBroadcast.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibEdgeBroadcast.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibEdgeBroadcast.ScreenTip = "Broadcast Messages";
+            this.RibEdgeBroadcast.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
+            this.RibEdgeBroadcast.SuperTip = "Click to view the latest broadcast messages";
+            this.RibEdgeBroadcast.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibEdgeBroadcast_OnClick);
             // 
             // RibLoginURL
             // 
@@ -439,6 +456,7 @@ namespace XLEdge
         private AddinExpress.MSO.ADXExcelAppEvents adxExcelAppEvents1;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeLogin;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeLogout;
+        private AddinExpress.MSO.ADXRibbonButton RibEdgeBroadcast;
         private AddinExpress.MSO.ADXRibbonLabel RibLoginURL;
         private AddinExpress.MSO.ADXRibbonDialogBoxLauncher RibEdgeDialogBoxLauncher;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeRefresh;

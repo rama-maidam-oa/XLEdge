@@ -31,6 +31,8 @@ namespace XLEdge
             ["RibEdgeParamRefresh"] = (m, pressed) => m.RibEdgeParamRefresh_OnClick(null, null, pressed),
             ["RibEdgeParamRefreshBook"] = (m, pressed) => m.RibEdgeParamRefreshBook_OnClick(null, null, pressed),
             ["RibEdgeAbout"] = (m, pressed) => m.RibEdgeAbout_OnClick(null, null, pressed),
+            // OISR-22777
+            ["RibEdgeBroadcast"] = (m, pressed) => m.RibEdgeBroadcast_OnClick(null, null, pressed),
         };
 
         /// <summary>A forwarded ribbon click; false when no 11.1.2 handler takes it.</summary>

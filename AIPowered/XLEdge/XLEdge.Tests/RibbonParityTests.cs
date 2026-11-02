@@ -19,7 +19,7 @@ namespace XLEdge.Tests
             "TabXLEdge",
             "adxRibbonGroup1", "adxRibbonGroup2", "adxRibbonGroup3", "adxRibbonGroup4", "adxRibbonGroup5", "adxRibbonGroup6",
             "adxRibbonGroup7", "adxRibbonGroup8", "adxRibbonGroup9",
-            "RibEdgeLogin", "RibEdgeLogout", "RibLoginURL", "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll",
+            "RibEdgeLogin", "RibEdgeLogout", "RibEdgeBroadcast", "RibLoginURL", "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll",
             "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeShowHide", "RibEdgeDebug", "RibEdgeIncludeOutputData",
             "RibEdgeOptions", "RibControlSheet", "RibEdgeAbout", "RibEdgeHelp", "RibSheetLabel",
         };
@@ -109,6 +109,32 @@ namespace XLEdge.Tests
             string shellResx = Path.Combine(Path.GetDirectoryName(ShellDesigner), "AddinModule.resx");
             foreach (string key in new[] { "ImageList_32X32.ImageStream", "RibEdgeRefresh.SuperTip", "RibEdgeRefreshAll.SuperTip", "RibControlSheet.SuperTip" })
                 Assert.AreEqual(ResxValue(todayResx, key).Value.Trim(), ResxValue(shellResx, key).Value.Trim(), key);
+        }
+
+        [TestMethod]
+        public void EveryRibbonClick_ForwardsItsOwnControlToTheCore()
+        {
+            // The shell's click handlers only forward the control's id; a copy-pasted id would run another button's handler in the core.
+            string module = File.ReadAllText(Path.Combine(Path.GetDirectoryName(ShellDesigner), "AddinModule.cs")).Replace("\r\n", "\n");
+            string[] lines = module.Split('\n');
+            var wiring = new Regex(@"^\s*this\.(?<control>\w+)\.On(Click|Action) \+= new AddinExpress\.MSO\.ADXRibbonOnAction_EventHandler\(this\.(?<handler>\w+)\);");
+            var problems = new List<string>();
+            int checkedCount = 0;
+            foreach (Match m in File.ReadAllLines(ShellDesigner).Select(l => wiring.Match(l)).Where(m => m.Success))
+            {
+                string control = m.Groups["control"].Value, handler = m.Groups["handler"].Value;
+                if (control == "RibReload" || control == "RibVersionHistory") continue; // shell-only, not forwarded
+                int start = Array.FindIndex(lines, l => Regex.IsMatch(l, @"^\s{8}private void " + handler + @"\(object sender, IRibbonControl control, bool pressed\)"));
+                if (start < 0) { problems.Add(handler + ": not in the shell's AddinModule.cs"); continue; }
+                int end = Array.FindIndex(lines, start + 1, l => Regex.IsMatch(l, @"^\s{8}(private|internal|public|protected)\b|^\s{8}//"));
+                string body = string.Join("\n", lines.Skip(start).Take((end < 0 ? lines.Length : end) - start));
+                string[] forwarded = Regex.Matches(body, @"Forward\(RibbonControlIds\.(\w+)").Cast<Match>().Select(f => f.Groups[1].Value).ToArray();
+                if (forwarded.Length != 1 || forwarded[0] != control)
+                    problems.Add($"{control} -> {handler} forwards [{string.Join(", ", forwarded)}]");
+                checkedCount++;
+            }
+            Assert.AreEqual(0, problems.Count, string.Join(Environment.NewLine, problems));
+            Assert.AreEqual(15, checkedCount, "every forwarded button of today's ribbon (Broadcast included) is checked");
         }
 
         [TestMethod]

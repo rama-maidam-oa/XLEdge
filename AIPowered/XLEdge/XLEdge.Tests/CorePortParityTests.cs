@@ -95,6 +95,8 @@ namespace XLEdge.Tests
             "void RibEdgeParamRefreshBook_OnClick(", "Task RefreshBookParametersAsync(string runId, ADXExcelTaskPane1 taskPane)",
             "void RibEdgeParamRefresh_OnClick(", "Task RefreshParametersAsync(string runId, ADXExcelTaskPane1 taskPane)",
             "void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj)",
+            // OISR-22777 (11.1.2, 02-Nov-2026): the Broadcast button
+            "void RibEdgeBroadcast_OnClick(",
         };
 
         /// <summary>
