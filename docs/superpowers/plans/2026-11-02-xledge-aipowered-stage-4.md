@@ -45,13 +45,13 @@ fixed where the split put them: `AddinEntry` (start/shutdown), `AddinDomainLoade
    core that would have half-worked is not loaded — the user gets an error and can reload or roll back.
 2. **A stuck unload still loads the next core, and says so** (Task 3): refusing would leave XLEdge without a core. *If
    wrong:* one message box the user may not need.
+3. **Background pane work counts as busy** (Task 4): `SafeFireAndForget` (11.1.2's title-command reports, XLSX downloads,
+   multi-report runs) tracks its task in `ExcelThreadContext`; this is the one verbatim method adapted. *If wrong:* a reload
+   is refused while a background download finishes.
 4. **The run's workbook is captured where the run starts** (Task 6): in `ExcelBulkOperationScope` (every report and refresh
    opens one before its first await), plus around the multi-report and Refresh All loops; only `ActiveWorkbook` reads
    change, through declared parity substitutions. *If wrong:* a run started while one workbook is active and meant for
    another (none known) would go to the first.
-3. **Background pane work counts as busy** (Task 4): `SafeFireAndForget` (11.1.2's title-command reports, XLSX downloads,
-   multi-report runs) tracks its task in `ExcelThreadContext`; this is the one verbatim method adapted. *If wrong:* a reload
-   is refused while a background download finishes.
 
 ## Review Focus
 
