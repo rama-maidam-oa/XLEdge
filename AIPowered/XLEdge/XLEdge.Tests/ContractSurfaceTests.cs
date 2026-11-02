@@ -43,7 +43,7 @@ namespace XLEdge.Tests
         public void ContractInfo_IsStaticWithTheCurrentVersion()
         {
             Assert.IsTrue(typeof(ContractInfo).IsAbstract && typeof(ContractInfo).IsSealed, "ContractInfo must be a static class");
-            Assert.AreEqual(4, ContractInfo.Version, "4: IRibbonController, the pane of an Excel window (Stage 2e)");
+            Assert.AreEqual(5, ContractInfo.Version, "5: IXLEdgeContext, the shell calls GLSense (Stage 2f)");
             AssertMembers(typeof(ContractInfo), "field const int Version");
         }
 
@@ -143,7 +143,8 @@ namespace XLEdge.Tests
                 "string Version {get;set;}", "string ReleaseDate {get;set;}", "string ActiveFolderName {get;set;}",
                 "string ShellVersion {get;}", "void SetRibbonController(IRibbonController controller)",
                 "object GetGLSenseAddinInstance()", "IntPtr GetExcelDispatch()",
-                "string GetSessionValue(string key)", "void SetSessionValue(string key, string value)");
+                "string GetSessionValue(string key)", "void SetSessionValue(string key, string value)",
+                "bool IsGLSenseConnected()", "void CallGLSense(string method, object[] args)");
         }
 
         [TestMethod]

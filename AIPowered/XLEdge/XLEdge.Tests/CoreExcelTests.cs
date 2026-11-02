@@ -35,6 +35,8 @@ namespace XLEdge.Tests
             public string ShellVersion => "11.1.2.0";
             public void SetRibbonController(IRibbonController controller) => RibbonController = controller;
             public object GetGLSenseAddinInstance() => null;
+            public bool IsGLSenseConnected() => false;
+            public void CallGLSense(string method, object[] args) { }
             public string GetSessionValue(string key) => null;
             public void SetSessionValue(string key, string value) { }
         }

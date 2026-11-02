@@ -76,6 +76,83 @@ namespace XLEdge.Tests
             }
         }
 
+        /// <summary>Stands in for GLSense's AddinModule: the two methods XLEdge 11.1.2 calls, late-bound.</summary>
+        public sealed class GLSenseRecorder
+        {
+            public readonly System.Collections.Generic.List<string> Calls = new System.Collections.Generic.List<string>();
+            public Exception Throw { get; set; }
+            public void GetGLCubeInformation(string token, string url, string userName)
+            {
+                if (Throw != null) throw Throw;
+                Calls.Add($"GetGLCubeInformation|{token}|{url}|{userName}");
+            }
+            public void LogoutSession()
+            {
+                if (Throw != null) throw Throw;
+                Calls.Add("LogoutSession");
+            }
+        }
+
+        [TestMethod]
+        public void Context_GLSense_IsConnected_FollowsConnect()
+        {
+            using (var t = new TempFolder())
+            {
+                var excel = new FakeExcel();
+                using (var context = new XLEdgeContext(excel, new PathProvider(t.Combine("inst"), t.Combine("data"))))
+                {
+                    Assert.IsTrue(context.IsGLSenseConnected());
+                    excel.COMAddIns.Only.Connect = false;
+                    Assert.IsFalse(context.IsGLSenseConnected());
+                    excel.COMAddIns.Only.Connect = true;
+                    excel.COMAddIns.Only.ProgId = "Other.AddinModule";
+                    Assert.IsFalse(context.IsGLSenseConnected());
+                }
+            }
+        }
+
+        [TestMethod]
+        public void Context_CallGLSense_InvokesTheConnectedAddin()
+        {
+            using (var t = new TempFolder())
+            {
+                var excel = new FakeExcel();
+                var glSense = new GLSenseRecorder();
+                excel.COMAddIns.Only.Object = glSense;
+                using (var context = new XLEdgeContext(excel, new PathProvider(t.Combine("inst"), t.Combine("data"))))
+                {
+                    context.CallGLSense("GetGLCubeInformation", new object[] { "tok", "http://x", "u" });
+                    context.CallGLSense("LogoutSession", new object[0]);
+                    excel.COMAddIns.Only.Connect = false;
+                    context.CallGLSense("LogoutSession", null);
+                }
+                CollectionAssert.AreEqual(new[] { "GetGLCubeInformation|tok|http://x|u", "LogoutSession" }, glSense.Calls,
+                    "both calls in order; nothing while GLSense is disconnected");
+            }
+        }
+
+        [TestMethod]
+        public void Context_CallGLSense_FailureComesBackAsInvalidOperation()
+        {
+            using (var t = new TempFolder())
+            {
+                var excel = new FakeExcel();
+                excel.COMAddIns.Only.Object = new GLSenseRecorder { Throw = new System.Runtime.InteropServices.COMException("boom") };
+                var paths = new PathProvider(t.Combine("inst"), t.Combine("data"));
+                using (var context = new XLEdgeContext(excel, paths))
+                {
+                    var ex = Assert.ThrowsExactly<InvalidOperationException>(
+                        () => context.CallGLSense("GetGLCubeInformation", new object[] { "tok", "http://x", "u" }));
+                    StringAssert.Contains(ex.Message, "GetGLCubeInformation");
+                    StringAssert.Contains(ex.Message, "boom");
+                    Assert.IsNull(ex.InnerException, "only serializable data crosses back to the core");
+                }
+                string log = string.Join("\n", Directory.GetFiles(paths.Logs).Select(File.ReadAllText));
+                StringAssert.Contains(log, "GetGLCubeInformation");
+                Assert.IsFalse(log.Contains("tok"), "the token is never logged");
+            }
+        }
+
         /// <summary>Uses a context from another AppDomain, the way a core does (through the remoting proxy).</summary>
         public sealed class RemoteSessionUser : MarshalByRefObject
         {

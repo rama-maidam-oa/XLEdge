@@ -38,6 +38,18 @@ namespace XLEdge.Contracts
         object GetGLSenseAddinInstance();
 
         /// <summary>
+        /// Contract 5: true when the GLSense add-in is loaded and connected (looked up now).
+        /// </summary>
+        bool IsGLSenseConnected();
+
+        /// <summary>
+        /// Contract 5: calls <paramref name="method"/> of the GLSense add-in's COM object (looked up now) with
+        /// <paramref name="args"/> (strings), in the shell's AppDomain, so no COM object crosses to the core. Does nothing when
+        /// GLSense is not connected; a failed call comes back as an InvalidOperationException naming the method.
+        /// </summary>
+        void CallGLSense(string method, object[] args);
+
+        /// <summary>
         /// An AddRef'ed IDispatch pointer of <see cref="ExcelApp"/> (IntPtr.Zero when there is none); the caller releases it.
         /// The core builds its own RCW from it (same process, so the pointer is valid in every AppDomain): calls then go
         /// straight to Excel instead of through a remoting proxy of the shell's RCW.

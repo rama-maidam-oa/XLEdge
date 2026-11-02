@@ -50,6 +50,39 @@ namespace XLEdge
         /// The GLSense add-in's COM object (COMAddIns item "GLSense.AddinModule", when connected), or null. Looked up on every
         /// call: GLSense can be disconnected or reconnected during the session.
         /// </summary>
+        public bool IsGLSenseConnected()
+        {
+            object glSense = GetGLSenseAddinInstance();
+            ReleaseComObject(glSense);
+            return glSense != null;
+        }
+
+        /// <summary>See <see cref="IXLEdgeContext.CallGLSense"/>. Only the method name is logged: the arguments carry the login token.</summary>
+        public void CallGLSense(string method, object[] args)
+        {
+            object glSense = GetGLSenseAddinInstance();
+            if (glSense == null)
+            {
+                Logger.LogDebug($"XLEdgeContext.CallGLSense: GLSense is not connected; {method} not called.");
+                return;
+            }
+            try
+            {
+                glSense.GetType().InvokeMember(method, BindingFlags.InvokeMethod, null, glSense, args ?? new object[0]);
+                Logger.LogDebug($"XLEdgeContext.CallGLSense: {method} called.");
+            }
+            catch (Exception ex)
+            {
+                Exception cause = ex is TargetInvocationException && ex.InnerException != null ? ex.InnerException : ex;
+                Logger.LogWarn($"XLEdgeContext.CallGLSense: GLSense {method} failed: {cause.Message}");
+                throw new InvalidOperationException($"GLSense {method} failed: {cause.Message}");
+            }
+            finally
+            {
+                ReleaseComObject(glSense);
+            }
+        }
+
         public object GetGLSenseAddinInstance()
         {
             object addins = null;

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using XLEdge.Contracts;
 
 namespace XLEdge.Tests
@@ -25,6 +26,18 @@ namespace XLEdge.Tests
         public string ShellVersion { get; set; } = "11.1.2.0";
         public void SetRibbonController(IRibbonController controller) => RibbonController = controller;
         public object GetGLSenseAddinInstance() => null;
+        /// <summary>Contract 5: GLSense as the shell sees it - connected or not, the calls made, or a failing GLSense.</summary>
+        public bool GLSenseConnected { get; set; }
+        public bool GLSenseThrows { get; set; }
+        private readonly System.Collections.Generic.List<string> _glSenseCalls = new System.Collections.Generic.List<string>();
+        public string[] GLSenseCalls { get { lock (_glSenseCalls) return _glSenseCalls.ToArray(); } }
+        public bool IsGLSenseConnected() => GLSenseConnected;
+        public void CallGLSense(string method, object[] args)
+        {
+            if (!GLSenseConnected) return;
+            if (GLSenseThrows) throw new InvalidOperationException("GLSense " + method + " failed: boom");
+            lock (_glSenseCalls) _glSenseCalls.Add(string.Join("|", new[] { method }.Concat((args ?? new object[0]).Select(a => Convert.ToString(a)))));
+        }
         /// <summary>As the shell hands Excel over (an AddRef'ed IDispatch) when ExcelApp is a COM object - a real Excel in the Excel tests.</summary>
         public IntPtr GetExcelDispatch() =>
             ExcelApp != null && System.Runtime.InteropServices.Marshal.IsComObject(ExcelApp) ? System.Runtime.InteropServices.Marshal.GetIDispatchForObject(ExcelApp) : IntPtr.Zero;
