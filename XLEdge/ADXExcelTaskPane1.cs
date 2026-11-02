@@ -770,7 +770,7 @@ namespace XLEdge
             }
         }
 
-        private static async Task<string> BroadcastMessageFromApi(string apiUrl, CancellationToken ct)
+        internal static async Task<string> BroadcastMessageFromApi(string apiUrl, CancellationToken ct)
         {
             try
             {

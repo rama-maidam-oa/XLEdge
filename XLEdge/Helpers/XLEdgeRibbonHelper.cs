@@ -19,6 +19,7 @@ namespace XLEdge.Helpers
         private const string RibEdgeHelp = "RibEdgeHelp";
         private const string RibEdgeLogin = "RibEdgeLogin";
         private const string EibEdgeLogout = "RibEdgeLogout";
+        private const string RibEdgeBroadcast = "RibEdgeBroadcast";
         private const string RibEdgeDebug = "RibEdgeDebug";
         private const string RibControlSheet = "RibControlSheet";
         private const string RibEdgeAbout = "RibEdgeAbout";
@@ -32,7 +33,8 @@ namespace XLEdge.Helpers
             RibEdgeShowHide,
             RibEdgeIncludeOutputData,
             RibEdgeOptions,
-            RibEdgeHelp
+            RibEdgeHelp,
+            RibEdgeBroadcast
         };
 
         private static readonly string[] LoggedOutEnabledControls =
@@ -52,7 +54,8 @@ namespace XLEdge.Helpers
             RibEdgeShowHide,
             RibEdgeIncludeOutputData,
             RibEdgeOptions,
-            RibEdgeHelp
+            RibEdgeHelp,
+            RibEdgeBroadcast
         };
 
         private static readonly string[] NoPermissionDisabledControls =
@@ -68,7 +71,8 @@ namespace XLEdge.Helpers
             RibEdgeLogin,
             RibEdgeDebug,
             RibControlSheet,
-            RibEdgeAbout
+            RibEdgeAbout,
+            RibEdgeBroadcast
         };
 
         private const string StateLoggedOut = "LoggedOut";
