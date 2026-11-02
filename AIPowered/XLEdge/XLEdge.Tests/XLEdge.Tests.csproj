@@ -81,6 +81,7 @@
     <Compile Include="CoreWindowsTests.cs" />
     <Compile Include="CoreGLSenseTests.cs" />
     <Compile Include="CoreHandlersTests.cs" />
+    <Compile Include="GLSenseSourceTests.cs" />
     <Compile Include="CoreHandlersExcelTests.cs" />
     <Compile Include="HostWindowsTests.cs" />
     <Compile Include="LoaderBasicsTests.cs" />
