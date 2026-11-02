@@ -1698,8 +1698,8 @@
         {
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:XLEdge"
-        "ProductCode" = "8:{915FACA0-E3E0-4931-B0D6-781B494B361C}"
-        "PackageCode" = "8:{8FB13533-FD26-4E1E-9415-2EC7E12964B8}"
+        "ProductCode" = "8:{6EBE1C47-662B-421A-9006-97ABB05D2777}"
+        "PackageCode" = "8:{DD5490F6-F6E4-42B9-8A18-4DF4B407F2F9}"
         "UpgradeCode" = "8:{D090F1E0-CA8E-4529-B78D-981652FFF708}"
         "AspNetVersion" = "8:4.0.30220.0"
         "RestartWWWService" = "11:FALSE"
