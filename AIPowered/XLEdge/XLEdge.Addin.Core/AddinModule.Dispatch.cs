@@ -45,6 +45,17 @@ namespace XLEdge
                 _glSenseAddinInstance = GetGLSenseAddinObject();
         }
 
+        /// <summary>
+        /// GLSense asked XLEdge to log out: 11.1.2's LogoffFromAddin, whose logoff it starts and does not wait for. Here the entry
+        /// runs it as an async-void handler that awaits the logoff, so ExcelThreadContext counts it and the core stays busy - a
+        /// reload waits instead of saving the half-reset login for the next core.
+        /// </summary>
+        internal async void LogoffFromGLSense()
+        {
+            LogUtility.LogDebug("LogoffFromAddin|Logout invoked from GLSense.");
+            await LogoffFromAddinAsync();
+        }
+
         /// <summary>A forwarded ribbon click; false when no 11.1.2 handler takes it.</summary>
         internal bool OnRibbonAction(string action, object parameter)
         {

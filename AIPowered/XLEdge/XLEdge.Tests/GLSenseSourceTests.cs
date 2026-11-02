@@ -34,7 +34,11 @@ namespace XLEdge.Tests
                                                     "OnRibbonAction(\"LoginFromXLEdge\", new object[] { token, url, userName })",
                                                     "OnRibbonAction(\"LogoutFromXLEdge\", null)" })
                     if (!shellText.Contains(expected)) problems.Add($"{shell}: missing {expected}");
-                foreach (string expected in new[] { "case \"LoginFromXLEdge\":", "case \"LogoutFromXLEdge\":" })
+                foreach (string expected in new[] { "case \"LoginFromXLEdge\":", "case \"LogoutFromXLEdge\":",
+                                                    // Its own Logout running: XLEdge's call back must not clear LoginUrl/LoginToken under it.
+                                                    "_ownLogoutRunning = true;", "if (_ownLogoutRunning)",
+                                                    // XLEdge logged out while the cube call ran: the late answer is dropped.
+                                                    "if (AppState.Instance.LoginToken != token)" })
                     if (!coreText.Contains(expected)) problems.Add($"{core}: missing {expected}");
             }
             if (found == 0) Assert.Inconclusive("No GLSense AIPowered checkout on this machine.");

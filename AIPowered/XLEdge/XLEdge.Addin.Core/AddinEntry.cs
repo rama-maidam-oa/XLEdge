@@ -263,13 +263,13 @@ namespace XLEdge.Addin.Core
             catch (Exception ex) { Log(ex, "AddinEntry.OnLoginFromGLSense"); }
         }
 
-        /// <summary>GLSense logged out: 11.1.2's LogoffFromAddin (XLEdge's own logout sequence).</summary>
+        /// <summary>GLSense logged out: 11.1.2's LogoffFromAddin (XLEdge's own logout sequence), counted as running until it ends.</summary>
         public void OnLogoutFromGLSense()
         {
             try
             {
                 Logger?.LogDebug("AddinEntry.OnLogoutFromGLSense.");
-                ExcelThreadContext.Run(() => _module?.LogoffFromAddin());
+                ExcelThreadContext.Run(() => _module?.LogoffFromGLSense());
             }
             catch (Exception ex) { Log(ex, "AddinEntry.OnLogoutFromGLSense"); }
         }

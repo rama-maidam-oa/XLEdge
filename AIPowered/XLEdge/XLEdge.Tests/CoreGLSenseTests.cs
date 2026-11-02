@@ -144,6 +144,21 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void LogoutFromGLSense_KeepsTheCoreBusyUntilItEnds()
+        {
+            // A reload waits while the core is busy: during a logoff GLSense started, it must not save the half-done login
+            // (IsLoginCompleted is reset only at the end) for the next core to start LoggedIn while GLSense is logged out.
+            WithCore((p, context) =>
+            {
+                p.EntryLoginFromGLSense("Prod", "http://x", "tok", "u", true);
+                Assert.IsTrue(Win32Test.PumpUntil(() => (bool)AppState(p, "IsLoginCompleted"), Wait), "logged in");
+                p.EntryLogoutFromGLSense();
+                Assert.IsTrue(p.EntryIsBusy(), "busy while the logoff runs");
+                Assert.IsTrue(Win32Test.PumpUntil(() => !(bool)AppState(p, "IsLoginCompleted") && !p.EntryIsBusy(), Wait), "logged out, then not busy");
+            });
+        }
+
+        [TestMethod]
         public void Logout_TellsGLSense_OnlyAfterASharedLogin()
         {
             WithCore((p, context) =>
