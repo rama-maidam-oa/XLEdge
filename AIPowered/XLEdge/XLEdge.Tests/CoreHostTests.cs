@@ -48,8 +48,9 @@ namespace XLEdge.Tests
             public FakeLoader(Recorder r) { _r = r; }
             public Func<ResolvedRelease, IXLEdgeAddin> OnLoad;
             public bool ThrowOnUnload;
+            public bool UnloadResult = true;
             public IXLEdgeAddin Load(IXLEdgeContext context, ResolvedRelease release) { _r.Add("Load:" + release.FolderName); return OnLoad(release); }
-            public void Unload(IXLEdgeContext context) { _r.Add("Unload"); if (ThrowOnUnload) throw new InvalidOperationException("unload failed"); }
+            public bool Unload(IXLEdgeContext context) { _r.Add("Unload"); if (ThrowOnUnload) throw new InvalidOperationException("unload failed"); return UnloadResult; }
         }
 
         private sealed class FakeCatalog : IReleaseCatalog
@@ -226,6 +227,21 @@ namespace XLEdge.Tests
             Assert.AreEqual("vB", s.Context.ActiveFolderName);
             var sessions = s.Log.Lines.Where(l => l.StartsWith("SESSION")).ToArray();
             CollectionAssert.AreEqual(new[] { "SESSION | begin ver-vA", "SESSION | end ver-vA", "SESSION | begin ver-vB" }, sessions);
+        }
+
+        [TestMethod]
+        public void Reload_PreviousCoreStuck_NextCoreLoadsAndTheUserIsTold()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            s.Loader.UnloadResult = false;
+            Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")), "the next core still loads");
+            Assert.AreSame(s.Addins["vB"], s.Host.Addin);
+            CollectionAssert.AreEqual(new[] { "Reload XLEdge Add-in: The previous XLEdge core version did not close within 5 seconds. XLEdge keeps working; restart Excel before installing or switching versions again." }, s.Ui.Errors);
+
+            s.Loader.UnloadResult = true;
+            Assert.IsTrue(s.Host.Reload(() => Setup.Release("vA")));
+            Assert.AreEqual(1, s.Ui.Errors.Count, "told once - this unload finished");
         }
 
         [TestMethod]

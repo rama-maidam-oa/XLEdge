@@ -117,6 +117,53 @@ namespace XLEdge.Tests
             }
         }
 
+        /// <summary>Created in the core's domain: a thread there that sits in native code (an unload cannot abort it meanwhile).</summary>
+        public sealed class StuckThread : MarshalByRefObject
+        {
+            [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+            private static extern void Sleep(uint milliseconds);
+
+            public void Start(int milliseconds)
+            {
+                var thread = new System.Threading.Thread(() => Sleep((uint)milliseconds)) { IsBackground = true };
+                thread.Start();
+                System.Threading.Thread.Sleep(200);
+            }
+        }
+
+        [TestMethod]
+        public void Unload_Normal_ReturnsTrue()
+        {
+            using (var f = new Fixture())
+            {
+                var release = f.Stage("v1");
+                f.Loader.Load(f.Context, release);
+                Assert.IsTrue(f.Loader.Unload(f.Context));
+                Assert.IsTrue(f.Loader.Unload(f.Context), "nothing loaded: nothing left to unload");
+            }
+        }
+
+        [TestMethod]
+        public void Unload_DomainThreadStuckInNativeCode_ReturnsFalseWithinTheCap()
+        {
+            using (var f = new Fixture())
+            {
+                var release = f.Stage("v1");
+                f.Loader.Load(f.Context, release);
+                var domain = (AppDomain)typeof(AddinDomainLoader).GetField("_domain", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(f.Loader);
+                var stuck = (StuckThread)domain.CreateInstanceFromAndUnwrap(typeof(StuckThread).Assembly.Location, typeof(StuckThread).FullName);
+                stuck.Start(9000);
+
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                Assert.IsFalse(f.Loader.Unload(f.Context));
+                Assert.IsTrue(watch.Elapsed < TimeSpan.FromSeconds(6.5), "returned at the cap: " + watch.Elapsed);
+                Assert.IsTrue(f.Log.Contains("did not unload within 5 s"), f.Log.Dump());
+
+                f.Loader.Load(f.Context, release);
+                Assert.IsNotNull(f.Loader.CurrentDomainName, "the next core still loads");
+            }
+        }
+
         [TestMethod]
         public void Load_CoreStartThrows_LoadThrowsAndDomainIsUnloaded()
         {

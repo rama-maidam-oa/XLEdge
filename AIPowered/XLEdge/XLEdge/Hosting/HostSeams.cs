@@ -70,7 +70,8 @@ namespace XLEdge.Hosting
     internal interface ICoreLoader
     {
         IXLEdgeAddin Load(IXLEdgeContext context, ResolvedRelease release);
-        void Unload(IXLEdgeContext context);
+        /// <summary>False when the core did not unload (within the loader's cap) - it may still hold its files.</summary>
+        bool Unload(IXLEdgeContext context);
     }
 
     /// <summary>Chooses and remembers the release to load (UpdateBootstrapper in the add-in).</summary>
@@ -85,7 +86,7 @@ namespace XLEdge.Hosting
         private readonly AddinDomainLoader _loader;
         public DomainCoreLoader(AddinDomainLoader loader) { _loader = loader; }
         public IXLEdgeAddin Load(IXLEdgeContext context, ResolvedRelease release) => _loader.Load(context, release);
-        public void Unload(IXLEdgeContext context) => _loader.Unload(context);
+        public bool Unload(IXLEdgeContext context) => _loader.Unload(context);
     }
 
     internal sealed class BootstrapperReleaseCatalog : IReleaseCatalog

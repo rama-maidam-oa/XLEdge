@@ -18,6 +18,7 @@ namespace XLEdge.Hosting
     {
         private const string StartTitle = "XLEdge";
         private const string ReloadTitle = "Reload XLEdge Add-in";
+        internal const string StuckUnloadMessage = "The previous XLEdge core version did not close within 5 seconds. XLEdge keeps working; restart Excel before installing or switching versions again.";
 
         private readonly IXLEdgeContext _context;
         private readonly ICoreLoader _loader;
@@ -108,12 +109,13 @@ namespace XLEdge.Hosting
                 catch (Exception ex) { Log(l => l.LogWarn("CoreHost.Reload: the progress window could not be shown: " + ex.Message)); }
 
                 string error = null;
-                bool reloaded = false;
+                bool reloaded = false, stuckUnload = false;
                 try
                 {
                     Stage(progress, 1, "Closing the current XLEdge session...");
                     if (old != null) Log(l => l.EndReleaseSession(_context.Version, _context.ReleaseDate));
-                    UnloadCore(old, "CoreHost.Reload");
+                    bool unloaded = UnloadCore(old, "CoreHost.Reload");
+                    if (!unloaded) stuckUnload = true;
 
                     Stage(progress, 2, "Finding the selected XLEdge version...");
                     ResolvedRelease release = null;
@@ -175,6 +177,12 @@ namespace XLEdge.Hosting
                 {
                     Log(l => l.LogError("CoreHost.Reload: " + error));
                     _ui.ShowError(error, ReloadTitle);
+                }
+                else if (reloaded && stuckUnload)
+                {
+                    // The new core runs; the old one may still hold its files (a later update would fail to replace them).
+                    Log(l => l.LogWarn("CoreHost.Reload: the previous core did not unload in time; the user is told."));
+                    _ui.ShowError(StuckUnloadMessage, ReloadTitle);
                 }
                 return reloaded;
             }
@@ -249,7 +257,8 @@ namespace XLEdge.Hosting
             return null;
         }
 
-        private void UnloadCore(IXLEdgeAddin old, string caller)
+        /// <summary>Shuts the core down and unloads it; false when the unload did not finish (or failed).</summary>
+        private bool UnloadCore(IXLEdgeAddin old, string caller)
         {
             Addin = null;
             if (old != null)
@@ -259,9 +268,15 @@ namespace XLEdge.Hosting
                 try { old.Shutdown(); }
                 catch (Exception ex) { Log(l => l.LogError(caller + ": the core's Shutdown failed.", ex.ToString())); }
             }
-            try { _loader.Unload(_context); }
-            catch (Exception ex) { Log(l => l.LogError(caller + ": unloading the core failed.", ex.ToString())); }
+            bool unloaded;
+            try { unloaded = _loader.Unload(_context); }
+            catch (Exception ex)
+            {
+                Log(l => l.LogError(caller + ": unloading the core failed.", ex.ToString()));
+                unloaded = false;
+            }
             ClearRelease();
+            return unloaded;
         }
 
         private void ClearRelease()

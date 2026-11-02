@@ -87,11 +87,12 @@ namespace XLEdge.Loader.Core
 
         /// <summary>
         /// Unloads the core's AppDomain, waiting at most 5 seconds (AppDomain.Unload can block forever on a thread stuck in a
-        /// COM call; it runs on a background thread so it can never keep Excel alive). Never throws.
+        /// COM call; it runs on a background thread so it can never keep Excel alive). Never throws. True when the domain is gone
+        /// (or none was loaded); false when it did not unload in time or the unload failed - its files may stay locked.
         /// Never call it from inside a call that came from the core (a core-to-shell callback): that thread still has core frames
         /// on its stack and the unload would abort it.
         /// </summary>
-        public void Unload(IXLEdgeContext context)
+        public bool Unload(IXLEdgeContext context)
         {
             ILogger logger = SafeLogger(context);
             AppDomain domain = _domain;
@@ -101,7 +102,7 @@ namespace XLEdge.Loader.Core
             if (domain == null)
             {
                 logger?.LogDebug("AddinDomainLoader.Unload: no XLEdge core loaded.");
-                return;
+                return true;
             }
 
             try
@@ -110,13 +111,17 @@ namespace XLEdge.Loader.Core
                 // Observe a late failure so it never surfaces as an unobserved task exception.
                 unload.ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
                 if (unload.Wait(UnloadTimeout))
+                {
                     logger?.LogInfo($"AddinDomainLoader.Unload: AppDomain unloaded ('{name}').");
-                else
-                    logger?.LogError($"AddinDomainLoader.Unload: AppDomain '{name}' did not unload within {UnloadTimeout.TotalSeconds:0} s - continuing; it may still be torn down in the background.");
+                    return true;
+                }
+                logger?.LogError($"AddinDomainLoader.Unload: AppDomain '{name}' did not unload within {UnloadTimeout.TotalSeconds:0} s - continuing; it may still be torn down in the background.");
+                return false;
             }
             catch (Exception ex)
             {
                 logger?.LogError($"AddinDomainLoader.Unload: error unloading AppDomain '{name}'.", ex.ToString());
+                return false;
             }
         }
 
