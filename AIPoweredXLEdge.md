@@ -1,7 +1,7 @@
 # AIPowered XLEdge — migration status and how to continue
 
 Resume with: **"continue AIPoweredXLEdge.md"**. Read this file first, then the spec and the next stage's plan, and pick up at
-"Next step" below. Last updated: 2026-11-02, after OISR-22777 (Broadcast button) was carried in from 11.1.2.
+"Next step" below. Last updated: 2026-11-02, after Stage 2f (XLEdge ↔ GLSense login/logout sync, both code bases).
 
 ## What this is
 
@@ -45,8 +45,9 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 | 2d | Report engine verbatim (ReportGenerator, ParamsControlSheetBuilder, XLEdgeParamsBuilder, DrilldownRequestBuilder, ReportParameterRequestSerializer, ProgressCoordinator); core `XLEdge.AddinModule` with 11.1.2's handlers (method-parity test); ribbon/Excel-event dispatch; `ExcelThreadContext` (continuations on Excel's thread, IsBusy while handlers/reports run) | `e7fa5aa` |
 | 2e | 11.1.2's task pane (`ADXExcelTaskPane1`) as the core's pane content; Server Configuration + About; login, logout of all panes, Show/Hide, Param Refresh; contract 4 (pane of a given Excel window); title commands only from the instance's origin; login survives a reload (session value `XLEdge.Login`) | `fd0f2c9` |
 | 22777 | 11.1.2 merged into this branch (reference = 11.1.2 at `eb78362`); OISR-22777 **Broadcast** ribbon button: shell ribbon regenerated (`make_designer.py` / `make_resx.py`), click forwarded to the core's verbatim `RibEdgeBroadcast_OnClick`, state lists (core helper + shell `RibbonControlIds`), `RibbonInitialize`; new test: every shell ribbon click forwards its own id | see `git log` |
+| 2f | XLEdge ↔ GLSense login/logout sync. XLEdge core: 11.1.2's `InvokedFromGLSense` / `NotifyGLSenseOfLogin` / `NotifyGLSenseOfLogout` verbatim; `GetGLSenseAddinObject` returns `GLSenseAddin`, which asks the shell to make the COM call (contract 5); GLSense-started logoff counted as busy; a reload re-attaches GLSense. GLSense AIPowered (11.1.2 worktree `8879b28`, `7489d20`, `2dbe4e9`; 11.1.3 main checkout `02adf7d`, `b16b76a`): shell `GetGLCubeInformation` / `LogoutSession` → core `LoginFromXLEdge` / `LogoutFromXLEdge` | see `git log` |
 
-Test suite now: **287 tests — 281 pass, 6 Inconclusive** (the real-Excel tests, see "Machine notes").
+Test suite now: **302 tests — 296 pass, 6 Inconclusive** (the real-Excel tests, see "Machine notes").
 
 ## Next step (where we stopped)
 
@@ -61,21 +62,21 @@ Test suite now: **287 tests — 281 pass, 6 Inconclusive** (the real-Excel tests
    7. Number/date formats on a non-English region (OISR-22663/22696); empty attachment cells (OISR-22766/22767).
    8. Broadcast (OISR-22777): disabled logged out, enabled after Login; click shows the instance's messages or
       "No broadcast messages available."; still enabled after a Reload Add-in while logged in.
-   Fix whatever it finds (with a test) before 2f.
-2. Then **Stage 2f** — on the developer's "proceed".
+   9. GLSense sync (2f) — GLSense AIPowered built and registered as usual (its post-build signs; Claude only compiled it
+      unsigned in a temp export): both add-ins in one Excel:
+      - Login in GLSense → XLEdge logged in, ribbon LoggedIn with the instance name, Broadcast enabled; if XLEdge's pane is
+        open it navigates with the shared login.
+      - Login in XLEdge by itself → GLSense `PartialLoggedIn` with its cubes (no Excel freeze while they load).
+      - Logout in GLSense → XLEdge logged out too; GLSense shows **one** logout message and no "unexpected error".
+      - Logout in XLEdge → GLSense LoggedOut.
+      - GLSense login for a user without XLEdge permission → XLEdge stays logged out, its Login disabled.
+      - GLSense not loaded → XLEdge login/logout work, nothing shown (log has a warning).
+      - Logged in through GLSense → Reload Add-in (XLEdge) → Logout in XLEdge → GLSense logged out too.
+   Fix whatever it finds (with a test) before Stage 4.
+2. Then **Stage 3** (only if the Excel check finds pane/login gaps) or **Stage 4** — on the developer's "proceed".
 
 ## Pending stages
 
-- **2f — XLEdge ↔ GLSense calls, in both AIPowered code bases** (refer to 11.1.2 XLEdge and GLSense for the calls):
-  - GLSense AIPowered 11.1.2 must expose `GetGLCubeInformation(token, url, user)` and `LogoutSession()` (today only GLSense
-    `FinalWorkingCode` has them, so XLEdge→GLSense sync fails silently against AIPowered GLSense). GLSense changes go on its
-    checked-out **`11.1.2`** branch, local only; `FinalWorkingCode` is reference only.
-  - XLEdge core: fill `AddinEntry.OnLoginFromGLSense` / `OnLogoutFromGLSense` (11.1.2's `InvokedFromGLSense`, `LogoffFromAddin`);
-    replace the logging stubs `AddinModule.NotifyGLSenseOfLogin` / `NotifyGLSenseOfLogout` with real calls through
-    `IXLEdgeContext.GetGLSenseAddinInstance()` (not `Marshal.GetActiveObject`); shell keeps `InvokedFromGLSense` public/COM-visible
-    and forwards to the core (spec §6.5).
-  - With `InvokedFromGLSense`, port 11.1.2's two OISR-22777 lines: `RibEdgeBroadcast.Enabled = true` on a GLSense login,
-    `false` on no-permission (the core already has the `RibEdgeBroadcast` RibbonControl field).
 - **3** — remaining pane/login items not covered by 2e, if the Excel check finds any (spec §5 phase 3 was pulled into 2e).
 - **4 — Remoting hardening** (spec §5): leases, cached Workbook/Sheet in async chains, fire-and-forget entry points, Shutdown of
   running reports, 5 s unload cap review, IsBusy guard review.
@@ -84,10 +85,11 @@ Test suite now: **287 tests — 281 pass, 6 Inconclusive** (the real-Excel tests
 - **6 — Online update**: orbitbootapp `XLEdgeAddinController` mirroring GLSense's.
 - **7 — QA & cutover**: full regression (spec §7) side by side with GLSense, rollback, uninstall.
 
-## Contracts (`XLEdge.Contracts`, `ContractInfo.Version` = 4)
+## Contracts (`XLEdge.Contracts`, `ContractInfo.Version` = 5)
 - 1: Stage 0b. 2: `IXLEdgeContext.GetExcelDispatch` (2a). 3: session bag `GetSessionValue/SetSessionValue` (2c).
   4: `IRibbonController` pane of an Excel window — `GetActiveTaskPaneWindow`, `Get/SetTaskPaneVisible`, `SetTaskPaneCaption(IntPtr,…)`,
-  `Get/SetTaskPaneWidth` (2e).
+  `Get/SetTaskPaneWidth` (2e). 5: `IXLEdgeContext.IsGLSenseConnected()`, `CallGLSense(method, args)` — the shell looks GLSense
+  up and invokes it in its own AppDomain (2f); `GetGLSenseAddinInstance()` stays but the core no longer uses it.
 - Additive only; every contract change ships with a new MSI. The loader refuses a core newer than the shell. `CoreHost.TryLoad`
   clears the session values for cores < 3 and drops `XLEdge.Login` for cores < 4.
 
@@ -112,6 +114,13 @@ Test suite now: **287 tests — 281 pass, 6 Inconclusive** (the real-Excel tests
 - Twin and today's XLEdge share assembly name / key / ProgId `XLEdge.AddinModule`: only one can be registered at a time.
 - adxregistrator needed the ADX DLLs copied into `bin\Debug` (dev-only step).
 - An untracked `.github/` folder exists in `D:\SQLLite_Test\XLEdge` — not created by this work, left alone.
+- **GLSense here:** `D:\SQLLite_Test\GLSense` (main checkout) is on **11.1.3**; 11.1.2 is the worktree
+  `D:\SQLLite_Test\worktrees\GLSense-11.1.2`. MSBuild cannot build GLSense from this session (its strong-name key
+  `GLSense.Contracts.pfx` is password-protected and not installed; Claude never imports it) — Claude compiles a git export
+  unsigned with no post-build events in `%TEMP%\claude\g2f` (short path: the XAML compiler fails past 260 characters).
+  In the main checkout both `CLAUDE.md` files are **skip-worktree** (developer's setting): 11.1.3's fix-log section 91
+  (the 2f change) is only a working-copy note there. `AddinEntry.cs` is CRLF in 11.1.2's index and LF in 11.1.3's, so
+  cherry-picks between them conflict on every line — changes are applied to each branch separately.
 
 ## 11.1.2 defects found (pinned in the twin on purpose; tickets are the developer's call)
 - `XLEdgeValueFormatter.InferDrilldownDataType` treats "12.5" / "1,234" as dates → drilldowns (and stored drilldown parameters)
@@ -122,7 +131,9 @@ Test suite now: **287 tests — 281 pass, 6 Inconclusive** (the real-Excel tests
   values while the System.Text.Json path writes them as numbers (2d).
 - Pane sends the login Bearer token to **every** origin it requests (`WebResourceRequested`, filter "*") — proposed OISR to limit
   it to the instance's origin.
-- GLSense AIPowered lacks `GetGLCubeInformation` / `LogoutSession` (handled in 2f).
+- GLSense AIPowered lacked `GetGLCubeInformation` / `LogoutSession` (added in 2f on 11.1.2 and 11.1.3).
+- GLSense AIPowered **11.1.2** `Logout()` touches ribbon controls from a pool thread after its `applogout` await — fixed on
+  11.1.3 by OISR-22460, not on 11.1.2 (proposed OISR port; 2f's own new code marshals).
 
 ## Rulings still open / carried
 - Broadcast messages are fetched again for each open pane after a reload (as 11.1.2 per pane load) — popup per pane per reload.
