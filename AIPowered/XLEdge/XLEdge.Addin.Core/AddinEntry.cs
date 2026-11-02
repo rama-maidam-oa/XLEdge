@@ -22,6 +22,11 @@ namespace XLEdge.Addin.Core
 
         private ILogger Logger => _context?.Logger;
 
+        /// <summary>
+        /// Starts the core. A failure of its own parts (services, ribbon helper, Excel's thread context, panes, the module) is
+        /// thrown back - a core without them would ignore every click - so the loader unloads it and the shell says so; the
+        /// best-effort steps after them only log. The exception carries text only: no core type may cross to the shell.
+        /// </summary>
         public void Initialize(IXLEdgeContext context)
         {
             try
@@ -33,6 +38,17 @@ namespace XLEdge.Addin.Core
                 ExcelThreadContext.Initialize();
                 _panes = new TaskPaneContentHost(context);
                 _module = new AddinModule(XLEdgeRibbonHelper.Current, _panes);
+            }
+            catch (Exception ex)
+            {
+                Log(ex, "AddinEntry.Initialize (core start)");
+                // The loader unloads this domain without a Shutdown: release the Excel reference already taken.
+                try { _module?.Shutdown(); _module = null; CoreServices.Shutdown(); }
+                catch (Exception cleanup) { Log(cleanup, "AddinEntry.Initialize (cleanup after a failed start)"); }
+                throw new InvalidOperationException("XLEdge core start failed: " + ex.Message);
+            }
+            try
+            {
                 RestoreSessionLogin();
                 _module.ApplyStartRibbonState();
                 LoadPreferences();

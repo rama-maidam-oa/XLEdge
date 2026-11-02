@@ -17,7 +17,14 @@ namespace XLEdge.Tests
         public object ExcelApp { get; set; }
         public ILogger Logger { get; set; }
         public IPathProvider Paths { get; }
-        public IRibbonController RibbonController { get; private set; }
+        private IRibbonController _ribbonController;
+        /// <summary>Makes the RibbonController getter throw - a core start that fails in its own code.</summary>
+        public string RibbonControllerThrows { get; set; }
+        public IRibbonController RibbonController
+        {
+            get => RibbonControllerThrows != null ? throw new InvalidOperationException(RibbonControllerThrows) : _ribbonController;
+            private set => _ribbonController = value;
+        }
         public IntPtr ExcelHandle { get; set; }
         public bool DebugMode { get; set; }
         public string Version { get; set; }

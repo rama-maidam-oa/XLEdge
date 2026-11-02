@@ -118,6 +118,21 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Load_CoreStartThrows_LoadThrowsAndDomainIsUnloaded()
+        {
+            // A core whose start fails must not count as loaded (every click would then do nothing, with no message).
+            using (var f = new Fixture())
+            {
+                var release = f.Stage("v1");
+                f.Context.RibbonControllerThrows = "no ribbon";
+                var ex = Assert.ThrowsExactly<InvalidOperationException>(() => f.Loader.Load(f.Context, release));
+                StringAssert.Contains(ex.Message, "no ribbon");
+                Assert.IsNull(f.Loader.CurrentDomainName);
+                Assert.IsTrue(f.Log.Contains("AddinDomainLoader.Load: failed to load"), f.Log.Dump());
+            }
+        }
+
+        [TestMethod]
         public void Load_CoreFailsInsideItsDomain_UnloadsTheHalfCreatedDomain()
         {
             using (var f = new Fixture())
