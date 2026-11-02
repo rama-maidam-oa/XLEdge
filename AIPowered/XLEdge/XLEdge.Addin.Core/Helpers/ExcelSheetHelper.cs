@@ -32,7 +32,7 @@ namespace XLEdge.Helpers
                 if (targetWorkbook == null)
                 {
                     Excel.Application excelApp = ExcelApplicationHelper.RequireActiveExcelApplication();
-                    targetWorkbook = excelApp.ActiveWorkbook;
+                    targetWorkbook = ExcelApplicationHelper.RunWorkbook(excelApp);
                 }
 
                 if (targetWorkbook == null)
@@ -107,17 +107,17 @@ namespace XLEdge.Helpers
         public static Excel.Worksheet GetParameterSheet(string sheetName, string tableId)
         {
             Excel.Application excelApp = ExcelApplicationHelper.GetActiveExcelApplication();
-            if (excelApp?.ActiveWorkbook == null)
+            if (ExcelApplicationHelper.RunWorkbook(excelApp) == null)
             {
                 return null;
             }
 
-            if (!string.IsNullOrWhiteSpace(sheetName) && SheetExists(sheetName, excelApp.ActiveWorkbook))
+            if (!string.IsNullOrWhiteSpace(sheetName) && SheetExists(sheetName, ExcelApplicationHelper.RunWorkbook(excelApp)))
             {
                 Excel.Worksheet sht = null;
                 try
                 {
-                    sht = (Excel.Worksheet)excelApp.ActiveWorkbook.Worksheets[sheetName];
+                    sht = (Excel.Worksheet)ExcelApplicationHelper.RunWorkbook(excelApp).Worksheets[sheetName];
 
                     string tableBoundName = Convert.ToString(sht.Range["IT2"].Value) ?? string.Empty;
                     if (string.IsNullOrEmpty(tableBoundName))
@@ -164,7 +164,7 @@ namespace XLEdge.Helpers
             Excel.Sheets allSheets = null;
             try
             {
-                allSheets = excelApp.ActiveWorkbook.Worksheets;
+                allSheets = ExcelApplicationHelper.RunWorkbook(excelApp).Worksheets;
                 foreach (Excel.Worksheet ws in allSheets)
                 {
                     bool release = true;
@@ -213,7 +213,7 @@ namespace XLEdge.Helpers
             try
             {
                 Excel.Application excelApp = ExcelApplicationHelper.RequireActiveExcelApplication();
-                names = excelApp.ActiveWorkbook.Names;
+                names = ExcelApplicationHelper.RunWorkbook(excelApp).Names;
 
                 foreach (Excel.Name xlName in names)
                 {
@@ -257,7 +257,7 @@ namespace XLEdge.Helpers
             try
             {
                 Excel.Application excelApp = ExcelApplicationHelper.RequireActiveExcelApplication();
-                names = excelApp.ActiveWorkbook.Names;
+                names = ExcelApplicationHelper.RunWorkbook(excelApp).Names;
 
                 foreach (Excel.Name xlName in names)
                 {

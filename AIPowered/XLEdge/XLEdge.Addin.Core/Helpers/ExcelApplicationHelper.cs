@@ -6,6 +6,22 @@ namespace XLEdge.Helpers
 {
     public static class ExcelApplicationHelper
     {
+        /// <summary>Twin (Stage 4): the workbook the running report/refresh started in (RunWorkbookScope), else the active one.</summary>
+        public static Excel.Workbook RunWorkbook(Excel.Application app) =>
+            XLEdgeAppState.Instance.ActiveWorkbookOverride ?? app?.ActiveWorkbook;
+
+        /// <summary>
+        /// Twin (Stage 4): activates <paramref name="sheet"/>, bringing its workbook to the front first - a run may be writing to a
+        /// workbook the user switched away from, and Excel cannot activate a sheet of an inactive workbook.
+        /// </summary>
+        public static void ActivateInItsWorkbook(Excel.Worksheet sheet)
+        {
+            if (sheet == null) return;
+            try { (sheet.Parent as Excel.Workbook)?.Activate(); }
+            catch (Exception ex) { LogUtility.LogWarn("ExcelApplicationHelper.ActivateInItsWorkbook: its workbook could not be activated: " + ex.Message); }
+            sheet.Activate();
+        }
+
         public static Excel.Application GetActiveExcelApplication()
         {
             TryGetActiveExcelApplication(out Excel.Application excelApp);

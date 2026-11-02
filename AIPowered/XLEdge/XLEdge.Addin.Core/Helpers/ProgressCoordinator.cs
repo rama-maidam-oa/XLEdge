@@ -90,7 +90,7 @@ namespace XLEdge.Helpers
             try
             {
                 Excel.Application excelApp = ExcelApplicationHelper.RequireActiveExcelApplication();
-                dummySheet = (Excel.Worksheet)excelApp.ActiveWorkbook.Worksheets["DummySheet"];
+                dummySheet = (Excel.Worksheet)ExcelApplicationHelper.RunWorkbook(excelApp).Worksheets["DummySheet"];
 
                 if (dummySheet.Visible == Excel.XlSheetVisibility.xlSheetVisible)
                 {

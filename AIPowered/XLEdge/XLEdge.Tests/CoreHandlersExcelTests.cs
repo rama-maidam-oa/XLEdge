@@ -150,6 +150,20 @@ namespace XLEdge.Tests
         });
 
         [TestMethod]
+        public void ARun_KeepsTheWorkbookItStartedIn_WhenTheUserSwitches()
+        {
+            // Stage 4 (the developer's request): a report or refresh opened in book A writes to A even if the user activates B
+            // while it loads; activating its sheet brings A back first (a sheet of an inactive workbook cannot be activated).
+            InExcel((excel, t) =>
+            {
+                dynamic other = excel.AddBook();
+                string a = (string)excel.Book.Name, b = (string)other.Name;
+                WithCoreOn(excel, t, (p, context) =>
+                    Assert.AreEqual($"inRun={a} activated={a} afterRun={b}", p.RunWorkbookAcrossASwitch(a, b), ((RecordingLogger)context.Logger).Dump()));
+            });
+        }
+
+        [TestMethod]
         public void DeletingAReportSheet_DeletesItsParameterSheet_ALittleLater()
         {
             InExcel((excel, t) =>

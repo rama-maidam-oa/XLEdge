@@ -1347,6 +1347,7 @@ namespace XLEdge
         private async void RibEdgeRefreshAll_OnClick(object sender, object control, bool pressed)
         {
             const string MethodName = "RibEdgeRefreshAll_OnClick";
+            using var runWorkbook = RunWorkbookScope.Begin();
 
             if (string.IsNullOrEmpty(XLEdgeAppState.Instance.LoginUrl))
             {
@@ -1380,7 +1381,7 @@ namespace XLEdge
                 // (not Excel.Worksheets - that interface exists in the interop assembly but isn't what
                 // this property implements), so casting/declaring it as Excel.Worksheets throws
                 // InvalidCastException (E_NOINTERFACE) at runtime even though it compiles fine.
-                Excel.Sheets sheets = excelApp.ActiveWorkbook.Worksheets;
+                Excel.Sheets sheets = ExcelApplicationHelper.RunWorkbook(excelApp).Worksheets;
                 try
                 {
                     foreach (Excel.Worksheet ws in sheets)
@@ -1455,12 +1456,12 @@ namespace XLEdge
                             Excel.Worksheet sht = null;
                             try
                             {
-                                sht = excelApp.ActiveWorkbook.Worksheets[sheetName] as Excel.Worksheet;
+                                sht = ExcelApplicationHelper.RunWorkbook(excelApp).Worksheets[sheetName] as Excel.Worksheet;
                                 if (sht != null && sht.ListObjects.Count > 0)
                                 {
                                     // RefreshListObjectAsync resolves the sheet to use via
                                     // excelApp.ActiveSheet, so activate this sheet before calling it.
-                                    sht.Activate();
+                                    ExcelApplicationHelper.ActivateInItsWorkbook(sht);
 
                                     Excel.ListObject sheetTableObj = sht.ListObjects[1];
 
@@ -1480,7 +1481,7 @@ namespace XLEdge
                                         continue;
                                     }
 
-                                    paramsPayload = BuildRefreshParamsPayload(excelApp.ActiveWorkbook, sht, sheetTableObj);
+                                    paramsPayload = BuildRefreshParamsPayload(ExcelApplicationHelper.RunWorkbook(excelApp), sht, sheetTableObj);
                                 }
                             }
                             finally

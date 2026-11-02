@@ -45,6 +45,36 @@ namespace XLEdge.Tests
             @"Views\XLEdgeServerConfiguration.xaml", @"Views\XLEdgeServerConfiguration.xaml.cs", @"Views\XLEdgeAbout.xaml", @"Views\XLEdgeAbout.xaml.cs",
         };
 
+        /// <summary>
+        /// Stage 4 (the developer's request): a report or refresh keeps writing to the workbook it started in. These exact changes
+        /// to 11.1.2's text (a whole file, or one method when Method is set) are applied to it before the comparisons; everything
+        /// else stays identical. Proposed to 11.1.2 as an OISR - when 11.1.2 has them, this list goes.
+        /// </summary>
+        internal static readonly (string File, string Method, string Old, string New, int Count)[] TwinSubstitutions =
+        {
+            ("Helpers\\ReportGenerator.cs", null, "        private bool _disposed;\n\n        public ExcelBulkOperationScope()", "        private bool _disposed;\n        private readonly RunWorkbookScope _runWorkbook;\n\n        public ExcelBulkOperationScope()", 1),
+            ("Helpers\\ReportGenerator.cs", null, "            XLEdgeAppState.Instance.ProcessRunning = true;\n", "            _runWorkbook = RunWorkbookScope.Begin();\n            XLEdgeAppState.Instance.ProcessRunning = true;\n", 1),
+            ("Helpers\\ReportGenerator.cs", null, "            XLEdgeAppState.Instance.ProcessRunning = false;\n", "            XLEdgeAppState.Instance.ProcessRunning = false;\n            _runWorkbook?.Dispose();\n", 1),
+            ("Helpers\\ReportGenerator.cs", null, "            foreach (string reportTitle in reportTitles)\n", "            using var runWorkbook = RunWorkbookScope.Begin();\n            foreach (string reportTitle in reportTitles)\n", 1),
+            ("Helpers\\ReportGenerator.cs", null, "            Excel.Workbook workbook = excelApp.ActiveWorkbook;\n", "            Excel.Workbook workbook = ExcelApplicationHelper.RunWorkbook(excelApp);\n", 2),
+            ("Helpers\\ReportGenerator.cs", null, "            logsSheet.Activate();\n", "            ExcelApplicationHelper.ActivateInItsWorkbook(logsSheet);\n", 1),
+            ("Helpers\\ReportGenerator.cs", null, "            sheet.Activate();\n", "            ExcelApplicationHelper.ActivateInItsWorkbook(sheet);\n", 1),
+            ("Helpers\\ReportGenerator.cs", null, "            ctx.Workbook = ctx.ExcelApp.ActiveWorkbook;\n            ctx.Sheet = ctx.ExcelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;\n", "            ctx.Workbook = ExcelApplicationHelper.RunWorkbook(ctx.ExcelApp);\n            ctx.Sheet = (ctx.Workbook?.ActiveSheet ?? ctx.ExcelApp.ActiveSheet) as Microsoft.Office.Interop.Excel.Worksheet;\n", 1),
+            ("Helpers\\ExcelSheetHelper.cs", null, "excelApp?.ActiveWorkbook == null", "ExcelApplicationHelper.RunWorkbook(excelApp) == null", 1),
+            ("Helpers\\ExcelSheetHelper.cs", null, "excelApp.ActiveWorkbook", "ExcelApplicationHelper.RunWorkbook(excelApp)", 6),
+            ("Helpers\\ProgressCoordinator.cs", null, "excelApp.ActiveWorkbook.Worksheets[\"DummySheet\"]", "ExcelApplicationHelper.RunWorkbook(excelApp).Worksheets[\"DummySheet\"]", 1),
+            ("AddinModule.cs", "void RibEdgeRefreshAll_OnClick(", "            const string MethodName = \"RibEdgeRefreshAll_OnClick\";\n", "            const string MethodName = \"RibEdgeRefreshAll_OnClick\";\n            using var runWorkbook = RunWorkbookScope.Begin();\n", 1),
+            ("AddinModule.cs", "void RibEdgeRefreshAll_OnClick(", "excelApp.ActiveWorkbook", "ExcelApplicationHelper.RunWorkbook(excelApp)", 3),
+            ("AddinModule.cs", "void RibEdgeRefreshAll_OnClick(", "sht.Activate();", "ExcelApplicationHelper.ActivateInItsWorkbook(sht);", 1),
+        };
+
+        /// <summary>11.1.2's <paramref name="text"/> of <paramref name="file"/> (or of one of its methods) with the twin's changes.</summary>
+        private static string WithTwinChanges(string file, string text, string method = null)
+        {
+            foreach (var s in TwinSubstitutions.Where(s => s.File == file && s.Method == method)) text = text.Replace(s.Old, s.New);
+            return text;
+        }
+
         /// <summary>Images, compared byte for byte (WPF resources).</summary>
         internal static readonly string[] Binary = { @"Images\orbit_logo.png", @"Images\OrbitGLSense.ico", @"Images\orbit_bitmap.bmp" };
 
@@ -160,6 +190,7 @@ namespace XLEdge.Tests
             foreach (string signature in signatures)
             {
                 string before = MethodText(original, signature), after = MethodText(core, WithoutAdx(signature));
+                if (before != null) before = WithTwinChanges(file, before, signature);
                 if (before == null) problems.Add("not in 11.1.2: " + signature);
                 else if (after == null) problems.Add("not in the core: " + signature);
                 else if (WithoutAdx(before) != after) problems.Add("differs from 11.1.2: " + signature);
@@ -185,7 +216,7 @@ namespace XLEdge.Tests
                 string original = Path.Combine(Today, file), copy = Path.Combine(Core, file);
                 if (!File.Exists(original)) problems.Add("no original: " + file);
                 else if (!File.Exists(copy)) problems.Add("not ported: " + file);
-                else if (AsInTheCore(Normalized(original)) != Normalized(copy)) problems.Add("differs from 11.1.2: " + file);
+                else if (AsInTheCore(WithTwinChanges(file, Normalized(original))) != Normalized(copy)) problems.Add("differs from 11.1.2: " + file);
             }
             foreach (string file in Binary)
             {
@@ -196,6 +227,28 @@ namespace XLEdge.Tests
             foreach (string file in Adapted.Where(f => !File.Exists(Path.Combine(Core, f))))
                 problems.Add("adapted file missing: " + file);
             Assert.AreEqual(0, problems.Count, string.Join(Environment.NewLine, problems));
+        }
+
+        [TestMethod]
+        public void TwinSubstitutions_AreExactAndPresent()
+        {
+            var problems = new List<string>();
+            foreach (var s in TwinSubstitutions)
+            {
+                string original = Normalized(Path.Combine(Today, s.File)), core = Normalized(Path.Combine(Core, s.File));
+                if (s.Method != null) { original = MethodText(original, s.Method) ?? ""; core = MethodText(core, s.Method) ?? ""; }
+                int found = Count(original, s.Old), applied = Count(core, s.New);
+                if (found != s.Count) problems.Add($"{s.File} {s.Method}: 11.1.2 has '{s.Old}' {found}x, expected {s.Count}x");
+                if (applied < s.Count) problems.Add($"{s.File} {s.Method}: the core has '{s.New}' {applied}x, expected {s.Count}x");
+            }
+            Assert.AreEqual(0, problems.Count, string.Join(Environment.NewLine, problems));
+        }
+
+        private static int Count(string text, string part)
+        {
+            int n = 0;
+            for (int at = text.IndexOf(part, StringComparison.Ordinal); at >= 0; at = text.IndexOf(part, at + part.Length, StringComparison.Ordinal)) n++;
+            return n;
         }
 
         [TestMethod]

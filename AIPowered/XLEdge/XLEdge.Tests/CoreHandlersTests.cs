@@ -254,6 +254,16 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void RunWorkbookScope_WithoutExcel_SetsNothingAndNeverThrows()
+        {
+            // Stage 4: with no Excel there is no workbook to keep; a run scope must still open and close cleanly.
+            WithCore((p, _) =>
+            {
+                Assert.AreEqual("override=null busyInside=True busyAfter=False overrideAfter=null", p.BulkScopeWithoutExcel());
+            });
+        }
+
+        [TestMethod]
         public void TrackedBackgroundWork_KeepsTheCoreBusyUntilItEnds()
         {
             // Stage 4: the pane's background work (title-command reports, XLSX downloads) runs in Task.Run - a reload must wait.

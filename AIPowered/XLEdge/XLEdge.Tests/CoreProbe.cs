@@ -287,6 +287,38 @@ namespace XLEdge.Tests
 
         public void EndCountedHandler() => _counted.SetResult(true);
 
+        /// <summary>Opens and closes a run (ExcelBulkOperationScope) in this domain: what it leaves in XLEdgeAppState.</summary>
+        public string BulkScopeWithoutExcel()
+        {
+            object state = CallStatic("XLEdge.XLEdgeAppState", "Instance");
+            Func<string> over = () => state.GetType().GetProperty("ActiveWorkbookOverride").GetValue(state) == null ? "null" : "set";
+            Func<bool> running = () => (bool)state.GetType().GetProperty("ProcessRunning").GetValue(state);
+            var scope = (IDisposable)Activator.CreateInstance(CoreType("XLEdge.Helpers.ExcelBulkOperationScope"), true);
+            string inside = $"override={over()} busyInside={running()}";
+            scope.Dispose();
+            return $"{inside} busyAfter={running()} overrideAfter={over()}";
+        }
+
+        /// <summary>
+        /// A run opened while <paramref name="startBook"/> is active, then <paramref name="otherBook"/> activated (the user
+        /// switching): the run's workbook inside the run and after it, and the workbook a sheet of the start book activates into.
+        /// </summary>
+        public string RunWorkbookAcrossASwitch(string startBook, string otherBook)
+        {
+            dynamic excel = CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "ExcelApp");
+            excel.Workbooks[startBook].Activate();
+            var scope = (IDisposable)Activator.CreateInstance(CoreType("XLEdge.Helpers.ExcelBulkOperationScope"), true);
+            excel.Workbooks[otherBook].Activate();
+            dynamic inRun = CallStatic("XLEdge.Helpers.ExcelApplicationHelper", "RunWorkbook", (object)excel);
+            string inside = (string)inRun.Name;
+            CallStatic("XLEdge.Helpers.ExcelApplicationHelper", "ActivateInItsWorkbook", (object)inRun.Worksheets[1]);
+            string activeAfterActivate = (string)excel.ActiveWorkbook.Name;
+            scope.Dispose();
+            excel.Workbooks[otherBook].Activate();
+            dynamic afterRun = CallStatic("XLEdge.Helpers.ExcelApplicationHelper", "RunWorkbook", (object)excel);
+            return $"inRun={inside} activated={activeAfterActivate} afterRun={(string)afterRun.Name}";
+        }
+
         /// <summary>ShutdownSteps.RunAll over a, b (throws), c: the steps that ran.</summary>
         public string RunShutdownStepsWithAFailingStep()
         {

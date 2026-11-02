@@ -122,6 +122,7 @@
     <Compile Include="Infrastructure\ShutdownSteps.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />
     <Compile Include="Helpers\ReportGenerator.cs" />
+    <Compile Include="Helpers\RunWorkbookScope.cs" />
     <Compile Include="Helpers\ParamsControlSheetBuilder.cs" />
     <Compile Include="Helpers\XLEdgeParamsBuilder.cs" />
     <Compile Include="Helpers\DrilldownRequestBuilder.cs" />

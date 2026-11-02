@@ -657,6 +657,7 @@ namespace XLEdge.Helpers
 
             LogUtility.LogDebug($"CreateMultiDataReportsAsync: running {reportTitles.Count} report(s) from '{runIdsRaw}'.");
 
+            using var runWorkbook = RunWorkbookScope.Begin();
             foreach (string reportTitle in reportTitles)
             {
                 try
@@ -795,7 +796,7 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("Excel application instance is not available.");
             }
 
-            Excel.Workbook workbook = excelApp.ActiveWorkbook;
+            Excel.Workbook workbook = ExcelApplicationHelper.RunWorkbook(excelApp);
             if (workbook == null)
             {
                 throw new InvalidOperationException("No active workbook.");
@@ -823,7 +824,7 @@ namespace XLEdge.Helpers
                 logsSheet.Name = sheetName;
             }
 
-            logsSheet.Activate();
+            ExcelApplicationHelper.ActivateInItsWorkbook(logsSheet);
 
             string tempFile = Path.Combine(XLEdgeAppPaths.TempFolder, $"{processId}_Logs.txt");
             try
@@ -938,7 +939,7 @@ namespace XLEdge.Helpers
                 throw new InvalidOperationException("Excel application instance is not available.");
             }
 
-            Excel.Workbook workbook = excelApp.ActiveWorkbook;
+            Excel.Workbook workbook = ExcelApplicationHelper.RunWorkbook(excelApp);
             if (workbook == null)
             {
                 throw new InvalidOperationException("No active workbook.");
@@ -1243,7 +1244,7 @@ namespace XLEdge.Helpers
         // report's frozen-pane state.
         private static void ActivateAndUnfreezeSheet(Excel.Application excelApp, Excel.Worksheet sheet)
         {
-            sheet.Activate();
+            ExcelApplicationHelper.ActivateInItsWorkbook(sheet);
 
             //unfreezing the columns and rows if they are frozen
             try
@@ -3926,8 +3927,8 @@ namespace XLEdge.Helpers
         // failure like an absent ListObject is.
         private static bool TryResolveWorkbookSheetAndListObject(RefreshContext ctx)
         {
-            ctx.Workbook = ctx.ExcelApp.ActiveWorkbook;
-            ctx.Sheet = ctx.ExcelApp.ActiveSheet as Microsoft.Office.Interop.Excel.Worksheet;
+            ctx.Workbook = ExcelApplicationHelper.RunWorkbook(ctx.ExcelApp);
+            ctx.Sheet = (ctx.Workbook?.ActiveSheet ?? ctx.ExcelApp.ActiveSheet) as Microsoft.Office.Interop.Excel.Worksheet;
             if (ctx.Sheet == null) throw new InvalidOperationException("No active worksheet.");
 
             Microsoft.Office.Interop.Excel.ListObject lo = null;
@@ -5264,6 +5265,7 @@ namespace XLEdge.Helpers
     internal sealed class ExcelBulkOperationScope : IDisposable
     {
         private bool _disposed;
+        private readonly RunWorkbookScope _runWorkbook;
 
         public ExcelBulkOperationScope()
         {
@@ -5274,6 +5276,7 @@ namespace XLEdge.Helpers
             // is shown non-modally (unlike VB's modal FormProcessBar) and so doesn't block the user
             // from clicking the sheet mid-operation the way VB's does. Set unconditionally, before the
             // COM-dependent settings below, so it's reliable even if resolving the Excel app fails.
+            _runWorkbook = RunWorkbookScope.Begin();
             XLEdgeAppState.Instance.ProcessRunning = true;
 
             try
@@ -5299,6 +5302,7 @@ namespace XLEdge.Helpers
 
             _disposed = true;
             XLEdgeAppState.Instance.ProcessRunning = false;
+            _runWorkbook?.Dispose();
 
             try
             {
