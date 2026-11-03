@@ -125,6 +125,8 @@ namespace XLEdge.Tests
             public Exception ListFailure;
             /// <summary>Folders whose download waits until the token is cancelled (a slow server).</summary>
             public readonly HashSet<string> Hang = new HashSet<string>();
+            /// <summary>Runs after a folder's download returned (e.g. the user cancelling while it is catalogued).</summary>
+            public Action<string> AfterDownload;
             public readonly List<string> Downloaded = new List<string>();
             public Task<IReadOnlyList<VersionInfo>> GetReleasesAsync(CancellationToken ct) =>
                 ListFailure != null ? Task.FromException<IReadOnlyList<VersionInfo>>(ListFailure) : Task.FromResult<IReadOnlyList<VersionInfo>>(Releases);
@@ -132,6 +134,7 @@ namespace XLEdge.Tests
             {
                 Downloaded.Add(folderName);
                 if (Hang.Contains(folderName)) await Task.Delay(Timeout.Infinite, ct);
+                AfterDownload?.Invoke(folderName);
                 return Downloads[folderName];
             }
 
@@ -282,6 +285,25 @@ namespace XLEdge.Tests
                 reload.GetAwaiter().GetResult();
                 Assert.IsNull(picker.OnlineRelease);
                 CollectionAssert.AreEqual(new[] { "v4" }, source.Downloaded, "nothing after the cancelled one");
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_CancelBetweenReleases_FetchesNoMore()
+        {
+            // Cancel arriving after a download finished (while it is catalogued): the next release is not fetched, nothing loads.
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "v4");
+                source.Publish("11.1.5.0", "2026-11-20T10:00:00", "v5");
+                source.AfterDownload = folder => { if (folder == "v4") picker.CancelOnlineWork(); };
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                foreach (var row in picker.OnlineRows) row.IsChecked = true;
+                Await(() => picker.ReloadOnlineAsync());
+                CollectionAssert.AreEqual(new[] { "v4" }, source.Downloaded);
+                Assert.IsNull(picker.OnlineRelease, "cancelled: no reload");
+                StringAssert.Contains(picker.StatusText, "in Version History", "what was downloaded is said");
             });
         }
 
