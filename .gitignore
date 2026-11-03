@@ -25,6 +25,8 @@ graphify-out/
 *.msi
 XLEdge/setupfiles/Debug/
 XLEdge/setupfiles/Release/
+AIPowered/XLEdge/XLEdge/OrbitXLEdgeSetups/Debug/
+AIPowered/XLEdge/XLEdge/OrbitXLEdgeSetups/Release/
 
 # local Claude Code settings (machine-specific, not shared)
 .claude/
