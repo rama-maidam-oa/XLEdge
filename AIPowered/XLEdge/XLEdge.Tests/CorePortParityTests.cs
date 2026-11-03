@@ -66,6 +66,8 @@ namespace XLEdge.Tests
             ("AddinModule.cs", "void RibEdgeRefreshAll_OnClick(", "            const string MethodName = \"RibEdgeRefreshAll_OnClick\";\n", "            const string MethodName = \"RibEdgeRefreshAll_OnClick\";\n            using var runWorkbook = RunWorkbookScope.Begin();\n", 1),
             ("AddinModule.cs", "void RibEdgeRefreshAll_OnClick(", "excelApp.ActiveWorkbook", "ExcelApplicationHelper.RunWorkbook(excelApp)", 3),
             ("AddinModule.cs", "void RibEdgeRefreshAll_OnClick(", "sht.Activate();", "ExcelApplicationHelper.ActivateInItsWorkbook(sht);", 1),
+            // Stage 5: the twin ships as 11.1.3 (the About window compares it with the server's advertised XLEdge version).
+            ("XLEdgeAppConstants.cs", null, "DefaultVersion = \"11.1.2\"", "DefaultVersion = \"11.1.3\"", 1),
         };
 
         /// <summary>11.1.2's <paramref name="text"/> of <paramref name="file"/> (or of one of its methods) with the twin's changes.</summary>

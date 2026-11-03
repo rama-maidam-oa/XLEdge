@@ -18,7 +18,7 @@ namespace XLEdge.Tests
             {
                 string expected = FileVersionInfo.GetVersionInfo(typeof(XLEdgeContext).Assembly.Location).FileVersion;
                 Assert.AreEqual(expected, context.ShellVersion);
-                Assert.AreEqual("11.1.2.0", context.ShellVersion);
+                Assert.AreEqual("11.1.3.0", context.ShellVersion);
                 Assert.IsNull(context.InitializeLifetimeService());
                 Assert.IsFalse(context.DebugMode);
                 Assert.IsTrue(Directory.Exists(context.Paths.Logs), "paths ensured");

@@ -11,5 +11,5 @@
 // Do not add AssemblyVersion/AssemblyFileVersion to any project's Properties\AssemblyInfo.cs.
 using System.Reflection;
 
-[assembly: AssemblyVersion("11.1.2.0")]
-[assembly: AssemblyFileVersion("11.1.2.0")]
+[assembly: AssemblyVersion("11.1.3.0")]
+[assembly: AssemblyFileVersion("11.1.3.0")]
