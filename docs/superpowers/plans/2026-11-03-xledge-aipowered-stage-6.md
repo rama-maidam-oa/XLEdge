@@ -38,7 +38,9 @@ over the newest catalogued one.
 ## Rulings
 
 1. **Download before unloading** — a failed download leaves the running core as it is (GLSense also fetches before reloading). *If wrong:* a release the user then cancels stays catalogued (shown as "Already downloaded").
-2. **One release at a time** (GLSense can fetch several): the twin reloads into the one chosen; others can be fetched later. *If wrong:* one more round trip to get two releases.
+2. **Several releases at once, as GLSense (developer's decision):** every ticked release is downloaded and catalogued, then the
+   newest one that succeeded is loaded. A failed download does not undo the ones that succeeded; the picker lists which failed.
+   If none succeeded, the picker stays open with the errors and nothing reloads.
 3. **Online is enabled only when `GetLoginInfo().IsLoggedIn`** (`IsLoginCompleted` and a token) — GLSense §44.1 (a flag never set kept Online disabled): the test logs in through the real state, not a stub.
 
 ## Review Focus
@@ -94,14 +96,19 @@ a release list bound to `OnlineReleaseRow`; status text; Reload fetches the sele
 
 **Interfaces — Consumes:** Task 2's `IOnlineReleaseSource`, `OnlineReleaseClassifier`. **Produces:**
 `XLEdgeReloadSourcePicker(IXLEdgeContext context, LoginInfo login, Func<LoginInfo, IOnlineReleaseSource> sourceFactory = null)`;
-`public ResolvedRelease OnlineRelease { get; }` (set when the online fetch + `ExtractAndCatalog(context, manifest, zip, "Online")`
-succeeded); `SelectedSource == "Online"` then.
+`public ResolvedRelease OnlineRelease { get; }` — the newest (version, then release date) of the ticked releases whose fetch +
+`ExtractAndCatalog(context, manifest, zip, "Online")` succeeded; `SelectedSource == "Online"` then; `OnlineRow.IsChecked` (only
+selectable rows can be ticked).
 
 - [ ] Step 1: failing tests (STA, a fake `IOnlineReleaseSource`; the picker driven through its methods/controls as the existing tests do):
   - `Picker_LoggedOut_OnlineDisabledWithTheReason` (tooltip `"Log in to XLEdge to check for online updates."`); `Picker_LoggedIn_OnlineEnabled`.
   - `Picker_Check_ListsClassifiedRows` (loaded row not selectable).
-  - `Picker_ReloadOnline_DownloadsCataloguesAndReturnsTheRelease` (a real zip+manifest from `ReleaseFolders` helpers → `OnlineRelease.FolderName` set, folder in `Versions\`).
-  - `Picker_ReloadOnline_BadChecksum_StaysOpenWithTheError` (no `OnlineRelease`, dialog not closed, message shown).
+  - `Picker_ReloadOnline_DownloadsEveryTickedRelease_LoadsTheNewest` (two ticked, real zips+manifests from `ReleaseFolders`
+    helpers → both folders in `Versions\`, `OnlineRelease` = the newer).
+  - `Picker_ReloadOnline_OneFails_KeepsTheOthers_AndSaysWhichFailed` (one bad checksum → the other catalogued and returned; the
+    failed version named in the log).
+  - `Picker_ReloadOnline_AllFail_StaysOpenWithTheErrors` (no `OnlineRelease`, dialog not closed).
+  - `Picker_ReloadOnline_NothingTicked_ReloadDisabled`.
   - `Picker_Check_Unauthorized_ShowsTheSessionMessage`.
   - AddinModule wiring is shell-only ADX code: a source check that `ShowReloadWindow` passes `OnlineRelease` to `Host.Reload(() => …)` and calls `GetLoginInfo` inside try/catch.
 - [ ] Step 2: run → fail. Step 3: implement (WPF: async handlers, `SetBusy` as today, logging via `SafeLog`). Step 4: green +
