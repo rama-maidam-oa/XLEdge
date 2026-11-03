@@ -74,7 +74,7 @@ tests pinning `"11.1.2.0"` as the shell/assembly version (`XLEdgeContextTests`, 
 
 ### Task 2: Release signing hook
 
-**Files:** create `AIPowered\XLEdge\Build\sign.ps1` — `param([string]$File, [string]$Configuration, [string]$SignScript)`;
+**Files:** create `AIPowered\XLEdge\XLEdge.Build\sign.ps1` (csproj PostBuildEvents call `$(ProjectDir)..\XLEdge.Build\sign.ps1`) — `param([string]$File, [string]$Configuration, [string]$SignScript)`;
 no-op unless `$Configuration -eq 'Release'`; no-op (prints `"XLEdge: signing skipped (XLEDGE_SKIP_SIGNING=1): <file>"`) when
 `$env:XLEDGE_SKIP_SIGNING -eq '1'`; fails (exit 1, the Global Constraints message) when `$SignScript` is missing; else runs
 `cmd /c "<SignScript>" "<File>" "<Configuration>"` and fails on a non-zero exit. Default `$SignScript` =
@@ -120,7 +120,7 @@ no-op unless `$Configuration -eq 'Release'`; no-op (prints `"XLEdge: signing ski
 - Uninstall cleanup (GLSense §62): File `C:\Windows\System32\cmd.exe` as `XLEdgeUninstallCleanup.exe`; uninstall custom
   action, Condition `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`, Arguments
   `/c if exist "[TARGETDIR]AddinCore" rd /s /q "[TARGETDIR]AddinCore" & exit /b 0`.
-- PreBuildEvent: today's `CleanOnlineAppCache`, then `powershell -NoProfile -File "..\..\Build\sign.ps1"` for `..\bin\Release\XLEdge.dll`,
+- PreBuildEvent: today's `CleanOnlineAppCache`, then `powershell -NoProfile -File "..\..\XLEdge.Build\sign.ps1"` for `..\bin\Release\XLEdge.dll`,
   `adxloader.dll`, `adxloader64.dll` with `Release`. PostBuildEvent: today's adxpatch line.
 - Test: new `XLEdge.Tests\SetupProjectTests.cs` (source checks): UpgradeCode = 11.1.2's `{D090F1E0-CA8E-4529-B78D-981652FFF708}`;
   ProductVersion `11.1.3`; ProductCode/PackageCode differ from 11.1.2's; the shell output is the twin project; loaders from
