@@ -124,6 +124,78 @@ namespace XLEdge.Tests
             StringAssert.Contains(File.ReadAllText(Path.Combine(TwinRoot, @"..\..\.gitignore")), "/AIPowered/XLEdge/sign_file.cmd");
         }
 
+        // ---- Stage 5: the installer payload and release notes ---------------------------------------------------------------
+
+        /// <summary>
+        /// The core's post_build.ps1 run as in a build, in a copy of the project layout (TempFolder: XLEdge.Addin.Core\post_build.ps1
+        /// + ReleaseNotes.txt, XLEdge.Build\sign.ps1, bin\ with the built core): its SetupFiles folder.
+        /// </summary>
+        private static (int Exit, string Output, string SetupFiles) RunCorePostBuild(TempFolder t, string configuration, string notes)
+        {
+            string project = t.Combine("XLEdge.Addin.Core"), build = t.Combine("XLEdge.Build"), bin = t.Combine("bin");
+            Directory.CreateDirectory(project); Directory.CreateDirectory(build); Directory.CreateDirectory(bin);
+            File.Copy(Path.Combine(TwinRoot, @"XLEdge.Addin.Core\post_build.ps1"), Path.Combine(project, "post_build.ps1"));
+            File.Copy(SignScript, Path.Combine(build, "sign.ps1"));
+            if (notes != null) File.WriteAllText(Path.Combine(project, "ReleaseNotes.txt"), notes);
+            string coreBin = Path.Combine(TwinRoot, @"XLEdge.Addin.Core\bin\Debug");
+            foreach (string dll in new[] { "XLEdge.Addin.Core.dll", "XLEdge.Contracts.dll" }) File.Copy(Path.Combine(coreBin, dll), Path.Combine(bin, dll));
+            var info = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                $"-NoProfile -ExecutionPolicy Bypass -File \"{Path.Combine(project, "post_build.ps1")}\" -TargetDir \"{bin} \" -Configuration {configuration}")
+            { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            info.EnvironmentVariables["XLEDGE_SKIP_SIGNING"] = "1";
+            using (var process = System.Diagnostics.Process.Start(info))
+            {
+                string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                return (process.ExitCode, output, Path.Combine(project, "SetupFiles"));
+            }
+        }
+
+        private static string Sha256(byte[] bytes)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create()) return System.BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "");
+        }
+
+        [TestMethod]
+        public void ReleaseBuild_CopiesThePublishedZipToTheInstallerPayload()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output, setup) = RunCorePostBuild(t, "Release", null);
+                Assert.AreEqual(0, exit, output);
+                string published = Directory.GetFiles(Path.Combine(setup, @"Release\Manifest"), "*.zip").Single();
+                byte[] payload = File.ReadAllBytes(Path.Combine(setup, @"Release\InstallerPayload\OrbitXLEdge.zip"));
+                CollectionAssert.AreEqual(File.ReadAllBytes(published), payload, "the payload is the published zip, byte for byte");
+                StringAssert.Contains(File.ReadAllText(Path.Combine(setup, @"Release\Manifest\manifest.json")), Sha256(payload),
+                    "the seeded manifest's checksum matches the payload (else the first core never installs)");
+                Assert.AreEqual(1, Directory.GetFiles(Path.Combine(setup, @"Release\InstallerPayload")).Length, "only the payload");
+            }
+        }
+
+        [TestMethod]
+        public void DebugBuild_WritesNoInstallerPayload()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output, setup) = RunCorePostBuild(t, "Debug", null);
+                Assert.AreEqual(0, exit, output);
+                Assert.IsFalse(Directory.Exists(Path.Combine(setup, @"Debug\InstallerPayload")) || Directory.Exists(Path.Combine(setup, @"Release\InstallerPayload")));
+            }
+        }
+
+        [TestMethod]
+        public void ReleaseNotes_FirstLine_BecomesTheNotes_Trimmed()
+        {
+            foreach (var (notes, expected) in new[] { ("  fixes the totals  \r\n# comment", "fixes the totals"), ("\r\n# comment", "XLEdge core build") })
+                using (var t = new TempFolder())
+                {
+                    var (exit, output, setup) = RunCorePostBuild(t, "Debug", notes);
+                    Assert.AreEqual(0, exit, output);
+                    StringAssert.Contains(File.ReadAllText(Path.Combine(setup, @"Debug\Manifest\manifest.json")), "\"notes\":  \"" + expected + "\"");
+                }
+            Assert.IsTrue(File.Exists(Path.Combine(TwinRoot, @"XLEdge.Addin.Core\ReleaseNotes.txt")), "the project carries its ReleaseNotes.txt");
+        }
+
         [TestMethod]
         public void BuiltPackage_IsAValidRelease()
         {

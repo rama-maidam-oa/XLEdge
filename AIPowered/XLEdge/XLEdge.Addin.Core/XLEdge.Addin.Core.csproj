@@ -272,6 +272,7 @@
   <ItemGroup>
     <None Include="packages.config" />
     <None Include="post_build.ps1" />
+    <None Include="ReleaseNotes.txt" />
   </ItemGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>

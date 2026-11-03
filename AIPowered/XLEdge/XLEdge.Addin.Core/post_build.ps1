@@ -88,6 +88,16 @@ try {
     $json = ConvertTo-Json -InputObject @([pscustomobject]$entryObject) -Depth 3
     [IO.File]::WriteAllText((Join-Path $outDir 'manifest.json'), $json, (New-Object Text.UTF8Encoding $false))
 
+    # Release: the MSI's first core - a byte copy of the published zip under a fixed name, so the setup project never changes
+    # per release (GLSense CLAUDE.md 63); the setup project pairs it with this build's manifest.json.
+    if ($Configuration -eq 'Release') {
+        $payloadDir = Join-Path $projectDir 'SetupFiles\Release\InstallerPayload'
+        New-Item -ItemType Directory -Force -Path $payloadDir | Out-Null
+        Get-ChildItem -LiteralPath $payloadDir -File | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+        $payloadPath = Join-Path $payloadDir 'OrbitXLEdge.zip'
+        Copy-Item -LiteralPath $zipPath -Destination $payloadPath -Force
+    }
+
     Write-Output "XLEdge.Addin.Core post-build: published $fileName (contract $contractVersion) to $outDir"
     exit 0
 }
@@ -95,7 +105,7 @@ catch {
     Write-Output "error XLEDGE0001: XLEdge.Addin.Core post-build failed: $($_.Exception.Message)"
     # A half-written zip or manifest must not be staged by the shell's post-build as a release.
     if ($outDir) {
-        foreach ($partial in @($zipPath, (Join-Path $outDir 'manifest.json'))) {
+        foreach ($partial in @($zipPath, (Join-Path $outDir 'manifest.json'), $payloadPath)) {
             if ($partial -and (Test-Path -LiteralPath $partial)) { Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue }
         }
     }
