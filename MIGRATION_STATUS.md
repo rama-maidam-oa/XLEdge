@@ -3250,3 +3250,25 @@ Also (developer's request after testing): `AddinModule.HandleAttachmentDownloadA
 alongside it. Cancel shows no message; a URL that cannot be built still only logs.
 
 **VB.NET counterpart**: not ported (developer's decision). **AIPowered XLEdge**: same change in 11.1.3.
+
+## 2026-11-03: OISR-22697 - dates before 1900 show as "####" (value -43106) in XLEdge
+
+Root cause: since OISR-22663 (`3a69119`) `XLEdgeValueFormatter.ToExcelCellValue` writes every DATE/TIME value as
+`DateTime.ToOADate()`. Excel's dates start on 1-Jan-1900, so a server value like `22-Dec-1781 00:00:00` became the
+serial -43106, which Excel can only show as `####`. Before OISR-22663 the text was written as-is and Excel, unable to
+parse a pre-1900 date, kept it as readable text (why 11.0.3.6.2 looked right). Also, Excel counts a 29-Feb-1900 that
+never was, so for 1-Jan..28-Feb-1900 the OLE serial is one more than Excel's: 01-Jan-1900 showed as 02-Jan-1900.
+The server's Export to Excel, with the column's "Year Prior to 1900" (`pryr`) on, writes such a date as text in the
+column's format (`'22-Dec-1781'`).
+
+Fix: `ToExcelCellValue(value, columnType, columnFormat)` (the 2-argument overload passes no format) sends parsed dates
+through `ToExcelDateValue`: before 1-Jan-1900 -> text in the column's format (`ExcelDateFormatToDotNet` converts the
+Excel/report format, e.g. `dd-MMM-YYYY` -> `22-Dec-1781`; anything it can't read falls back to `dd-MMM-yyyy`), written
+with a leading apostrophe so Excel keeps it as text; 1-Jan..28-Feb-1900 -> serial - 1; time-only values and dates from
+1-Mar-1900 unchanged. Written as text for every pre-1900 date, whatever `pryr` says (developer's decision: a negative
+serial can never be displayed). `ReportGenerator`'s three write paths (`BuildDataWriteArray`,
+`WriteBuildDataRespectingPreservedFormulas`, `BuildRefreshedColumnArray`) pass `ResolveColumnNumberFormat(column)`.
+Pre-1900 cells are text, so Excel cannot sort or calculate them as dates (as in the server's export).
+
+**VB.NET counterpart**: same code in 11.1.1 `FormProcessBar.GetExcelCellValue`; not ported (developer's decision).
+**AIPowered XLEdge**: same change in 11.1.3.
