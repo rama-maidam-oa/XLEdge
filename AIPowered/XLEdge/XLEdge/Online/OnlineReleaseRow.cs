@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using XLEdge.Shared;
 
 namespace XLEdge.Online
 {
@@ -8,6 +9,8 @@ namespace XLEdge.Online
         private bool _isChecked;
 
         public string Version { get; set; }
+        /// <summary>The version as shown (11.1.3, not 11.1.3.0).</summary>
+        public string DisplayVersion => VersionText.Display(Version);
         public string ReleaseDate { get; set; }
         public bool Mandatory { get; set; }
         public string FolderName { get; set; }

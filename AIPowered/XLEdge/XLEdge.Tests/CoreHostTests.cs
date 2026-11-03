@@ -132,6 +132,16 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void StartAndReload_RunInsideALogScope_SoTheirDebugLinesFollowTheMarker()
+        {
+            var s = new Setup();
+            Assert.IsTrue(s.Host.Start());
+            CollectionAssert.AreEqual(new[] { "begin:XLEdge start", "end:XLEdge start" }, s.Log.Events.Where(e => e.Contains("XLEdge start")).ToArray());
+            Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")));
+            CollectionAssert.AreEqual(new[] { "begin:XLEdge reload", "end:XLEdge reload" }, s.Log.Events.Where(e => e.Contains("XLEdge reload")).ToArray());
+        }
+
+        [TestMethod]
         public void LoadingACoreThatPredatesTheSessionBag_ClearsIt()
         {
             // Such a core (Release History rollback) neither reads nor keeps session values; whatever is in the bag is stale by

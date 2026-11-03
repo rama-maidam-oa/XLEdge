@@ -54,7 +54,7 @@ namespace XLEdge.Addin.Core
                 LoadPreferences();
                 DeleteTempFiles();
                 StartWpfUi();
-                Logger?.LogInfo($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
+                Logger?.LogDebug($"AddinEntry.Initialize: XLEdge core initialized in AppDomain '{AppDomain.CurrentDomain.FriendlyName}' from '{AppDomain.CurrentDomain.BaseDirectory}'.");
             }
             catch (Exception ex)
             {
@@ -102,7 +102,7 @@ namespace XLEdge.Addin.Core
                     ("wpf", ShutDownWpf),
                     // Last: everything above may still use Excel; the core's Excel reference must not outlive it.
                     ("core services", CoreServices.Shutdown));
-                Logger?.LogInfo("AddinEntry.Shutdown: XLEdge core shut down.");
+                Logger?.LogDebug("AddinEntry.Shutdown: XLEdge core shut down.");
             }
             catch (Exception ex) { Log(ex, "AddinEntry.Shutdown"); }
         }
@@ -142,7 +142,7 @@ namespace XLEdge.Addin.Core
             {
                 if (SessionLogin.Restore(_context))
                 {
-                    Logger?.LogInfo("AddinEntry.Initialize: the login of the previous core is back.");
+                    Logger?.LogDebug("AddinEntry.Initialize: the login of the previous core is back.");
                     _module?.ReattachGLSense();
                 }
             }
@@ -344,7 +344,7 @@ namespace XLEdge.Addin.Core
                 bool dialog = System.Windows.Interop.ComponentDispatcher.IsThreadModal, handlers = ExcelThreadContext.Pending > 0,
                      background = ExcelThreadContext.Background > 0, report = XLEdgeAppState.Instance.ProcessRunning;
                 if (dialog || handlers || background || report)
-                    Logger?.LogInfo($"AddinEntry.IsBusy: busy (dialog open={dialog}, handlers running={ExcelThreadContext.Pending}, background={ExcelThreadContext.Background}, report running={report}).");
+                    Logger?.LogDebug($"AddinEntry.IsBusy: busy (dialog open={dialog}, handlers running={ExcelThreadContext.Pending}, background={ExcelThreadContext.Background}, report running={report}).");
                 return dialog || handlers || background || report;
             }
             catch (Exception ex)

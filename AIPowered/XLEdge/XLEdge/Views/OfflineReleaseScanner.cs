@@ -74,12 +74,12 @@ namespace XLEdge.Views
             if (loaded != null && (candidate == null || candidate <= loaded))
             {
                 result.NotNewer = true;
-                result.Message = $"No updates available.\n\nYou already have the latest version: {loadedVersion} (released {loadedReleaseDate}).\n\nChecked release: {release.Version} ({release.ReleaseDate}).";
+                result.Message = $"No updates available.\n\nYou already have the latest version: {VersionText.Display(loadedVersion)} (released {loadedReleaseDate}).\n\nChecked release: {VersionText.Display(release.Version)} ({release.ReleaseDate}).";
                 return result;
             }
 
             result.Ok = true;
-            result.Message = $"Ready to reload: version {release.Version}, released {release.ReleaseDate} ({Math.Round(length / 1024.0):0} KB).";
+            result.Message = $"Ready to reload: version {VersionText.Display(release.Version)}, released {release.ReleaseDate} ({Math.Round(length / 1024.0):0} KB).";
             return result;
         }
 

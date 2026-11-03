@@ -10,6 +10,8 @@ namespace XLEdge.Views
     internal sealed class ReleaseRow
     {
         public string Version { get; set; }
+        /// <summary>The version as shown (11.1.3, not 11.1.3.0).</summary>
+        public string DisplayVersion => VersionText.Display(Version);
         public string ReleaseDate { get; set; }
         public string Source { get; set; }
         public string Notes { get; set; }

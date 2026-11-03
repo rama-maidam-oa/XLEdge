@@ -93,7 +93,7 @@ namespace XLEdge.Loader.Core
                     logger?.LogError(Log + $"no staged release in '{paths.ManifestDirectory}' and no installed release - nothing to load.");
                     return null;
                 }
-                logger?.LogInfo(Log + "first run - installing the staged core release.");
+                logger?.LogDebug(Log + "first run - installing the staged core release.");
                 ClearVersions(paths.VersionsPath, logger);
                 ResolvedRelease seeded = ExtractStaged(context, stagedZip, "Install");
                 if (seeded != null) TryDeleteDirectory(paths.ManifestDirectory, logger);
@@ -108,7 +108,7 @@ namespace XLEdge.Loader.Core
                 if (staged != null && catalog.Any(e => string.Equals(e.Version, staged.Version, StringComparison.OrdinalIgnoreCase) &&
                                                        string.Equals(e.ReleaseDate, staged.ReleaseDate, StringComparison.OrdinalIgnoreCase)))
                 {
-                    logger?.LogInfo(Log + $"release {staged.Version} is already catalogued (reinstall); reconciling the catalog.");
+                    logger?.LogDebug(Log + $"release {VersionText.Display(staged.Version)} is already catalogued (reinstall); reconciling the catalog.");
                     ReleaseHistoryStore.Reconcile(paths.ReleaseHistoryFile, paths.VersionsPath);
                 }
                 ResolvedRelease extracted = ExtractStaged(context, stagedZip, source);
@@ -132,7 +132,7 @@ namespace XLEdge.Loader.Core
                 ?? loadable.OrderByDescending(e => ParseReleaseDate(e.ReleaseDate)).FirstOrDefault();
             if (chosen != null)
             {
-                logger?.LogInfo(Log + $"using installed release '{chosen.FolderName}'" + (string.Equals(chosen.FolderName, remembered, StringComparison.OrdinalIgnoreCase) ? " (last loaded)." : "."));
+                logger?.LogDebug(Log + $"using installed release '{chosen.FolderName}'" + (string.Equals(chosen.FolderName, remembered, StringComparison.OrdinalIgnoreCase) ? " (last loaded)." : "."));
                 return ToResolved(chosen);
             }
 
@@ -233,7 +233,7 @@ namespace XLEdge.Loader.Core
                 Source = source,
                 ContractVersion = info.ContractVersion,
             });
-            logger?.LogInfo(Log + $"extracted and catalogued '{folderName}' (source={source}).");
+            logger?.LogDebug(Log + $"extracted and catalogued '{folderName}' (source={source}).");
             return new ResolvedRelease { Version = info.Version, ReleaseDate = info.ReleaseDate, FolderName = folderName, ContractVersion = info.ContractVersion };
         }
 
@@ -312,7 +312,7 @@ namespace XLEdge.Loader.Core
             ResolvedRelease release;
             try
             {
-                logger?.LogInfo(Log + $"extracting '{zipPath}' (source={source}).");
+                logger?.LogDebug(Log + $"extracting '{zipPath}' (source={source}).");
                 release = ExtractAndCatalog(context, File.ReadAllText(context.Paths.ManifestFile), File.ReadAllBytes(zipPath), source);
             }
             catch (InvalidDataException ex)
@@ -399,7 +399,7 @@ namespace XLEdge.Loader.Core
             if (!Directory.Exists(versionsPath)) return;
             foreach (string folder in Directory.GetDirectories(versionsPath))
             {
-                logger?.LogInfo($"UpdateBootstrapper.ResolveVersionToLoad: first run - removing leftover folder '{Path.GetFileName(folder)}'.");
+                logger?.LogDebug($"UpdateBootstrapper.ResolveVersionToLoad: first run - removing leftover folder '{Path.GetFileName(folder)}'.");
                 TryDeleteDirectory(folder, logger);
             }
         }

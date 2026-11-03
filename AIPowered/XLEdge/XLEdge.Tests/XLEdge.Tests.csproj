@@ -111,6 +111,7 @@
     <Compile Include="TempFolder.cs" />
     <Compile Include="UpdateBootstrapperTests.cs" />
     <Compile Include="VersionParserTests.cs" />
+    <Compile Include="VersionTextTests.cs" />
     <Compile Include="Win32Test.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

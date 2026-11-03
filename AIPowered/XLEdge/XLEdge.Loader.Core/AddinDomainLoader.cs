@@ -63,7 +63,7 @@ namespace XLEdge.Loader.Core
             if (File.Exists(config)) setup.ConfigurationFile = config;
 
             string name = "XLEdgeCore_" + release.FolderName;
-            logger?.LogInfo($"AddinDomainLoader.Load: loading XLEdge core {release.Version} (released {release.ReleaseDate}) from '{folder}'.");
+            logger?.LogDebug($"AddinDomainLoader.Load: loading XLEdge core {VersionText.Display(release.Version)} (released {release.ReleaseDate}) from '{folder}'.");
             _domain = AppDomain.CreateDomain(name, null, setup);
             _domainName = name;
             logger?.LogDebug($"AddinDomainLoader.Load: created AppDomain '{name}'.");
@@ -74,7 +74,7 @@ namespace XLEdge.Loader.Core
                 var remoteLoader = (RemoteLoader)_domain.CreateInstanceFromAndUnwrap(typeof(RemoteLoader).Assembly.Location, typeof(RemoteLoader).FullName);
                 IXLEdgeAddin addin = remoteLoader.Create(folder, context.Paths.SharedDependenciesPath, logger);
                 addin.Initialize(context);
-                logger?.LogInfo($"AddinDomainLoader.Load: XLEdge core {release.Version} initialized.");
+                logger?.LogDebug($"AddinDomainLoader.Load: XLEdge core {VersionText.Display(release.Version)} initialized.");
                 return addin;
             }
             catch (Exception ex)
@@ -112,7 +112,7 @@ namespace XLEdge.Loader.Core
                 unload.ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
                 if (unload.Wait(UnloadTimeout))
                 {
-                    logger?.LogInfo($"AddinDomainLoader.Unload: AppDomain unloaded ('{name}').");
+                    logger?.LogDebug($"AddinDomainLoader.Unload: AppDomain unloaded ('{name}').");
                     return true;
                 }
                 logger?.LogError($"AddinDomainLoader.Unload: AppDomain '{name}' did not unload within {UnloadTimeout.TotalSeconds:0} s - continuing; it may still be torn down in the background.");

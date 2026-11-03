@@ -1,6 +1,7 @@
 using System;
 using XLEdge.Contracts;
 using XLEdge.Loader.Core;
+using XLEdge.Shared;
 
 namespace XLEdge.Hosting
 {
@@ -45,6 +46,8 @@ namespace XLEdge.Hosting
         {
             if (_busy || _shutdownRequested) return false;
             _busy = true;
+            // Debug lines of the start are written as one block after the "Start of XLEdge version" marker.
+            using (Scope("XLEdge start"))
             try
             {
                 ResolvedRelease release = null;
@@ -61,7 +64,7 @@ namespace XLEdge.Hosting
                 Exception failure = TryLoad(release);
                 if (failure != null)
                 {
-                    _ui.ShowError($"XLEdge could not load core version {release.Version}: {failure.Message}", StartTitle);
+                    _ui.ShowError($"XLEdge could not load core version {VersionText.Display(release.Version)}: {failure.Message}", StartTitle);
                     return false;
                 }
                 return true;
@@ -85,6 +88,8 @@ namespace XLEdge.Hosting
                 return false;
             }
             _busy = true;
+            // Debug lines of the reload are written as one block after the new "Start of XLEdge version" marker.
+            using (Scope("XLEdge reload"))
             try
             {
                 if (CoreIsBusy())
@@ -143,7 +148,7 @@ namespace XLEdge.Hosting
                         Exception failure = _shutdownRequested ? null : TryLoad(release);
                         if (_shutdownRequested)
                         {
-                            Log(l => l.LogInfo("CoreHost.Reload: Excel is closing - not loading a new core."));
+                            Log(l => l.LogDebug("CoreHost.Reload: Excel is closing - not loading a new core."));
                         }
                         else if (failure != null)
                         {
@@ -311,6 +316,13 @@ namespace XLEdge.Hosting
         {
             Log(l => l.LogDebug($"CoreHost.Reload: {message}"));
             try { progress?.ShowStage(message, step); } catch (Exception) { }
+        }
+
+        /// <summary>A log scope (debug lines buffered until it ends), or null when there is no logger.</summary>
+        private IDisposable Scope(string name)
+        {
+            try { return _context.Logger?.BeginLogScope(name); }
+            catch (Exception) { return null; }
         }
 
         private void Log(Action<ILogger> write)

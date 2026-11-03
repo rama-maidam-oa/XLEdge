@@ -42,7 +42,7 @@ must show PASS.
 | ID | Step | Expected | Result |
 |---|---|---|---|
 | I1 | Fresh install (no XLEdge): `msiexec /i OrbitXLEdge.msi /l*v install.log` | one "XLEdge" in Apps; health check: Registration PASS, Loader PASS, Shell 11.1.3.0, Signature PASS, StagedRelease "Staged: …" | |
-| I2 | Start Excel once | XLEdge tab; About: shell 11.1.3.0, core 11.1.3.0; health check: AddinCore 1 release, StagedRelease "Nothing staged" (`Manifest\manifest.json` stays; only the zip goes) | |
+| I2 | Start Excel once | XLEdge tab; About: 11.1.3; the log: environment snapshot, then `===== Start of XLEdge version 11.1.3 (released ...) logs as on ...` (no INFO lines with Debug logging off); health check: AddinCore 1 release, StagedRelease "Nothing staged" (`Manifest\manifest.json` stays; only the zip goes) | |
 | I3 | Upgrade over 11.1.2: `msiexec /i OrbitXLEdge.msi /l*v upgrade.log` | one XLEdge in Apps; XLEdge.dll 11.1.3.0 signed; first Excel start loads core 11.1.3.0; `upgrade.log`: 11.1.2's `adxregistrator /uninstall` **runs** during RemoveExistingProducts (11.1.2's package has no upgrade guard; 11.1.3's guard applies from the next upgrade on), then 11.1.3's `/install` registers again; health check Registration PASS (LoadBehavior 3); XLEdge loads at the first **and** a second Excel start | |
 | I4 | After I3: `adxloader.dll` / `adxloader64.dll` | still 11.1.2's files (same binary, unsigned) — accepted, note it | |
 | I5 | Release History → pick another core, then Repair (Apps → Modify/Repair) | the repair stages the MSI's core again (health check: StagedRelease "Staged: …"); the next Excel start loads **the MSI's core** (About), not the one picked before; catalogued releases kept; pick again in Release History if needed | |

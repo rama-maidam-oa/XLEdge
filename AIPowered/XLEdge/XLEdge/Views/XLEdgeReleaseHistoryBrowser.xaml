@@ -269,7 +269,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTextColumn Header="VERSION" Binding="{Binding Version}" Width="90" MinWidth="90" ElementStyle="{StaticResource TrimmedCellTextStyle}">
+                        <DataGridTextColumn Header="VERSION" Binding="{Binding DisplayVersion}" SortMemberPath="Version" Width="90" MinWidth="90" ElementStyle="{StaticResource TrimmedCellTextStyle}">
                             <DataGridTextColumn.HeaderStyle>
                                 <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                                     <Setter Property="ToolTip" Value="Version - the version number."/>
@@ -277,7 +277,7 @@
                             </DataGridTextColumn.HeaderStyle>
                             <DataGridTextColumn.CellStyle>
                                 <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                                    <Setter Property="ToolTip" Value="{Binding Version}"/>
+                                    <Setter Property="ToolTip" Value="{Binding DisplayVersion}"/>
                                 </Style>
                             </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>

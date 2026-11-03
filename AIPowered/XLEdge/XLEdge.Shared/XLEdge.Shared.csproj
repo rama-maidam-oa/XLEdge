@@ -84,6 +84,7 @@
     <Compile Include="ReleaseEntry.cs" />
     <Compile Include="ReleaseHistoryStore.cs" />
     <Compile Include="VersionParser.cs" />
+    <Compile Include="VersionText.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="..\XLEdgeContractsVersion.cs">
       <Link>Properties\XLEdgeContractsVersion.cs</Link>

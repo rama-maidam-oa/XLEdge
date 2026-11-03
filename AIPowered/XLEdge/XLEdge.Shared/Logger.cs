@@ -397,7 +397,7 @@ namespace XLEdge.Shared
         }
 
         private static string FormatRelease(string version, string releaseDate) =>
-            $"{(string.IsNullOrWhiteSpace(version) ? "unknown" : version)} (released {(string.IsNullOrWhiteSpace(releaseDate) ? "unknown release date" : releaseDate)})";
+            $"{(string.IsNullOrWhiteSpace(version) ? "unknown" : VersionText.Display(version))} (released {(string.IsNullOrWhiteSpace(releaseDate) ? "unknown release date" : releaseDate)})";
 
         private static IEnumerable<string> SplitLines(string text) => text.Replace("\r\n", "\n").Split('\n');
 

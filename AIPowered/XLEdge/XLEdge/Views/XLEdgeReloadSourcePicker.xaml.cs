@@ -290,7 +290,7 @@ namespace XLEdge.Views
                     foreach (OnlineReleaseRow row in chosen)
                     {
                         if (token.IsCancellationRequested) break;
-                        LogStep($"Downloading {row.Version} (released {row.ReleaseDate})...");
+                        LogStep($"Downloading {VersionText.Display(row.Version)} (released {row.ReleaseDate})...");
                         try
                         {
                             (string manifest, byte[] zip) = await source.DownloadAsync(row.FolderName, token);
@@ -298,19 +298,19 @@ namespace XLEdge.Views
                             if (release == null)
                             {
                                 failed.Add(row.Version);
-                                LogFailure($"{row.Version} was refused (checksum, contract or folder - see the XLEdge log).");
+                                LogFailure($"{VersionText.Display(row.Version)} was refused (checksum, contract or folder - see the XLEdge log).");
                             }
                             else if (!SameBuild(release, row))
                             {
                                 // The server's index and that folder's manifest disagree (a hand-copy mistake): the build kept is
                                 // valid, but it is not the one the user ticked - not loaded, and named.
                                 failed.Add(row.Version);
-                                LogFailure($"{row.Version}: the server's files for it hold {release.Version} (released {release.ReleaseDate}) - not loaded.");
+                                LogFailure($"{VersionText.Display(row.Version)}: the server's files for it hold {VersionText.Display(release.Version)} (released {release.ReleaseDate}) - not loaded.");
                             }
                             else
                             {
                                 done.Add((row, release));
-                                LogSuccess($"{row.Version} downloaded and checked.");
+                                LogSuccess($"{VersionText.Display(row.Version)} downloaded and checked.");
                             }
                         }
                         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -321,12 +321,12 @@ namespace XLEdge.Views
                         catch (OnlineReleaseException ex)
                         {
                             failed.Add(row.Version);
-                            LogFailure($"{row.Version}: {ex.Message}");
+                            LogFailure($"{VersionText.Display(row.Version)}: {ex.Message}");
                         }
                         catch (Exception ex)
                         {
                             failed.Add(row.Version);
-                            LogFailure($"{row.Version} could not be downloaded: {ex.Message}", ex);
+                            LogFailure($"{VersionText.Display(row.Version)} could not be downloaded: {ex.Message}", ex);
                         }
                     }
                 }
@@ -338,7 +338,7 @@ namespace XLEdge.Views
 
             if (token.IsCancellationRequested || _isClosed)
             {
-                if (done.Count > 0) LogStep($"Cancelled. Downloaded so far: {string.Join(", ", done.Select(d => d.Row.Version))} (in Version History).");
+                if (done.Count > 0) LogStep($"Cancelled. Downloaded so far: {string.Join(", ", done.Select(d => VersionText.Display(d.Row.Version)))} (in Version History).");
                 return;
             }
             if (done.Count == 0)
@@ -348,7 +348,7 @@ namespace XLEdge.Views
             }
             if (failed.Count > 0) LogWarning($"Not downloaded: {string.Join(", ", failed)}. The others are kept.");
             ResolvedRelease newest = done.OrderByDescending(d => OnlineReleaseClassifier.ReleaseDateOrMin(d.Row.ReleaseDate)).First().Release;
-            SafeLog(l => l.LogDebug(LogPrefix + $"online version {newest.Version} ({newest.FolderName}) chosen - proceeding with reload."));
+            SafeLog(l => l.LogDebug(LogPrefix + $"online version {VersionText.Display(newest.Version)} ({newest.FolderName}) chosen - proceeding with reload."));
             OnUi(() =>
             {
                 OnlineRelease = newest;
@@ -393,7 +393,7 @@ namespace XLEdge.Views
             {
                 ScanResult = _candidate;
                 SelectedSource = "Offline";
-                SafeLog(l => l.LogDebug(LogPrefix + $"version {_candidate.Release?.Version} chosen - proceeding with reload."));
+                SafeLog(l => l.LogDebug(LogPrefix + $"version {VersionText.Display(_candidate.Release?.Version)} chosen - proceeding with reload."));
                 CloseWith(true);
             }
             catch (Exception ex)

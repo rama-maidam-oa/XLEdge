@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using AddinExpress.MSO;
 using XLEdge.Hosting;
 using XLEdge.Loader.Core;
+using XLEdge.Shared;
 using XLEdge.Views;
 using Excel = Microsoft.Office.Interop.Excel;
 
@@ -112,7 +113,6 @@ namespace XLEdge
                 string installRoot = Path.GetDirectoryName(typeof(AddinModule).Assembly.Location);
                 _context = new XLEdgeContext(HostApplication, installRoot);
                 ReadExcelHandle();
-                _context.Logger.LogInfo($"AddinModule: XLEdge {_context.ShellVersion} started (install folder '{installRoot}').");
 
                 _ribbonController = new RibbonController(this, new ShellCommands(this, ribbon, Dispatcher.CurrentDispatcher), _context.Logger);
                 _context.SetRibbonController(_ribbonController);
@@ -120,6 +120,8 @@ namespace XLEdge
 
                 Host = new CoreHost(_context, new DomainCoreLoader(new AddinDomainLoader()), new BootstrapperReleaseCatalog(_bootstrapper), _hostUi, new PaneHost(this));
                 Host.Start();
+                // After Start: the log's first line after the environment snapshot is the "Start of XLEdge version" marker.
+                _context.Logger.LogDebug($"AddinModule: XLEdge shell {VersionText.Display(_context.ShellVersion)} started (install folder '{installRoot}').");
             }
             catch (Exception ex)
             {
@@ -271,7 +273,7 @@ namespace XLEdge
                 if (online != null)
                 {
                     if (!Host.Reload(() => online))
-                        ShowMessage($"XLEdge {online.Version} is downloaded. When XLEdge is free, load it from Version History.", "Reload XLEdge Add-in");
+                        ShowMessage($"XLEdge {VersionText.Display(online.Version)} is downloaded. When XLEdge is free, load it from Version History.", "Reload XLEdge Add-in");
                     return;
                 }
                 if (picker.ScanResult == null) return;

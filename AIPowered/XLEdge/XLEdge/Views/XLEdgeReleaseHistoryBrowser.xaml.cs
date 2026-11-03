@@ -79,12 +79,12 @@ namespace XLEdge.Views
 
         private string LoadedStatusText(ReleaseRow loaded)
         {
-            if (loaded != null) return $"Currently loaded: version {loaded.Version}, version date {loaded.ReleaseDate}.";
+            if (loaded != null) return $"Currently loaded: version {VersionText.Display(loaded.Version)}, version date {loaded.ReleaseDate}.";
             string version = _context.Version;
             // Not necessarily an error: the running release's folder may have been reconciled away.
             return string.IsNullOrWhiteSpace(version)
                 ? "No version is currently loaded."
-                : $"Currently loaded: version {version} (not found in the version history).";
+                : $"Currently loaded: version {VersionText.Display(version)} (not found in the version history).";
         }
 
         private void GridReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -102,7 +102,7 @@ namespace XLEdge.Views
 
                 if (row.IsCurrentlyLoaded)
                 {
-                    MessageBox.Show(this, $"Version {row.Version} is already running in this Excel session.", "Version Already Running",
+                    MessageBox.Show(this, $"Version {VersionText.Display(row.Version)} is already running in this Excel session.", "Version Already Running",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
@@ -148,7 +148,7 @@ namespace XLEdge.Views
             }
 
             MessageBoxResult confirmation = MessageBox.Show(this,
-                $"Remove version {row.Version} dated {row.ReleaseDate} from this machine?\n\n" +
+                $"Remove version {VersionText.Display(row.Version)} dated {row.ReleaseDate} from this machine?\n\n" +
                 "This permanently deletes its local files and history entry. " +
                 "The version can be loaded again later from its manifest.json and zip, if you still have them.",
                 "Remove Version", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
@@ -163,7 +163,7 @@ namespace XLEdge.Views
             }
             catch (Exception ex)
             {
-                SafeLog(l => l.LogError(LogPrefix + $"failed to remove version '{row.Version}'.", ex.ToString()));
+                SafeLog(l => l.LogError(LogPrefix + $"failed to remove version '{VersionText.Display(row.Version)}'.", ex.ToString()));
                 MessageBox.Show(this, $"The version could not be removed.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
                     "Remove Version Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -172,7 +172,7 @@ namespace XLEdge.Views
             switch (result)
             {
                 case ReleaseDeleteResult.Deleted:
-                    SafeLog(l => l.LogDebug(LogPrefix + $"removed version '{row.Version}' folder '{row.FolderName}'."));
+                    SafeLog(l => l.LogDebug(LogPrefix + $"removed version '{VersionText.Display(row.Version)}' folder '{row.FolderName}'."));
                     LoadEntries();
                     break;
 

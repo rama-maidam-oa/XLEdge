@@ -319,7 +319,7 @@ namespace XLEdge.Tests
                 Assert.IsNull(picker.OnlineRelease);
                 Assert.IsNull(picker.SelectedSource);
                 Assert.IsTrue(picker.IsVisibleOrOpen, "not closed");
-                StringAssert.Contains(picker.StatusText, "11.1.5.0");
+                StringAssert.Contains(picker.StatusText, "11.1.5");
             });
         }
 

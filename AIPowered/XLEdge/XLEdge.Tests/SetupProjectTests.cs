@@ -258,5 +258,23 @@ namespace XLEdge.Tests
             Assert.IsFalse(sln.Contains(guid + ".Debug|Any CPU.Build.0"), "Debug builds do not make an MSI");
             Assert.IsFalse(File.ReadAllText(Path.Combine(TwinRoot, "XLEdge.sln")).Contains(".vdproj"), "XLEdge.sln stays MSBuild-only");
         }
+
+        /// <summary>
+        /// The developer's request (03-Nov-2026): building XLEdge.sln or OrbitXLEdgeSetup.sln in Visual Studio never builds (or
+        /// runs) the tests; XLEdge.Tests.sln has every project of XLEdge.sln plus XLEdge.Tests, so the two cannot drift apart.
+        /// </summary>
+        [TestMethod]
+        public void TestProject_LivesOnlyInTheTestsSolution_WhichHasEveryProjectOfXLEdgeSln()
+        {
+            var projectLine = new Regex("^Project\\(\"\\{[0-9A-F-]+\\}\"\\) = \"([^\"]+)\", \"([^\"]+)\"", RegexOptions.Multiline);
+            string[] Projects(string sln) => projectLine.Matches(File.ReadAllText(Path.Combine(TwinRoot, sln))).Cast<Match>().Select(m => m.Groups[2].Value).ToArray();
+
+            foreach (string sln in new[] { "XLEdge.sln", "OrbitXLEdgeSetup.sln" })
+                Assert.IsFalse(Projects(sln).Any(p => p.Contains("XLEdge.Tests")), sln + " must not hold the test project");
+
+            string[] tests = Projects("XLEdge.Tests.sln");
+            CollectionAssert.IsSubsetOf(Projects("XLEdge.sln"), tests, "XLEdge.Tests.sln misses a project of XLEdge.sln");
+            CollectionAssert.Contains(tests, @"XLEdge.Tests\XLEdge.Tests.csproj");
+        }
     }
 }

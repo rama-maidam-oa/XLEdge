@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Interop;
+using XLEdge.Shared;
 using XLEdge.Views;
 using WinForms = System.Windows.Forms;
 
@@ -52,7 +53,7 @@ namespace XLEdge.Hosting
             XLEdgeReloadProgressWindow window = null;
             try
             {
-                window = new XLEdgeReloadProgressWindow(currentVersion, currentReleaseDate);
+                window = new XLEdgeReloadProgressWindow(VersionText.Display(currentVersion), currentReleaseDate);
                 IntPtr owner = OwnerHandle();
                 if (owner != IntPtr.Zero) new WindowInteropHelper(window).Owner = owner;
                 window.ShowAndRender();
@@ -107,7 +108,7 @@ namespace XLEdge.Hosting
 
             public void SetTarget(string version, string releaseDate)
             {
-                try { _window.SetTarget(version, releaseDate); }
+                try { _window.SetTarget(VersionText.Display(version), releaseDate); }
                 catch { /* cosmetic */ }
             }
 

@@ -392,7 +392,46 @@ namespace XLEdge.Tests
                 f.Logger.BeginReleaseSession("11.1.2.0", "d");
                 f.Logger.EndReleaseSession("11.1.2.0", "d");
                 f.Logger.BeginReleaseSession("11.1.2.0", "d");
-                Assert.AreEqual(2, Regex.Matches(f.Text(), "Start of XLEdge version 11.1.2.0").Count);
+                Assert.AreEqual(2, Regex.Matches(f.Text(), "Start of XLEdge version 11.1.2 ").Count);
+            }
+        }
+
+        [TestMethod]
+        public void ReleaseSession_FirstLineAfterTheSnapshot_IsTheMarker_DebugLinesOfTheStartFollowIt()
+        {
+            using (var f = new Fixture(debugMode: true))
+            {
+                using (f.Logger.BeginLogScope("XLEdge start"))
+                {
+                    f.Logger.LogDebug("resolved the release");
+                    f.Logger.BeginReleaseSession("11.1.3.0", "d");
+                    f.Logger.LogDebug("core loaded");
+                }
+                string[] lines = f.Lines();
+                int snapshotEnd = Array.FindIndex(lines, l => l.StartsWith("=================================", StringComparison.Ordinal));
+                Assert.IsTrue(snapshotEnd >= 0, f.Text());
+                StringAssert.Contains(lines[snapshotEnd + 1], "===== Start of XLEdge version 11.1.3 (released d) logs as on ", f.Text());
+                int resolved = Array.FindIndex(lines, l => l.Contains("resolved the release"));
+                Assert.IsTrue(resolved > snapshotEnd + 1, "the start's debug lines come after the marker:\n" + f.Text());
+            }
+        }
+
+        [TestMethod]
+        public void ReleaseSession_DebugOff_TheSnapshotIsFollowedByTheMarkerOnly()
+        {
+            using (var f = new Fixture(debugMode: false))
+            {
+                using (f.Logger.BeginLogScope("XLEdge start"))
+                {
+                    f.Logger.LogDebug("resolved the release");
+                    f.Logger.BeginReleaseSession("11.1.3.0", "d");
+                    f.Logger.LogDebug("core loaded");
+                }
+                string[] lines = f.Lines().Where(l => l.Length > 0).ToArray();
+                int snapshotEnd = Array.FindIndex(lines, l => l.StartsWith("=================================", StringComparison.Ordinal));
+                Assert.AreEqual(snapshotEnd + 2, lines.Length, f.Text());
+                StringAssert.Contains(lines[snapshotEnd + 1], "===== Start of XLEdge version 11.1.3 (released d) logs as on ");
+                Assert.IsFalse(f.Text().Contains("INFO"), f.Text());
             }
         }
 
@@ -488,12 +527,12 @@ namespace XLEdge.Tests
 
                 using (f.Logger.BeginLogScope("Pending")) { f.Logger.LogDebug("unflushed"); f.Logger.EndReleaseSession("11.1.2.0", "2026-10-28T10:00:00"); }
                 string text = f.Text();
-                StringAssert.Contains(text, "===== Start of XLEdge version 11.1.2.0 (released 2026-10-28T10:00:00) logs as on ");
+                StringAssert.Contains(text, "===== Start of XLEdge version 11.1.2 (released 2026-10-28T10:00:00) logs as on ");
                 StringAssert.Contains(text, "===== Pending - release session ending | ");
-                StringAssert.Contains(text, "===== End of XLEdge version 11.1.2.0 (released 2026-10-28T10:00:00) logs =====");
+                StringAssert.Contains(text, "===== End of XLEdge version 11.1.2 (released 2026-10-28T10:00:00) logs =====");
 
                 f.Logger.BeginReleaseSession("11.1.3.0", null);
-                StringAssert.Contains(f.Text(), "===== Start of XLEdge version 11.1.3.0 (released unknown release date) logs as on ");
+                StringAssert.Contains(f.Text(), "===== Start of XLEdge version 11.1.3 (released unknown release date) logs as on ");
             }
         }
 

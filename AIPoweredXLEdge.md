@@ -21,14 +21,14 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
   ```
   D:\SQLLite_Test\XLEdge\
     .bare\                         the git repository (core.bare = true; every checkout is a worktree)
-    BusinessLayers\11.1.3\         branch 11.1.3 = <checkout>; solution AIPowered\XLEdge\XLEdge.sln
+    BusinessLayers\11.1.3\         branch 11.1.3 = <checkout>; solution AIPowered\XLEdge\XLEdge.sln (tests: XLEdge.Tests.sln)
     SingleLayer\Worktrees\11.1.2\  branch 11.1.2 (frozen classic XLEdge)
     SingleLayer\Worktrees\11.1.0\  branch 11.1.0
   ```
   `git --git-dir=D:/SQLLite_Test/XLEdge/.bare worktree list`; a new version = `git -C <checkout> worktree add
   ..\11.1.4 -b 11.1.4`. There is no 11.1.1 branch in this repo. Set up by `D:\SQLLite_Test\Move-XLEdgeLayout.ps1`.
   **A new checkout restores NuGet first** (packages are git-ignored; after the move `AIPowered\XLEdge\packages` held 10 of 17
-  and the build failed with 884 errors): `MSBuild.exe AIPowered\XLEdge\XLEdge.sln -t:restore -p:RestorePackagesConfig=true`.
+  and the build failed with 884 errors): `MSBuild.exe AIPowered\XLEdge\XLEdge.Tests.sln -t:restore -p:RestorePackagesConfig=true` (the tests solution: it has every project).
   Verified 2026-11-03 in the new layout after the restore: Debug + Release 0 errors / 0 warnings, suite as below in both.
 - **The classic single-DLL `XLEdge\` project is frozen at 11.1.2** on this branch: it is the parity baseline the twin's core
   is tested against (`CorePortParityTests`), not a product - never edit or version-bump it. 11.1.3 fixes go into the twin;
@@ -47,6 +47,15 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 - Every decision taken on the developer's behalf is reported as a **"Ruling"** with what it costs if wrong.
 
 ### Tools (kept in `.superpowers\tools\`, git-ignored)
+- **Solutions** (developer's request, 03-Nov-2026): `XLEdge.sln` = the 6 product projects (build and register in VS; no
+  tests), `XLEdge.Tests.sln` = those + `XLEdge.Tests` (what bt.sh / rt.sh build), `OrbitXLEdgeSetup.sln` = product + MSI (no
+  tests). `SetupProjectTests.TestProject_LivesOnlyInTheTestsSolution_WhichHasEveryProjectOfXLEdgeSln` keeps them in step. The
+  scripts pass `-p:RegisterForComInterop=false`: VS's "Register ADX Project" turns it on in the shell csproj (a local change,
+  never committed).
+- **Logging** (developer's request, 03-Nov-2026): versions are shown as 11.1.3 (`XLEdge.Shared.VersionText.Display`; catalog,
+  folder names and comparisons keep 11.1.3.0); the loader / core lifecycle lines are Debug, so with Debug logging off the log
+  is the environment snapshot followed by `===== Start of XLEdge version 11.1.3 ...`; start and reload run in a log scope
+  (`CoreHost.Scope`), so with Debug on their lines follow the marker as one block.
 - `bash .superpowers/tools/bt.sh <tag>` — builds Debug and Release, runs the whole suite, prints errors/warnings/results.
 - `bash .superpowers/tools/rt.sh <tag> <Test1,Test2|category:Excel>` — Debug build + only the named tests.
 - Outputs in `.superpowers\tools\out\`. Per-stage workspace/ledger `.superpowers\sdd\<plan>\` is deleted when a stage ends.

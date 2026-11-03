@@ -247,7 +247,7 @@
                             <DataTemplate>
                                 <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsEnabled="{Binding IsSelectable, Mode=OneWay}">
                                     <TextBlock>
-                                        <Run Text="{Binding Version, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="{Binding DisplayVersion, Mode=OneWay}" FontWeight="SemiBold"/>
                                         <Run Text="  released "/><Run Text="{Binding ReleaseDate, Mode=OneWay}"/>
                                         <Run Text="  -  "/><Run Text="{Binding StatusText, Mode=OneWay}"/>
                                     </TextBlock>
