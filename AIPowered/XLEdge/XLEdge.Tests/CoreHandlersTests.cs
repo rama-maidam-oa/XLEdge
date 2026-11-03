@@ -254,6 +254,24 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void GetLoginInfo_ReportsTheLogin()
+        {
+            // Stage 6: the shell's Online reload asks the core for the login (URL, token) to call the server with.
+            WithCore((p, _) =>
+            {
+                Assert.AreEqual("|||False", p.EntryLoginInfo(), "logged out");
+                p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "LoginUrl", "https://host/reporting");
+                p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "LoginToken", "tok");
+                p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "LoginUserName", "u");
+                Assert.AreEqual("https://host/reporting|tok|u|False", p.EntryLoginInfo(), "not logged in until the login completed");
+                p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "IsLoginCompleted", true);
+                Assert.AreEqual("https://host/reporting|tok|u|True", p.EntryLoginInfo());
+                p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "LoginToken", "");
+                Assert.AreEqual("https://host/reporting||u|False", p.EntryLoginInfo(), "no token: the server cannot be called");
+            });
+        }
+
+        [TestMethod]
         public void RunWorkbook_IsPerRun_NotShared()
         {
             // Review fix: Refresh All in A and a pane report started in B at the same time each keep their own workbook, and

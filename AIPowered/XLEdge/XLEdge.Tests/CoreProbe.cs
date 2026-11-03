@@ -402,6 +402,13 @@ namespace XLEdge.Tests
 
         public void EntryLogoutFromGLSense() => _entry.OnLogoutFromGLSense();
 
+        /// <summary>The entry's GetLoginInfo, as the shell gets it (by value): "url|token|user|loggedIn".</summary>
+        public string EntryLoginInfo()
+        {
+            LoginInfo info = _entry.GetLoginInfo();
+            return $"{info?.LoginUrl}|{info?.LoginToken}|{info?.LoginUserName}|{info?.IsLoggedIn}";
+        }
+
         public bool EntryExcelEvent(string eventName, object[] args) => _entry.OnExcelEvent(eventName, args);
 
         /// <summary>

@@ -290,7 +290,29 @@ namespace XLEdge.Addin.Core
             catch (Exception ex) { Log(ex, "AddinEntry.OnLogoutFromGLSense"); }
         }
 
-        public LoginInfo GetLoginInfo() => new LoginInfo();
+        /// <summary>
+        /// Stage 6: the login the shell's Online reload calls the ORBIT server with. Logged in only when the login completed and a
+        /// token and URL are there (GLSense CLAUDE.md 44.1: a flag never set kept its Online disabled).
+        /// </summary>
+        public LoginInfo GetLoginInfo()
+        {
+            try
+            {
+                XLEdgeAppState state = XLEdgeAppState.Instance;
+                return new LoginInfo
+                {
+                    LoginUrl = state.LoginUrl,
+                    LoginToken = state.LoginToken,
+                    LoginUserName = state.LoginUserName,
+                    IsLoggedIn = state.IsLoginCompleted && !string.IsNullOrWhiteSpace(state.LoginToken) && !string.IsNullOrWhiteSpace(state.LoginUrl),
+                };
+            }
+            catch (Exception ex)
+            {
+                Log(ex, "AddinEntry.GetLoginInfo");
+                return new LoginInfo();
+            }
+        }
 
         /// <summary>The core's open windows (the shell asks before a reload, which would close them).</summary>
         public string[] GetOpenWindowTitles()
