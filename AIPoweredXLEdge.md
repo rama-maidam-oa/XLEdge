@@ -1,7 +1,8 @@
 # AIPowered XLEdge — migration status and how to continue
 
 Resume with: **"continue AIPoweredXLEdge.md"**. Read this file first, then the spec and the next stage's plan, and pick up at
-"Next step" below. Last updated: 2026-11-03, after Stage 7 (QA & cutover support: health check, runbook).
+"Next step" below. Last updated: 2026-11-03, after Stage 7 (QA & cutover support: health check, runbook) and the
+build check in the new folder layout.
 
 ## What this is
 
@@ -26,6 +27,9 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
   ```
   `git --git-dir=D:/SQLLite_Test/XLEdge/.bare worktree list`; a new version = `git -C <checkout> worktree add
   ..\11.1.4 -b 11.1.4`. There is no 11.1.1 branch in this repo. Set up by `D:\SQLLite_Test\Move-XLEdgeLayout.ps1`.
+  **A new checkout restores NuGet first** (packages are git-ignored; after the move `AIPowered\XLEdge\packages` held 10 of 17
+  and the build failed with 884 errors): `MSBuild.exe AIPowered\XLEdge\XLEdge.sln -t:restore -p:RestorePackagesConfig=true`.
+  Verified 2026-11-03 in the new layout after the restore: Debug + Release 0 errors / 0 warnings, suite as below in both.
 - **The classic single-DLL `XLEdge\` project is frozen at 11.1.2** on this branch: it is the parity baseline the twin's core
   is tested against (`CorePortParityTests`), not a product - never edit or version-bump it. 11.1.3 fixes go into the twin;
   a fix inside ported (verbatim) code is a counted `CorePortParityTests.TwinSubstitutions` entry, as for the 14+1 so far.
