@@ -287,6 +287,69 @@ namespace XLEdge.Tests
 
         public void EndCountedHandler() => _counted.SetResult(true);
 
+        /// <summary>
+        /// Two runs at once on two flows ("A" and "B" as their workbooks), A with a nested scope, then this flow outside any run:
+        /// each run sees its own workbook (review fix: the run workbook is per run, not global).
+        /// </summary>
+        public string RunWorkbookPerRun()
+        {
+            Type scope = CoreType("XLEdge.Helpers.RunWorkbookScope");
+            MethodInfo begin = scope.GetMethod("Begin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(Func<object>) }, null)
+                               ?? throw new MissingMethodException("RunWorkbookScope", "Begin(Func<object>)");
+            PropertyInfo current = scope.GetProperty("CurrentWorkbook", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            Func<string, IDisposable> open = book => (IDisposable)begin.Invoke(null, new object[] { (Func<object>)(() => book) });
+            Func<string> now = () => (string)current.GetValue(null) ?? "null";
+            var a = System.Threading.Tasks.Task.Run(async () =>
+            {
+                using (open("A"))
+                {
+                    await System.Threading.Tasks.Task.Delay(150);
+                    string nested;
+                    using (open("X")) nested = now();
+                    await System.Threading.Tasks.Task.Delay(50);
+                    return now() + "/" + nested;
+                }
+            });
+            var b = System.Threading.Tasks.Task.Run(async () =>
+            {
+                await System.Threading.Tasks.Task.Delay(50);
+                using (open("B"))
+                {
+                    await System.Threading.Tasks.Task.Delay(150);
+                    return now();
+                }
+            });
+            return $"a={a.Result} b={b.Result} outside={now()}";
+        }
+
+        /// <summary>ExcelApplicationHelper.NeedsWorkbookActivation for (active, sheet's workbook) pairs.</summary>
+        public string NeedsWorkbookActivation(params string[] pairs)
+        {
+            var answers = new System.Collections.Generic.List<string>();
+            for (int i = 0; i + 1 < pairs.Length; i += 2)
+                answers.Add(Convert.ToString(CallStatic("XLEdge.Helpers.ExcelApplicationHelper", "NeedsWorkbookActivation", pairs[i], pairs[i + 1])));
+            return string.Join(",", answers);
+        }
+
+        /// <summary>Tracked work that never ends, with the stale limit at <paramref name="limitMs"/>: busy before the limit, then?</summary>
+        public string TrackedWorkThatNeverEnds(int limitMs)
+        {
+            Type context = CoreType("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext");
+            FieldInfo limit = context.GetField("TrackedWorkLimit", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                              ?? throw new MissingFieldException("ExcelThreadContext", "TrackedWorkLimit");
+            object previous = limit.GetValue(null);
+            try
+            {
+                limit.SetValue(null, TimeSpan.FromMilliseconds(limitMs));
+                CallStatic("XLEdge.Addin.Core.Infrastructure.ExcelThreadContext", "Track", new System.Threading.Tasks.TaskCompletionSource<bool>().Task);
+                int before = (int)context.GetProperty("Background").GetValue(null);
+                System.Threading.Thread.Sleep(limitMs * 2 + 100);
+                int after = (int)context.GetProperty("Background").GetValue(null);
+                return $"before={before} after={after}";
+            }
+            finally { limit.SetValue(null, previous); }
+        }
+
         /// <summary>Opens and closes a run (ExcelBulkOperationScope) in this domain: what it leaves in XLEdgeAppState.</summary>
         public string BulkScopeWithoutExcel()
         {

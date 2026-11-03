@@ -1,32 +1,39 @@
 ﻿using System;
+using System.Threading;
 using XLEdge.Utilities;
-using Excel = Microsoft.Office.Interop.Excel;
 
 namespace XLEdge.Helpers
 {
     /// <summary>
     /// Twin (Stage 4, the developer's request): the workbook a report or refresh run started in. 11.1.2 reads ActiveWorkbook
-    /// after its HTTP awaits, so a user switching workbooks meanwhile got the report in the other one; 11.1.2 already has the
-    /// field for it (XLEdgeAppState.ActiveWorkbookOverride), never set. The first scope of a run sets it to the workbook active
-    /// now and owns it; nested scopes (each report of a multi-report run, each sheet of Refresh All) keep the outer one's.
-    /// Read through ExcelApplicationHelper.RunWorkbook.
+    /// after its HTTP awaits, so a user switching workbooks meanwhile got the report in the other one. The first scope of a run
+    /// takes the workbook active now and owns it; nested scopes (each report of a multi-report run, each sheet of Refresh All)
+    /// keep the outer one's. Kept per run (AsyncLocal: it follows the run's own awaits and Task.Runs, not other runs or event
+    /// handlers), so two runs at once keep their own workbooks and code outside a run sees none. Read through
+    /// ExcelApplicationHelper.RunWorkbook.
     /// </summary>
     internal sealed class RunWorkbookScope : IDisposable
     {
+        private static readonly AsyncLocal<object> Current = new AsyncLocal<object>();
         private bool _owner;
 
-        public static RunWorkbookScope Begin()
+        /// <summary>The running run's workbook on this flow, or null outside a run.</summary>
+        internal static object CurrentWorkbook => Current.Value;
+
+        public static RunWorkbookScope Begin() => Begin(() => ExcelApplicationHelper.GetActiveExcelApplication()?.ActiveWorkbook);
+
+        /// <summary><paramref name="activeWorkbook"/>: the workbook active now (read only when no run is open on this flow).</summary>
+        internal static RunWorkbookScope Begin(Func<object> activeWorkbook)
         {
             var scope = new RunWorkbookScope();
             try
             {
-                XLEdgeAppState state = XLEdgeAppState.Instance;
-                if (state.ActiveWorkbookOverride == null)
+                if (Current.Value == null)
                 {
-                    Excel.Workbook active = ExcelApplicationHelper.GetActiveExcelApplication()?.ActiveWorkbook;
+                    object active = activeWorkbook();
                     if (active != null)
                     {
-                        state.ActiveWorkbookOverride = active;
+                        Current.Value = active;
                         scope._owner = true;
                     }
                 }
@@ -42,7 +49,7 @@ namespace XLEdge.Helpers
         {
             if (!_owner) return;
             _owner = false;
-            XLEdgeAppState.Instance.ActiveWorkbookOverride = null;
+            Current.Value = null;
         }
     }
 }

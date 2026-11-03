@@ -161,6 +161,15 @@ namespace XLEdge.Tests
 
                 f.Loader.Load(f.Context, release);
                 Assert.IsNotNull(f.Loader.CurrentDomainName, "the next core still loads");
+
+                // AppDomains unload one at a time: until the stuck one is gone, every later unload in this process (other tests)
+                // would wait behind it and hit the cap. Wait for it before the test ends.
+                bool gone = Win32Test.PumpUntil(() =>
+                {
+                    try { _ = domain.FriendlyName; return false; }
+                    catch (AppDomainUnloadedException) { return true; }
+                }, TimeSpan.FromSeconds(30));
+                Assert.IsTrue(gone, "the stuck domain unloaded once its thread left native code");
             }
         }
 

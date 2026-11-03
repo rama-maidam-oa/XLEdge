@@ -254,6 +254,35 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void RunWorkbook_IsPerRun_NotShared()
+        {
+            // Review fix: Refresh All in A and a pane report started in B at the same time each keep their own workbook, and
+            // code outside a run (tab label, P_ sheet lookup) never sees a run's workbook.
+            WithCore((p, _) => Assert.AreEqual("a=A/A b=B outside=null", p.RunWorkbookPerRun()));
+        }
+
+        [TestMethod]
+        public void ActivateInItsWorkbook_ActivatesTheWorkbookOnlyWhenItIsNotTheActiveOne()
+        {
+            // Review fix: activating an already-active workbook jumps to its first window (a user in "Book1:2" lost their window).
+            WithCore((p, _) => Assert.AreEqual("False,True,False",
+                p.NeedsWorkbookActivation(@"C:\a\A.xlsx", @"C:\a\A.xlsx", @"C:\a\A.xlsx", @"C:\a\B.xlsx", @"C:\A\a.XLSX", @"c:\a\A.xlsx")));
+        }
+
+        [TestMethod]
+        public void TrackedWorkThatNeverEnds_StopsBlockingReloadAfterTheLimit()
+        {
+            // Review fix: a tracked task that never completes (a pane closed while its WebView2 was starting) must not refuse every
+            // reload for the rest of the session.
+            WithCore((p, context) =>
+            {
+                Assert.AreEqual("before=1 after=0", p.TrackedWorkThatNeverEnds(200));
+                var log = (RecordingLogger)context.Logger;
+                Assert.IsTrue(log.Contains("no longer counted as busy"), log.Dump());
+            });
+        }
+
+        [TestMethod]
         public void RunWorkbookScope_WithoutExcel_SetsNothingAndNeverThrows()
         {
             // Stage 4: with no Excel there is no workbook to keep; a run scope must still open and close cleanly.

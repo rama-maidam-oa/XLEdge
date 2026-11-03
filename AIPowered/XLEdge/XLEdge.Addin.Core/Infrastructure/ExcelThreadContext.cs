@@ -41,17 +41,39 @@ namespace XLEdge.Addin.Core.Infrastructure
 
         public static void OnExcelThread(Action call) => OnExcelThread(() => { call(); return true; });
 
-        private static int _background;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Task, DateTime> Tracked =
+            new System.Collections.Concurrent.ConcurrentDictionary<Task, DateTime>();
 
-        /// <summary>Background tasks handed to <see cref="Track"/> that have not ended yet (Stage 4: the reload busy guard).</summary>
-        public static int Background => Volatile.Read(ref _background);
+        /// <summary>
+        /// Tracked work older than this stops counting as busy (logged once): a task that never ends - a pane closed while its
+        /// WebView2 was starting - must not refuse every reload for the rest of the session. Reports also count through
+        /// ProcessRunning, which has no such limit.
+        /// </summary>
+        internal static TimeSpan TrackedWorkLimit = TimeSpan.FromMinutes(15);
+
+        /// <summary>Background tasks handed to <see cref="Track"/> that have not ended yet and are younger than the limit.</summary>
+        public static int Background
+        {
+            get
+            {
+                DateTime now = DateTime.UtcNow;
+                int count = 0;
+                foreach (var entry in Tracked)
+                {
+                    if (now - entry.Value < TrackedWorkLimit) count++;
+                    else if (Tracked.TryRemove(entry.Key, out _))
+                        CoreServices.Context?.Logger?.LogWarn($"ExcelThreadContext: background work running since {entry.Value:HH:mm:ss} UTC is no longer counted as busy (limit {TrackedWorkLimit.TotalMinutes:0.#} min).");
+                }
+                return count;
+            }
+        }
 
         /// <summary>Counts <paramref name="task"/> in <see cref="Background"/> until it ends, whatever its outcome.</summary>
         public static void Track(Task task)
         {
             if (task == null) return;
-            Interlocked.Increment(ref _background);
-            task.ContinueWith(_ => Interlocked.Decrement(ref _background), CancellationToken.None,
+            Tracked[task] = DateTime.UtcNow;
+            task.ContinueWith(t => Tracked.TryRemove(t, out _), CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
 

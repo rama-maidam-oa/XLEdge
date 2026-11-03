@@ -8,7 +8,7 @@ namespace XLEdge.Helpers
     {
         /// <summary>Twin (Stage 4): the workbook the running report/refresh started in (RunWorkbookScope), else the active one.</summary>
         public static Excel.Workbook RunWorkbook(Excel.Application app) =>
-            XLEdgeAppState.Instance.ActiveWorkbookOverride ?? app?.ActiveWorkbook;
+            RunWorkbookScope.CurrentWorkbook as Excel.Workbook ?? app?.ActiveWorkbook;
 
         /// <summary>
         /// Twin (Stage 4): activates <paramref name="sheet"/>, bringing its workbook to the front first - a run may be writing to a
@@ -17,10 +17,19 @@ namespace XLEdge.Helpers
         public static void ActivateInItsWorkbook(Excel.Worksheet sheet)
         {
             if (sheet == null) return;
-            try { (sheet.Parent as Excel.Workbook)?.Activate(); }
+            try
+            {
+                // Only when the user switched away: activating the already-active workbook would jump to its first window.
+                if (sheet.Parent is Excel.Workbook book && NeedsWorkbookActivation(sheet.Application.ActiveWorkbook?.FullName, book.FullName))
+                    book.Activate();
+            }
             catch (Exception ex) { LogUtility.LogWarn("ExcelApplicationHelper.ActivateInItsWorkbook: its workbook could not be activated: " + ex.Message); }
             sheet.Activate();
         }
+
+        /// <summary>True when the sheet's workbook is not the active one (full names, case-insensitive as Windows paths).</summary>
+        internal static bool NeedsWorkbookActivation(string activeWorkbookFullName, string sheetWorkbookFullName) =>
+            !string.Equals(activeWorkbookFullName, sheetWorkbookFullName, StringComparison.OrdinalIgnoreCase);
 
         public static Excel.Application GetActiveExcelApplication()
         {
