@@ -62,4 +62,7 @@
     <None Include="XLEdge.Contracts.snk" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)..\XLEdge.Build\sign.ps1" -File "$(TargetPath)" -Configuration $(Configuration)</PostBuildEvent>
+  </PropertyGroup>
 </Project>

@@ -31,3 +31,5 @@ XLEdge/setupfiles/Release/
 
 # Core release packages produced by XLEdge.Addin.Core\post_build.ps1
 AIPowered/XLEdge/XLEdge.Addin.Core/SetupFiles/
+# The developer's signing script (may hold credentials; never committed, never read by Claude).
+/AIPowered/XLEdge/sign_file.cmd

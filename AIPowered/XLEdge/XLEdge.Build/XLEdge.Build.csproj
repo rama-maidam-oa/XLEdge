@@ -54,4 +54,7 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <ItemGroup>
+    <None Include="sign.ps1" />
+  </ItemGroup>
 </Project>

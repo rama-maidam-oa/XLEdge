@@ -8,7 +8,9 @@
 # Excel start (or Reload Add-in) installs it.
 param(
     [Parameter(Mandatory)][string]$TargetDir,
-    [Parameter(Mandatory)][string]$Configuration
+    [Parameter(Mandatory)][string]$Configuration,
+    # Tests pass a stand-in sign_file.cmd; empty = the twin root's (XLEdge.Build\sign.ps1 decides).
+    [string]$SignScript
 )
 $ErrorActionPreference = 'Stop'
 try {
@@ -44,6 +46,13 @@ try {
 
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
     Get-ChildItem -LiteralPath $outDir -File | Where-Object { $_.Extension -eq '.zip' -or $_.Name -eq 'manifest.json' } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+
+    # Release: the core DLL is signed before it is zipped (the zip's checksum covers the signed bytes; GLSense's order).
+    $signArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path (Split-Path -Parent $projectDir) 'XLEdge.Build\sign.ps1'),
+                  '-File', $coreDll, '-Configuration', $Configuration)
+    if ($SignScript) { $signArgs += @('-SignScript', $SignScript) }
+    & powershell @signArgs
+    if ($LASTEXITCODE -ne 0) { throw "signing $coreDll failed" }
 
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem

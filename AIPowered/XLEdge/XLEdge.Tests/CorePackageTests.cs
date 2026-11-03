@@ -22,6 +22,108 @@ namespace XLEdge.Tests
             }
         }
 
+        // ---- Stage 5: the Release signing hook (XLEdge.Build\sign.ps1) -----------------------------------------------------
+
+        private static string TwinRoot => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(CorePackageTests).Assembly.Location), @"..\..\.."));
+        private static string SignScript => Path.Combine(TwinRoot, @"XLEdge.Build\sign.ps1");
+
+        /// <summary>Runs sign.ps1 in a fresh PowerShell (XLEDGE_SKIP_SIGNING as given, not inherited): exit code and output.</summary>
+        private static (int Exit, string Output) RunSign(string file, string configuration, string signScript, string skip = null)
+        {
+            var info = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                $"-NoProfile -ExecutionPolicy Bypass -File \"{SignScript}\" -File \"{file}\" -Configuration {configuration}" +
+                (signScript == null ? "" : $" -SignScript \"{signScript}\""))
+            { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            info.EnvironmentVariables.Remove("XLEDGE_SKIP_SIGNING");
+            if (skip != null) info.EnvironmentVariables["XLEDGE_SKIP_SIGNING"] = skip;
+            using (var process = System.Diagnostics.Process.Start(info))
+            {
+                string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                return (process.ExitCode, output);
+            }
+        }
+
+        /// <summary>A stand-in sign_file.cmd: logs "file|configuration" next to itself and exits with <paramref name="exit"/>.</summary>
+        private static string FakeSignFile(TempFolder t, int exit = 0)
+        {
+            string path = t.Combine("sign_file.cmd");
+            File.WriteAllText(path, "@echo %~1^|%~2>>\"%~dp0signed.log\"\r\n@exit /b " + exit + "\r\n");
+            return path;
+        }
+
+        [TestMethod]
+        public void Sign_Release_CallsTheSignScriptWithFileAndConfiguration()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output) = RunSign(@"C:\x\a.dll", "Release", FakeSignFile(t));
+                Assert.AreEqual(0, exit, output);
+                CollectionAssert.AreEqual(new[] { @"C:\x\a.dll|Release" }, File.ReadAllLines(t.Combine("signed.log")));
+            }
+        }
+
+        [TestMethod]
+        public void Sign_Debug_DoesNothing()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output) = RunSign(@"C:\x\a.dll", "Debug", FakeSignFile(t));
+                Assert.AreEqual(0, exit, output);
+                Assert.IsFalse(File.Exists(t.Combine("signed.log")), "no signing in Debug");
+            }
+        }
+
+        [TestMethod]
+        public void Sign_SkipVariable_DoesNothingAndSaysSo()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output) = RunSign(@"C:\x\a.dll", "Release", FakeSignFile(t), skip: "1");
+                Assert.AreEqual(0, exit, output);
+                StringAssert.Contains(output, "signing skipped");
+                Assert.IsFalse(File.Exists(t.Combine("signed.log")), "XLEDGE_SKIP_SIGNING=1: nothing signed");
+            }
+        }
+
+        [TestMethod]
+        public void Sign_Release_WithoutTheScript_FailsWithTheMessage()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output) = RunSign(@"C:\x\a.dll", "Release", t.Combine("sign_file.cmd"));
+                Assert.AreEqual(1, exit, output);
+                StringAssert.Contains(output, "sign_file.cmd not found");
+                StringAssert.Contains(output, "XLEDGE_SKIP_SIGNING=1");
+            }
+        }
+
+        [TestMethod]
+        public void Sign_ScriptFails_TheBuildFails()
+        {
+            using (var t = new TempFolder())
+            {
+                var (exit, output) = RunSign(@"C:\x\a.dll", "Release", FakeSignFile(t, exit: 3));
+                Assert.AreNotEqual(0, exit, output);
+            }
+        }
+
+        [TestMethod]
+        public void PostBuilds_SignWhatGLSenseSigns()
+        {
+            foreach (string project in new[] { @"XLEdge.Contracts\XLEdge.Contracts.csproj", @"XLEdge.Shared\XLEdge.Shared.csproj", @"XLEdge.Loader.Core\XLEdge.Loader.Core.csproj" })
+            {
+                string text = File.ReadAllText(Path.Combine(TwinRoot, project));
+                StringAssert.Contains(text, @"XLEdge.Build\sign.ps1", project);
+                StringAssert.Contains(text, "$(TargetPath)", project);
+                StringAssert.Contains(text, "$(Configuration)", project);
+            }
+            string core = File.ReadAllText(Path.Combine(TwinRoot, @"XLEdge.Addin.Core\post_build.ps1"));
+            int sign = core.IndexOf("sign.ps1", System.StringComparison.Ordinal), zip = core.IndexOf("ZipFile]::Open", System.StringComparison.Ordinal);
+            Assert.IsTrue(sign >= 0 && sign < zip, "the core DLL is signed before it is zipped");
+            StringAssert.Contains(File.ReadAllText(Path.Combine(TwinRoot, @"..\..\.gitignore")), "/AIPowered/XLEdge/sign_file.cmd");
+        }
+
         [TestMethod]
         public void BuiltPackage_IsAValidRelease()
         {
