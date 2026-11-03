@@ -137,6 +137,10 @@
     <Compile Include="..\XLEdgeSharedVersion.cs">
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>
+    <Compile Include="Online\OnlineReleaseClassifier.cs" />
+    <Compile Include="Online\OnlineReleaseClient.cs" />
+    <Compile Include="Online\OnlineReleaseException.cs" />
+    <Compile Include="Online\OnlineReleaseRow.cs" />
     <Compile Include="RibbonControlIds.cs" />
     <Compile Include="RibbonController.cs" />
     <Compile Include="XLEdgeTaskPane.cs">

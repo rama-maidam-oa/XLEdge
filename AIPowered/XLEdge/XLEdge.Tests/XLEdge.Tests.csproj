@@ -41,6 +41,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.Net.Http" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
@@ -94,6 +95,7 @@
     <None Include="Tools\GoldenValuesGenerator.cs" />
     <Compile Include="LoggerTests.cs" />
     <Compile Include="OfflineReleaseScannerTests.cs" />
+    <Compile Include="OnlineReleaseClientTests.cs" />
     <Compile Include="PaneEmbeddingTests.cs" />
     <Compile Include="PaneFocusTests.cs" />
     <Compile Include="PathProviderTests.cs" />
