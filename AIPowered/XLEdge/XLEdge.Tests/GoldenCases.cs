@@ -39,6 +39,17 @@ namespace XLEdge.Tests
                                                             ("10/28/2026 14:05:00", "DATETIME"), ("12:30", "TIME"), ("abc", "NUMBER"), ("007", "STRING"),
                                                             ("-5", "NUMBER"), ("1E3", "NUMBER"), ("", "NUMBER"), (42, "NUMBER") })
                 yield return C(F, "ToExcelCellValue", true, v, t);
+            // OISR-22697: dates before 1-Jan-1900 become text in the column's format; 1-Jan..28-Feb-1900 one serial lower.
+            foreach (var (v, t, fmt) in new (object, string, string)[] { ("22-Dec-1781 00:00:00", "DATE", "dd-MMM-YYYY"), ("22-Dec-1781 00:00:00", "DATE", "yyyy/mm/dd"),
+                                                                         ("22-Dec-1781 13:05:09", "DATETIME", "dd/mm/yyyy hh:mm:ss AM/PM"), ("22-Dec-1781", "DATE", "General"),
+                                                                         ("22-Dec-1781", "DATE", null), ("31-Dec-1899 00:00:00", "DATE", "dd-MMM-YYYY"),
+                                                                         ("01-Jan-1900 00:00:00", "DATE", "dd-MMM-YYYY"), ("28-Feb-1900", "DATE", "dd-MMM-YYYY"),
+                                                                         ("01-Mar-1900", "DATE", "dd-MMM-YYYY"), ("03-Jan-2006 00:00:00", "DATE", "dd-MMM-YYYY"),
+                                                                         ("13:45:00", "TIME", "hh:mm"), ("", "DATE", "dd-MMM-YYYY"), ("3000.12", "DECIMAL", "#,##0.00") })
+                yield return C(F, "ToExcelCellValue", true, v, t, fmt);
+            foreach (string fmt in new[] { "dd-MMM-YYYY", "yyyy/mm/dd", "mm/dd/yyyy h:mm AM/PM", "dddd, mmmm d, yyyy", "d-mmm-yy", "hh:mm:ss",
+                                           "[$-409]dd-mmm-yyyy", "General", "@", "\"Date: \"dd\\-mm\\-yyyy", "h:mm a/p", "", null })
+                yield return C(F, "ExcelDateFormatToDotNet", false, fmt);
             foreach (object v in new object[] { "2026-10-28", "123", "12.5", "abc", "", null, "28/10/2026", "TRUE", "1,234", "123456789012345678901234", "2147483648" })
                 yield return C(F, "InferDrilldownDataType", true, v);
             foreach (var (v, t) in new (object, string)[] { ("2026-10-28", "DATE"), ("2026-10-28T10:00:00", "DATETIME"), ("1,234", "NUMBER"), ("abc", "STRING"),
@@ -79,6 +90,20 @@ namespace XLEdge.Tests
                                                ("/rest/secure/attachment?id=1", "https://host"), ("rest/x", "https://host/"), ("https://abs/x", "https://host"),
                                                ("", "https://host"), ("/x", ""), (null, null) })
                 yield return C(A, "BuildDownloadUrl", false, tip, url);
+            // OISR-22766: the report formula's "{businessObjectId}" placeholder becomes the report's business object id (as the web grid does).
+            foreach (string cell in new[] {
+                                            "<a target='_blank' href='javascript:void(0)' onClick='fileDownLoadByHref(event,\"fusion-attachments\",{documentId:6693168,businessObjectId:{businessObjectId}});'>a.do.pdf</a>",
+                                            "<a target='_blank' href='javascript:void(0)' onClick='fileDownLoadByHref(event,\"get-oracle-lob-file\",{fileId:40511,businessObjectId:{businessObjectId}});'>40511</a>",
+                                            "<a target='_blank' href='javascript:void(0)' onClick='fileDownLoadByHref(event,\"fusion-attachments\",{documentId:,businessObjectId:{businessObjectId}});'></a>",
+                                            "<a href='#' onclick='fileDownLoadByHref(event,\"get-fusion-file\",{documentId:12,businessObjectId:34});'>a.pdf</a>", "", null })
+            {
+                foreach (int businessObjectId in new[] { 52026289, 0, -1 })
+                {
+                    yield return C(A, "TryParseAttachmentLink", false, cell, businessObjectId, null, null);
+                    yield return C(A, "ReplaceBusinessObjectIdPlaceholder", false, cell, businessObjectId);
+                }
+            }
+            yield return C(A, "BuildDownloadUrl", false, "ATTACHMENT|businessObjectId=52026289|documentId=6693168|fusion-attachments", "http://orbqa01.orbit8.com:6060/reporting");
 
             foreach (string v in new[] { "Edge|1|2|Name|XLSX|a|b", "Process|9", "Logs", "", null })
                 yield return C("XLEdge.Helpers.EdgeRequestParser", "Parse", false, v);

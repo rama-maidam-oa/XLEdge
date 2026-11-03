@@ -1355,9 +1355,9 @@ namespace XLEdge.Helpers
                 }
 
                 int rawIndex = mappings[c].RawIndex;
-                string colType = reportMeta.Columns?
-                    .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
-                    .DataType;
+                RptColumn reportColumn = ResolveReportColumn(reportMeta, mappings[c].Original);
+                string colType = reportColumn?.DataType;
+                string colFormat = ResolveColumnNumberFormat(reportColumn);
 
                 try
                 {
@@ -1368,7 +1368,7 @@ namespace XLEdge.Helpers
                         int csvRecordIndex = physicalRow - dataStartRow + 1;
                         List<string> rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= dataRowCount) ? rows[csvRecordIndex] : null;
                         object raw = (rowVals != null && rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                        colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType) ?? string.Empty);
+                        colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType, colFormat) ?? string.Empty);
                     }
 
                     var colStartCell = (Excel.Range)sheet.Cells[colWriteStartRow, tc];
@@ -1453,15 +1453,15 @@ namespace XLEdge.Helpers
             for (int c = 0; c < mappings.Count; c++)
             {
                 int rawIndex = mappings[c].RawIndex;
-                string colType = reportMeta.Columns?
-                    .FirstOrDefault(rc => string.Equals(rc.Name, mappings[c].Original, StringComparison.OrdinalIgnoreCase))?
-                    .DataType;
+                RptColumn reportColumn = ResolveReportColumn(reportMeta, mappings[c].Original);
+                string colType = reportColumn?.DataType;
+                string colFormat = ResolveColumnNumberFormat(reportColumn);
 
                 for (int r = 0; r < dataRowCount; r++)
                 {
                     List<string> rowVals = rows[r + 1];
                     object raw = (rawIndex >= 1 && rawIndex <= rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                    writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType) ?? string.Empty);
+                    writeArr[r, c] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType, colFormat) ?? string.Empty);
                 }
             }
 
@@ -3059,7 +3059,7 @@ namespace XLEdge.Helpers
                 {
                     if (col.IsFileAttached)
                     {
-                        hyperlinkCount = AddAttachmentColumn(sheet, listObject, col, hyperlinkCount, maxHyperlinks);
+                        hyperlinkCount = AddAttachmentColumn(sheet, listObject, col, reportMeta.BusinessObjectId, hyperlinkCount, maxHyperlinks);
                         continue;
                     }
 
@@ -3085,7 +3085,7 @@ namespace XLEdge.Helpers
             }
         }
 
-        private static int AddAttachmentColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col, int hyperlinkCount, int maxHyperlinks)
+        private static int AddAttachmentColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col, int businessObjectId, int hyperlinkCount, int maxHyperlinks)
         {
             int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, col.Name?.Trim() ?? string.Empty);
             if (matchCol <= 0)
@@ -3114,7 +3114,7 @@ namespace XLEdge.Helpers
                             continue;
                         }
 
-                        if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, out string displayValue, out string linkValue))
+                        if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, businessObjectId, out string displayValue, out string linkValue))
                         {
                             // No attachment for this row: show a blank cell like the web report instead of the raw anchor HTML
                             if (AttachmentLinkHelper.IsEmptyAttachmentAnchor(rawText))
@@ -4588,7 +4588,7 @@ namespace XLEdge.Helpers
 
             try
             {
-                object[,] colArr = BuildRefreshedColumnArray(ctx, colWriteStartRow, colRowCount, rawIndex, reportColumn?.DataType);
+                object[,] colArr = BuildRefreshedColumnArray(ctx, colWriteStartRow, colRowCount, rawIndex, reportColumn?.DataType, ResolveColumnNumberFormat(reportColumn));
 
                 var colStartCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow, tc];
                 var colEndCell = (Excel.Range)ctx.Sheet.Cells[colWriteStartRow + colRowCount - 1, tc];
@@ -4619,7 +4619,7 @@ namespace XLEdge.Helpers
         // Applies the same XLEdgeValueFormatter.FormatValue transform BuildDataWriteArray uses at
         // initial build, so a refreshed DATE/DATETIME value round-trips into the same clean,
         // Excel-parseable shape as the original build instead of a raw, differently-shaped CSV string.
-        private static object[,] BuildRefreshedColumnArray(RefreshContext ctx, int colWriteStartRow, int colRowCount, int rawIndex, string colType)
+        private static object[,] BuildRefreshedColumnArray(RefreshContext ctx, int colWriteStartRow, int colRowCount, int rawIndex, string colType, string colFormat)
         {
             object[,] colArr = new object[colRowCount, 1];
             for (int i = 0; i < colRowCount; i++)
@@ -4628,7 +4628,7 @@ namespace XLEdge.Helpers
                 int csvRecordIndex = physicalRow - ctx.DataStartRow + 1;
                 var rowVals = (csvRecordIndex >= 1 && csvRecordIndex <= ctx.NewDataCount) ? ctx.Rows[csvRecordIndex] : null;
                 object raw = (rowVals != null && rawIndex - 1 < rowVals.Count) ? rowVals[rawIndex - 1] : string.Empty;
-                colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType) ?? string.Empty);
+                colArr[i, 0] = string.IsNullOrEmpty(colType) ? raw : (XLEdgeValueFormatter.ToExcelCellValue(raw, colType, colFormat) ?? string.Empty);
             }
 
             return colArr;

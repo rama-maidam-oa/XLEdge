@@ -118,6 +118,8 @@ namespace XLEdge.Tests
             "string BuildRefreshParamsPayload(Excel.Workbook workbook, Excel.Worksheet sheet, Excel.ListObject tableObj)",
             "void RibControlSheet_OnClick(", "void adxExcelAppEvents1_SheetFollowHyperlink(object sender, object sheet, object hyperlink)",
             "Task HandleAttachmentDownloadAsync(string screenTip)", "void NavigateToReportDataSheet(Excel.Worksheet dataSheet)",
+            // OISR-22766 (11.1.2, 03-Nov-2026): the wait window while an attachment downloads
+            "Task CloseWaitWindowAsync(XLEdgeWaitWindow waitWindow, string caller)",
             // Stage 2e: login and the task pane
             "ADXExcelTaskPane1 GetPaneInstance()", "void LaunchExcelPane()", "void XLEdgeLogin(bool togglePane)",
             "bool NavigateReportsToAddress(string name, string address)", "string NormalizeAddress(string address)",

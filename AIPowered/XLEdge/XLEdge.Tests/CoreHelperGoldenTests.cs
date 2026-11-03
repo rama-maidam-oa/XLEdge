@@ -43,6 +43,13 @@ namespace XLEdge.Tests
             // Real EBS/Fusion attachment cells and download URLs.
             Assert.IsTrue(lines.Any(l => l.Contains("linkValue=s:ATTACHMENT|businessObjectId=34|documentId=12|get-fusion-file")), "attachment link parse");
             Assert.IsTrue(lines.Any(l => l.EndsWith("= s:https://host/web/secure/get-fusion-file?businessObjectId=34&documentId=12")), "download URL");
+            // OISR-22766: the formula's {businessObjectId} placeholder becomes the report's id, not the word "businessObjectId".
+            Assert.IsTrue(lines.Any(l => l.StartsWith("AttachmentLinkHelper.TryParseAttachmentLink(\"<a target='_blank'", StringComparison.Ordinal) &&
+                                         l.Contains(",52026289,null,null) = b:True") &&
+                                         l.EndsWith("linkValue=s:ATTACHMENT|businessObjectId=52026289|documentId=6693168|fusion-attachments")), "OISR-22766 placeholder");
+            // OISR-22697: a date before 1900 is text in the column's format; 01-Jan-1900 is Excel's serial 1, not 2.
+            Assert.IsTrue(lines.Contains("en-US XLEdgeValueFormatter.ToExcelCellValue(\"22-Dec-1781 00:00:00\",\"DATE\",\"dd-MMM-YYYY\") = s:'22-Dec-1781"), "OISR-22697 pre-1900");
+            Assert.IsTrue(lines.Contains("en-US XLEdgeValueFormatter.ToExcelCellValue(\"01-Jan-1900 00:00:00\",\"DATE\",\"dd-MMM-YYYY\") = d:1"), "OISR-22697 1900 leap-year bug");
             // The numeric drilldown branches (int, decimal, BigInteger).
             foreach (string kind in new[] { "= i:42", "= m:12.50", "= bi:123456789012345678901234" })
                 Assert.IsTrue(lines.Any(l => l.StartsWith("en-US XLEdgeValueFormatter.FormatDrilldownValue(", StringComparison.Ordinal) && l.EndsWith(kind)), kind);

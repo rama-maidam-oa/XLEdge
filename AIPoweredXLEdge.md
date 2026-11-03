@@ -1,8 +1,8 @@
 # AIPowered XLEdge — migration status and how to continue
 
 Resume with: **"continue AIPoweredXLEdge.md"**. Read this file first, then the spec and the next stage's plan, and pick up at
-"Next step" below. Last updated: 2026-11-03, after Stage 7 (QA & cutover support: health check, runbook) and the
-build check in the new folder layout.
+"Next step" below. Last updated: 2026-11-03, after Stage 7 (QA & cutover support: health check, runbook), the
+build check in the new folder layout, and OISR-22766 / OISR-22697 carried in from the 11.1.2 release of 03-Nov-2026.
 
 ## What this is
 
@@ -132,6 +132,22 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
    loader for Excel's bitness (32-bit = WOW6432Node / adxloader.dll), and follows UpdateBootstrapper's rules for staged,
    refused and selected releases and an empty/unreadable catalog (runbook §0).
 
+## OISR fixes carried into 11.1.3
+- **11.1.2 release of 03-Nov-2026** (`5da5d37`, MSI in orbitbootapp `release/ORBIT11.1.2` `600efa7d08`; both tickets in QA
+  Review) merged into 11.1.3 (`e52f964`), so the classic baseline (`XLEdge\`) = released 11.1.2; the twin core carries the
+  same changes, so `CorePortParityTests` stay exact (no new TwinSubstitution). VB not ported (developer's decision).
+- **OISR-22766** (Fusion attachment link: 400 / "Failed to download the attachment."): `AttachmentLinkHelper.TryParseAttachmentLink(raw,
+  businessObjectId, …)` replaces the formula's `{businessObjectId}` placeholder with the report's id, as the web grid does;
+  `ReportGenerator.AddAttachmentColumn` passes `reportMeta.BusinessObjectId`. `AddinModule.HandleAttachmentDownloadAsync` shows a
+  "Downloading attachment" wait window and closes it (`CloseWaitWindowAsync`, added to `AddinModuleMethods`) before any message.
+- **OISR-22697** (dates before 1900 as `####`): `XLEdgeValueFormatter.ToExcelDateValue` writes a pre-1900 date as text in the
+  column's format (`ExcelDateFormatToDotNet`, leading apostrophe) and 1-Jan..28-Feb-1900 one serial lower (Excel's 1900 leap-year
+  bug); `ReportGenerator`'s three write paths pass `ResolveColumnNumberFormat(column)`.
+- Core `XLEdgeAppConstants.DefaultCommitDate` = 03-Nov-2026 (verbatim with 11.1.2; `DefaultVersion` stays the 11.1.3 substitution).
+- Golden values regenerated from the released 11.1.2 `bin\Release\XLEdge.dll` (5da5d37): new cases for both tickets; one earlier
+  value changed on purpose - th-TH `ToExcelCellValue("28.10.2026","DATE")` was the serial -152004 and is now the text
+  `'28-Oct-1483` (the pinned th-TH defect below, now visible as text instead of `####`). `CoreHelperGoldenTests` asserts the QA cases.
+
 ## Pending stages
 
 - **3** — remaining pane/login items not covered by 2e, if the Excel check finds any (spec §5 phase 3 was pulled into 2e).
@@ -180,7 +196,8 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
 ## 11.1.2 defects found (pinned in the twin on purpose; tickets are the developer's call)
 - `XLEdgeValueFormatter.InferDrilldownDataType` treats "12.5" / "1,234" as dates → drilldowns (and stored drilldown parameters)
   send ISO dates (e.g. "1,234" → 0234-01-01).
-- Under th-TH, `ToExcelCellValue` gives a negative serial (Buddhist calendar).
+- Under th-TH, `ToExcelCellValue` reads a date that only the current-culture fallback parses (e.g. "28.10.2026") as a Buddhist-era
+  year (1483 AD): a negative serial until 03-Nov-2026, since OISR-22697 the text `28-Oct-1483` (still the wrong year).
 - Preferences file write race.
 - Latent: a BigInteger serialized as a property object (2b); `ReportParameterRequestSerializer` quotes reportId and BigInteger
   values while the System.Text.Json path writes them as numbers (2d).

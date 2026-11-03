@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using XLEdge.Utilities;
@@ -16,6 +17,38 @@ namespace XLEdge.Helpers
         private static readonly Regex DownloadTypeRegex = new Regex(@"fileDownLoadByHref\(event,""(?<type>.*?)""", RegexOptions.Compiled);
         private static readonly Regex KeyValueBlockRegex = new Regex(@"\{(?<inner>.*?)\}", RegexOptions.Compiled);
         private static readonly Regex DisplayValueRegex = new Regex(@">(?<display>[^<]+)<", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Placeholder a report formula writes for the report's business object id, e.g.
+        /// "fileDownLoadByHref(event,"fusion-attachments",{documentId:12,businessObjectId:{businessObjectId}})".
+        /// The web report grid replaces it with the report's businessObjectId before the link is used.
+        /// </summary>
+        public const string BusinessObjectIdPlaceholder = "{businessObjectId}";
+
+        /// <summary>
+        /// OISR-22766: parses the cell like <see cref="TryParseAttachmentLink(string, out string, out string)"/> after
+        /// replacing <see cref="BusinessObjectIdPlaceholder"/> with the report's business object id, as the web report
+        /// does. Without it the link sent "businessObjectId=businessObjectId" and the server's fusion-attachments /
+        /// get-oracle-lob-file endpoints (businessObjectId is a number there) answered 400.
+        /// </summary>
+        public static bool TryParseAttachmentLink(string rawCellText, int businessObjectId, out string displayValue, out string linkValue)
+        {
+            return TryParseAttachmentLink(ReplaceBusinessObjectIdPlaceholder(rawCellText, businessObjectId), out displayValue, out linkValue);
+        }
+
+        /// <summary>
+        /// Replaces <see cref="BusinessObjectIdPlaceholder"/> with <paramref name="businessObjectId"/>; the text is
+        /// returned unchanged when the id is not known (0 or less).
+        /// </summary>
+        public static string ReplaceBusinessObjectIdPlaceholder(string rawCellText, int businessObjectId)
+        {
+            if (businessObjectId <= 0 || string.IsNullOrEmpty(rawCellText))
+            {
+                return rawCellText;
+            }
+
+            return rawCellText.Replace(BusinessObjectIdPlaceholder, businessObjectId.ToString(CultureInfo.InvariantCulture));
+        }
 
         public static bool TryParseAttachmentLink(string rawCellText, out string displayValue, out string linkValue)
         {

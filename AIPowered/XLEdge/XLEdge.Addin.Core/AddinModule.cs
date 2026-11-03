@@ -1926,10 +1926,13 @@ namespace XLEdge
         /// Ported from the attachment-click branch of AddinModule.vb's SheetFollowHyperlink
         /// (ScreenTip.IndexOf("attachment") >= 0 -> DownloadFile). Downloads the file to the user's
         /// Downloads folder and confirms with a message box, matching the VB original.
+        /// OISR-22766: a wait window (with Cancel) is shown while the file downloads and is closed before any
+        /// message box, so the result / error popup never appears behind or alongside it.
         /// </summary>
         private static async Task HandleAttachmentDownloadAsync(string screenTip)
         {
             const string MethodName = "HandleAttachmentDownloadAsync";
+            XLEdgeWaitWindow waitWindow = null;
             try
             {
                 string url = AttachmentLinkHelper.BuildDownloadUrl(screenTip, XLEdgeAppState.Instance.LoginUrl);
@@ -1939,7 +1942,40 @@ namespace XLEdge
                     return;
                 }
 
-                string savedPath = await ApiHelper.DownloadFileAsync(url);
+                // Showing the wait window is a UX nicety only: a failure to show it never blocks the download.
+                try
+                {
+                    await UiDispatcher.RunAsync(() =>
+                    {
+                        waitWindow = new XLEdgeWaitWindow();
+                        waitWindow.SetProcessTitle("Downloading attachment", PackIconFontAwesomeKind.DownloadSolid);
+                        waitWindow.SetProcessMessage("Please wait...");
+                        waitWindow.StartMonitoring();
+                        waitWindow.Show();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"{MethodName}|Failed to show wait window - downloading without it.");
+                    waitWindow = null;
+                }
+
+                string savedPath;
+                try
+                {
+                    savedPath = await ApiHelper.DownloadFileAsync(url, waitWindow?.Token ?? CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                    LogUtility.LogWarn($"{MethodName}|Download cancelled by user.");
+                    return;
+                }
+                finally
+                {
+                    await CloseWaitWindowAsync(waitWindow, MethodName);
+                    waitWindow = null;
+                }
+
                 if (string.IsNullOrWhiteSpace(savedPath))
                 {
                     MessageFunctions.XLEdgeMessage("Failed to download the attachment.", MessageBoxIcon.Error, MessageBoxButtons.OK);
@@ -1954,6 +1990,36 @@ namespace XLEdge
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, MethodName);
+            }
+            finally
+            {
+                await CloseWaitWindowAsync(waitWindow, MethodName);
+            }
+        }
+
+        /// <summary>Closes a wait window (if shown) and waits for it to be gone before the caller shows anything else.</summary>
+        private static async Task CloseWaitWindowAsync(XLEdgeWaitWindow waitWindow, string caller)
+        {
+            if (waitWindow == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await waitWindow.Dispatcher.InvokeAsync(() =>
+                {
+                    if (waitWindow.IsVisible)
+                    {
+                        waitWindow.RequestClose();
+                    }
+                });
+
+                await Task.Delay(150);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"{caller}|Error closing XLEdgeWaitWindow.");
             }
         }
 
