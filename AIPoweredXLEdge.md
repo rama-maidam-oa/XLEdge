@@ -5,17 +5,27 @@ Resume with: **"continue AIPoweredXLEdge.md"**. Read this file first, then the s
 
 ## What this is
 
-XLEdge C# 11.1.2 (`D:\SQLLite_Test\XLEdge\XLEdge`, the reference — never edited here) is rebuilt as a twin of GLSense AIPowered
-11.1.2 under `D:\SQLLite_Test\XLEdge\AIPowered\XLEdge\`: a thin Add-in Express **shell** (`XLEdge`) loads a hot-reloadable **core**
+XLEdge C# 11.1.2 (`<checkout>\XLEdge`, the reference — never edited here) is rebuilt as a twin of GLSense AIPowered
+11.1.2 under `<checkout>\AIPowered\XLEdge\`: a thin Add-in Express **shell** (`XLEdge`) loads a hot-reloadable **core**
 (`XLEdge.Addin.Core`) into a separate AppDomain through .NET Remoting contracts (`XLEdge.Contracts`), with `XLEdge.Shared`,
 `XLEdge.Loader.Core`, `XLEdge.Build` and the test project `XLEdge.Tests`. Hot reload, Release History / version switching, same
 look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business code is moved into the core **verbatim**.
 
 - Spec: `docs/superpowers/specs/2026-10-28-xledge-hot-swappable-core-design.md` (§5 stage table, §6 deviations, §7 regression list)
 - Plans (one per stage): `docs/superpowers/plans/2026-10-2*-xledge-aipowered-stage-*.md`
-- Branch: **`11.1.3`** in `D:\SQLLite_Test\XLEdge` (pushed to origin) — the XLEdge 11.1.3 release line, GLSense-style
-  version branch (developer's decision, 2026-11-03: 11.1.2 is frozen). Created from `11.1.2-aipowered` (Stages 0-7, kept on
-  origin as history); `11.1.2` itself is untouched.
+- Branch: **`11.1.3`** (pushed to origin) — the XLEdge 11.1.3 release line, GLSense-style version branch (developer's
+  decision, 2026-11-03: 11.1.2 is frozen). Created from `11.1.2-aipowered` (Stages 0-7, kept on origin as history);
+  `11.1.2` itself is untouched.
+- **Folder layout** (developer's decision, 2026-11-03; `<checkout>` above = the 11.1.3 checkout):
+  ```
+  D:\SQLLite_Test\XLEdge\
+    .bare\                         the git repository (core.bare = true; every checkout is a worktree)
+    BusinessLayers\11.1.3\         branch 11.1.3 = <checkout>; solution AIPowered\XLEdge\XLEdge.sln
+    SingleLayer\Worktrees\11.1.2\  branch 11.1.2 (frozen classic XLEdge)
+    SingleLayer\Worktrees\11.1.0\  branch 11.1.0
+  ```
+  `git --git-dir=D:/SQLLite_Test/XLEdge/.bare worktree list`; a new version = `git -C <checkout> worktree add
+  ..\11.1.4 -b 11.1.4`. There is no 11.1.1 branch in this repo. Set up by `D:\SQLLite_Test\Move-XLEdgeLayout.ps1`.
 - **The classic single-DLL `XLEdge\` project is frozen at 11.1.2** on this branch: it is the parity baseline the twin's core
   is tested against (`CorePortParityTests`), not a product - never edit or version-bump it. 11.1.3 fixes go into the twin;
   a fix inside ported (verbatim) code is a counted `CorePortParityTests.TwinSubstitutions` entry, as for the 14+1 so far.
