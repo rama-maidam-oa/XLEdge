@@ -3058,7 +3058,7 @@ namespace XLEdge.Helpers
                 {
                     if (col.IsFileAttached)
                     {
-                        hyperlinkCount = AddAttachmentColumn(sheet, listObject, col, hyperlinkCount, maxHyperlinks);
+                        hyperlinkCount = AddAttachmentColumn(sheet, listObject, col, reportMeta.BusinessObjectId, hyperlinkCount, maxHyperlinks);
                         continue;
                     }
 
@@ -3084,7 +3084,7 @@ namespace XLEdge.Helpers
             }
         }
 
-        private static int AddAttachmentColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col, int hyperlinkCount, int maxHyperlinks)
+        private static int AddAttachmentColumn(Excel.Worksheet sheet, Excel.ListObject listObject, RptColumn col, int businessObjectId, int hyperlinkCount, int maxHyperlinks)
         {
             int matchCol = ExcelSheetHelper.HRMatch(listObject.HeaderRowRange, col.Name?.Trim() ?? string.Empty);
             if (matchCol <= 0)
@@ -3113,7 +3113,7 @@ namespace XLEdge.Helpers
                             continue;
                         }
 
-                        if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, out string displayValue, out string linkValue))
+                        if (!AttachmentLinkHelper.TryParseAttachmentLink(rawText, businessObjectId, out string displayValue, out string linkValue))
                         {
                             // No attachment for this row: show a blank cell like the web report instead of the raw anchor HTML
                             if (AttachmentLinkHelper.IsEmptyAttachmentAnchor(rawText))

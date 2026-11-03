@@ -3225,3 +3225,28 @@ disabled when logged out / no permission (`XLEdgeRibbonHelper` lists, `RibbonIni
 
 **GLSense counterpart**: same button in GLSense 11.1.2 / 11.1.3. **AIPowered XLEdge**: not done yet, noted
 in `AIPoweredXLEdge.md` to carry in.
+
+## 2026-11-03: OISR-22766 - Fusion attachment link fails with "Failed to download the attachment." (QA retest of 11.1.2)
+
+Root cause: the report's calculated column writes the business object id as a placeholder,
+`fileDownLoadByHref(event,"fusion-attachments",{documentId:6693168,businessObjectId:{businessObjectId}})`.
+The web report grid replaces `{businessObjectId}` with the report's `businessObjectId` before the link is used
+(orbitbootapp `TableController.js`, `value.replace("{businessObjectId}", resultModel.businessObjectId)`).
+`AttachmentLinkHelper.TryParseAttachmentLink` did not: it stripped the braces and stored
+`businessObjectId=businessObjectId` in the ScreenTip, so the click requested
+`/web/secure/fusion-attachments?businessObjectId=businessObjectId&documentId=...`. The server's
+`OracleErpController` takes `businessObjectId` as a `Long` (it finds the Fusion data source through it) and
+answered 400. Same for `get-oracle-lob-file`. The VB add-in parses links the same way.
+
+Fix: `AttachmentLinkHelper.TryParseAttachmentLink(rawCellText, businessObjectId, ...)` overload replaces
+`{businessObjectId}` with the report's id (`ReplaceBusinessObjectIdPlaceholder`; unchanged when the id is 0)
+before parsing; `ReportGenerator.AddAttachmentColumn` passes `reportMeta.BusinessObjectId` (Run and Refresh
+both go through `AddAttachmentAndImageColumns`). Links already in a saved workbook keep the old ScreenTip
+until the sheet is run or refreshed again.
+
+Also (developer's request after testing): `AddinModule.HandleAttachmentDownloadAsync` shows an `XLEdgeWaitWindow`
+("Downloading attachment", Cancel stops the request) while the file downloads, and closes it
+(`CloseWaitWindowAsync`) before the saved / "Failed to download the attachment." message, so no popup shows
+alongside it. Cancel shows no message; a URL that cannot be built still only logs.
+
+**VB.NET counterpart**: not ported (developer's decision). **AIPowered XLEdge**: same change in 11.1.3.
