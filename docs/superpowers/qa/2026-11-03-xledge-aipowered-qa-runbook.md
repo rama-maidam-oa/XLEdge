@@ -5,7 +5,7 @@ from its session). Fill the **Result** column with PASS / FAIL / N/A and a note;
 health-check output and the XLEdge log attached.
 
 - Build/test status at hand-over (2026-11-03): 386 automated tests, 379 pass, 7 Inconclusive (the real-Excel tests: this dev
-  machine's Office cannot marshal Excel's typed interfaces); branch `11.1.2-aipowered` (pushed to origin).
+  machine's Office cannot marshal Excel's typed interfaces); branch `11.1.3` (pushed to origin; the 11.1.3 release line).
 - Logs: `%LOCALAPPDATA%\ORBIT\Excel_Logs\XLEdge_Logs\Logs\XLEdge_Logs_dd-MMM-yyyy.log` (GLSense: its own `GLSense_Logs`).
 - Install folder: `%LOCALAPPDATA%\Orbit Analytics\XLEdge` (per user); cores under `AddinCore\Versions\`.
 
@@ -118,10 +118,11 @@ each ribbon tab): nearly every line below is a DEBUG line and is not written oth
 Nothing below is done yet. In order, each a decision:
 
 1. **Go / no-go**: sections 2–6 PASS (or accepted), the Stage 5 release check done, open OISRs triaged.
-2. **Release line**: make the AIPowered twin the XLEdge release line (e.g. a release branch from `11.1.2-aipowered`, or merge
-   into the version branch the team ships from); retire the single-DLL `XLEdge\` project for new releases. The twin carries
-   14+1 deliberate changes to 11.1.2's verbatim code (`CorePortParityTests.TwinSubstitutions`) — raise them as OISRs for
-   11.1.2 or accept the divergence.
+2. **Release line** (done 2026-11-03): the AIPowered twin is the XLEdge 11.1.3 line, branch `11.1.3` (from
+   `11.1.2-aipowered`; 11.1.2 frozen). The single-DLL `XLEdge\` project stays on it frozen at 11.1.2 as the parity
+   baseline only - no new releases from it. The twin carries 14+1 deliberate changes to 11.1.2's verbatim code
+   (`CorePortParityTests.TwinSubstitutions`) — with 11.1.2 frozen they ship as 11.1.3 changes (list them in the 11.1.3
+   release notes / OISRs).
 3. **Version/date**: `XLEdgeSharedVersion.cs` (11.1.3.0), `XLEdgeAppConstants.DefaultCommitDate` (release day; a
    TwinSubstitutions entry), the vdproj ProductVersion/ProductCode/PackageCode for the next MSI.
 4. **MSI**: build/sign per the release memory (twin section): `OrbitXLEdgeSetup.sln /Rebuild "Release"`, sign the `.msi`,

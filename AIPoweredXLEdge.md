@@ -13,7 +13,12 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 
 - Spec: `docs/superpowers/specs/2026-10-28-xledge-hot-swappable-core-design.md` (§5 stage table, §6 deviations, §7 regression list)
 - Plans (one per stage): `docs/superpowers/plans/2026-10-2*-xledge-aipowered-stage-*.md`
-- Branch: **`11.1.2-aipowered`** in `D:\SQLLite_Test\XLEdge` — local commits only, **never pushed**.
+- Branch: **`11.1.3`** in `D:\SQLLite_Test\XLEdge` (pushed to origin) — the XLEdge 11.1.3 release line, GLSense-style
+  version branch (developer's decision, 2026-11-03: 11.1.2 is frozen). Created from `11.1.2-aipowered` (Stages 0-7, kept on
+  origin as history); `11.1.2` itself is untouched.
+- **The classic single-DLL `XLEdge\` project is frozen at 11.1.2** on this branch: it is the parity baseline the twin's core
+  is tested against (`CorePortParityTests`), not a product - never edit or version-bump it. 11.1.3 fixes go into the twin;
+  a fix inside ported (verbatim) code is a counted `CorePortParityTests.TwinSubstitutions` entry, as for the 14+1 so far.
 
 ## Way of working (agreed with the developer)
 
@@ -194,7 +199,8 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
 - Stage 6 deferred minors: "newest" by release date only; an index row with a blank folderName fails as a 404; a history
   entry whose folder is gone cannot be re-downloaded from Online; an unreadable ReleaseHistory.json makes every row "New"
   silently; Mandatory/Notes not shown; RbOnline enabled during an Offline scan; classifier tests sit in OnlineReleaseClientTests.cs.
-- Branch `11.1.2-aipowered` is pushed to origin (developer's decision, end of Stage 6; no PR).
+- Branch `11.1.2-aipowered` is pushed to origin (developer's decision, end of Stage 6; no PR); since 2026-11-03 work
+  continues on `11.1.3` (see the top).
 - GLSense 11.1.3's MSI very likely ships an **unsigned GLSense.dll**: its setup project's PreBuild signs bin\Release\GLSense.dll,
   but a Primary Output packages obj\Release (proven for the twin by making the two differ). Proposed GLSense fix: sign the obj
   copy too and verify the extracted MSI's DLL with Get-AuthenticodeSignature.
