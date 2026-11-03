@@ -554,7 +554,7 @@
             "{4AA51A2D-7D85-4A59-BA75-B0809FC8B380}:_54CA91AE244D4C3C8B233DCB830F0A36"
             {
             "Name" = "8:adxregistrator.exe"
-            "Condition" = "8:"
+            "Condition" = "8:NOT UPGRADINGPRODUCTCODE"
             "Object" = "8:_0AC4BB0B2D0448E3A2CF7CCB287D6D0E"
             "FileType" = "3:2"
             "InstallAction" = "3:4"
@@ -1492,7 +1492,7 @@
         "SearchPath" = "8:"
         "UseSystemSearchPath" = "11:TRUE"
         "TargetPlatform" = "3:1"
-        "PreBuildEvent" = "8:rundll32 %windir%\\system32\\dfshim.dll CleanOnlineAppCache && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\bin\\Release\\XLEdge.dll\" -Configuration Release && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\bin\\Release\\adxloader.dll\" -Configuration Release && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\bin\\Release\\adxloader64.dll\" -Configuration Release"
+        "PreBuildEvent" = "8:rundll32 %windir%\\system32\\dfshim.dll CleanOnlineAppCache && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\bin\\Release\\XLEdge.dll\" -Configuration Release && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\bin\\Release\\adxloader.dll\" -Configuration Release && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\bin\\Release\\adxloader64.dll\" -Configuration Release && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\sign.ps1\" -File \"$(ProjectDir)..\\obj\\Release\\XLEdge.dll\" -Configuration Release && powershell -NoProfile -ExecutionPolicy Bypass -File \"$(ProjectDir)..\\..\\XLEdge.Build\\verify-signed.ps1\" -ShellBin \"$(ProjectDir)..\\bin\\Release\" -ShellObj \"$(ProjectDir)..\\obj\\Release\" -Payload \"$(ProjectDir)..\\..\\XLEdge.Addin.Core\\SetupFiles\\Release\\InstallerPayload\\OrbitXLEdge.zip\""
         "PostBuildEvent" = "8:\"C:\\Program Files (x86)\\Add-in Express\\Add-in Express for .NET\\Bin\\adxpatch.exe\" \"$(BuiltOuputPath)\" /UAC=Off /RunActionsAsInvoker=true"
         "RunPostBuildEvent" = "3:0"
         }

@@ -56,5 +56,6 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <ItemGroup>
     <None Include="sign.ps1" />
+    <None Include="verify-signed.ps1" />
   </ItemGroup>
 </Project>
