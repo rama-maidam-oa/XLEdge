@@ -104,7 +104,25 @@ namespace XLEdge.Tests
         [TestMethod]
         public void Client_NotFound_SaysNotOnTheServer()
         {
-            Assert.AreEqual("That release is not on the server (any more).", Fails(HttpStatusCode.NotFound).Message);
+            Assert.AreEqual("This XLEdge server does not offer XLEdge updates (yet).", Fails(HttpStatusCode.NotFound).Message,
+                "the list itself missing: the server has no XLEdge release endpoints");
+            var server = new FakeServer { Status = HttpStatusCode.NotFound };
+            using (var client = new OnlineReleaseClient(Login(), new RecordingLogger(), server))
+            {
+                var ex = Assert.ThrowsExactly<OnlineReleaseException>(() => client.DownloadAsync("vA", CancellationToken.None).GetAwaiter().GetResult());
+                Assert.AreEqual("That release is not on the server (any more).", ex.Message);
+            }
+        }
+
+        [TestMethod]
+        public void Client_UsesTheCoresTlsAndProxySettings()
+        {
+            // Review fix: the core's API calls force TLS 1.2/1.3 and no proxy (APIHelper); the shell's AppDomain does not inherit them.
+            using (var handler = OnlineReleaseClient.CreateHandler())
+            {
+                Assert.AreEqual(System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13, handler.SslProtocols);
+                Assert.IsFalse(handler.UseProxy);
+            }
         }
 
         [TestMethod]
@@ -136,7 +154,7 @@ namespace XLEdge.Tests
     [TestClass]
     public class OnlineReleaseClassifierTests
     {
-        private static VersionInfo V(string version, string date, string folder) => new VersionInfo { Version = version, ReleaseDate = date, FolderName = folder, FileName = folder + ".zip" };
+        private static VersionInfo V(string version, string date, string folder) => new VersionInfo { Version = version, ReleaseDate = date, FolderName = folder, FileName = folder + ".zip", ContractVersion = 1 };
 
         [TestMethod]
         public void Classify_MarksLoadedDownloadedAndNew_NewestFirst_NewestNewTicked()
@@ -151,6 +169,18 @@ namespace XLEdge.Tests
             Assert.IsFalse(rows[1].IsSelectable || rows[1].IsChecked);
             Assert.AreEqual("Currently loaded", rows[2].StatusText);
             Assert.IsFalse(rows[2].IsSelectable || rows[2].IsChecked);
+        }
+
+        [TestMethod]
+        public void Classify_AReleaseThisShellCannotLoad_IsShownNotSelectable()
+        {
+            var tooNew = V("11.2.0.0", "2026-12-01T10:00:00", "vNext");
+            tooNew.ContractVersion = ContractInfo.Version + 1;
+            var rows = OnlineReleaseClassifier.Classify(new[] { tooNew, V("11.1.4.0", "2026-11-10T10:00:00", "v4") }, new List<ReleaseEntry>(), "11.1.3.0", "2026-11-03T10:00:00");
+            Assert.AreEqual("vNext", rows[0].FolderName);
+            Assert.AreEqual("Needs a newer XLEdge install", rows[0].StatusText);
+            Assert.IsFalse(rows[0].IsSelectable || rows[0].IsChecked);
+            Assert.IsTrue(rows[1].IsChecked, "the newest release this shell can load is ticked");
         }
 
         [TestMethod]

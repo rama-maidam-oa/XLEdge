@@ -1,8 +1,8 @@
 # orbitbootapp: XLEdge add-in online update endpoints (spec, not implemented)
 
 Date: 2026-11-03 · Status: **to be implemented later** — the developer decided (Stage 6) not to touch orbitbootapp now.
-The XLEdge AIPowered client (Stage 6) already calls these endpoints; until they exist the Online reload reports 404
-("That release is not on the server (any more).").
+The XLEdge AIPowered client (Stage 6) already calls these endpoints; until they exist Check for updates gets a 404 and says
+"This XLEdge server does not offer XLEdge updates (yet)." (a missing index file answers 404 too).
 
 ## What to build
 

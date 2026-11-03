@@ -29,6 +29,7 @@ namespace XLEdge.Online
                     Version = entry.Version, ReleaseDate = entry.ReleaseDate, Mandatory = entry.Mandatory, FolderName = entry.FolderName,
                     FileName = entry.FileName, Checksum = entry.Checksum, Notes = entry.Notes,
                     IsCurrentlyLoaded = loaded, IsAlreadyDownloaded = downloaded,
+                    NeedsNewerInstall = !loaded && !downloaded && XLEdge.Loader.Core.ContractCompatibility.RefusalReason(entry.ContractVersion) != null,
                 });
             }
             rows = rows.OrderByDescending(r => ReleaseDateOrMin(r.ReleaseDate)).ToList();

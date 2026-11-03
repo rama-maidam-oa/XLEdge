@@ -18,10 +18,14 @@ namespace XLEdge.Online
         public bool IsCurrentlyLoaded { get; set; }
         public bool IsAlreadyDownloaded { get; set; }
 
-        /// <summary>Neither loaded nor already downloaded: the only rows that can be ticked.</summary>
-        public bool IsSelectable => !IsCurrentlyLoaded && !IsAlreadyDownloaded;
+        /// <summary>Built for a newer contract than this shell's (it needs a newer XLEdge install).</summary>
+        public bool NeedsNewerInstall { get; set; }
 
-        public string StatusText => IsCurrentlyLoaded ? "Currently loaded" : IsAlreadyDownloaded ? "Already downloaded" : "New";
+        /// <summary>Neither loaded, already downloaded nor too new for this shell: the only rows that can be ticked.</summary>
+        public bool IsSelectable => !IsCurrentlyLoaded && !IsAlreadyDownloaded && !NeedsNewerInstall;
+
+        public string StatusText =>
+            IsCurrentlyLoaded ? "Currently loaded" : IsAlreadyDownloaded ? "Already downloaded" : NeedsNewerInstall ? "Needs a newer XLEdge install" : "New";
 
         public bool IsChecked
         {

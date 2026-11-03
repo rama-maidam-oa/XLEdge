@@ -45,6 +45,7 @@ namespace XLEdge.Views
         private OfflineScanResult _candidate;
         private bool _busy;
         private bool _isClosed;
+        private CancellationTokenSource _onlineWork;
 
         /// <param name="login">The core's login (GetLoginInfo); Online is enabled only when it is logged in.</param>
         /// <param name="sourceFactory">Where online releases come from; the ORBIT server by default (tests pass a stand-in).</param>
@@ -97,8 +98,19 @@ namespace XLEdge.Views
         protected override void OnClosed(EventArgs e)
         {
             _isClosed = true;
+            // A check or download still running stops (its rows after the current one are not fetched).
+            CancelOnlineWork();
             base.OnClosed(e);
         }
+
+        /// <summary>Stops the running online check or download (Cancel, or the window closing).</summary>
+        internal void CancelOnlineWork()
+        {
+            try { _onlineWork?.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        public bool IsCancelEnabled => BtnCancel.IsEnabled;
 
         // ------------------------------------------------------------------
         // Offline flow
@@ -212,12 +224,14 @@ namespace XLEdge.Views
                 TxtStatus.Text = string.Empty;
             });
             SetBusy(true);
+            _onlineWork = new CancellationTokenSource();
+            CancellationToken token = _onlineWork.Token;
             try
             {
                 LogStep("Asking the XLEdge server for its versions...");
                 IReadOnlyList<VersionInfo> releases;
                 using (IOnlineReleaseSource source = _sourceFactory(_login))
-                    releases = await source.GetReleasesAsync(CancellationToken.None);
+                    releases = await source.GetReleasesAsync(token);
                 ReleaseHistoryStore.TryReadAll(_context.Paths.ReleaseHistoryFile, out List<ReleaseEntry> local);
                 List<OnlineReleaseRow> rows = OnlineReleaseClassifier.Classify(releases, local, _context.Version, _context.ReleaseDate);
                 // After an await this may run on a pool thread (no synchronization context in the add-in): the list is bound.
@@ -233,6 +247,10 @@ namespace XLEdge.Views
                 if (rows.Count == 0) LogWarning("The server has no XLEdge versions.");
                 else if (fresh == 0) LogStep($"The server has {rows.Count} version(s); you already have all of them.");
                 else LogSuccess($"The server has {rows.Count} version(s), {fresh} new. Tick the ones to download; the newest one ticked is loaded.");
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                LogStep("Check cancelled.");
             }
             catch (OnlineReleaseException ex)
             {
@@ -262,6 +280,8 @@ namespace XLEdge.Views
             var done = new List<(OnlineReleaseRow Row, ResolvedRelease Release)>();
             var failed = new List<string>();
             SetBusy(true);
+            _onlineWork = new CancellationTokenSource();
+            CancellationToken token = _onlineWork.Token;
             try
             {
                 var bootstrapper = new UpdateBootstrapper();
@@ -269,21 +289,34 @@ namespace XLEdge.Views
                 {
                     foreach (OnlineReleaseRow row in chosen)
                     {
+                        if (token.IsCancellationRequested) break;
                         LogStep($"Downloading {row.Version} (released {row.ReleaseDate})...");
                         try
                         {
-                            (string manifest, byte[] zip) = await source.DownloadAsync(row.FolderName, CancellationToken.None);
+                            (string manifest, byte[] zip) = await source.DownloadAsync(row.FolderName, token);
                             ResolvedRelease release = await Task.Run(() => bootstrapper.ExtractAndCatalog(_context, manifest, zip, "Online"));
                             if (release == null)
                             {
                                 failed.Add(row.Version);
                                 LogFailure($"{row.Version} was refused (checksum, contract or folder - see the XLEdge log).");
                             }
+                            else if (!SameBuild(release, row))
+                            {
+                                // The server's index and that folder's manifest disagree (a hand-copy mistake): the build kept is
+                                // valid, but it is not the one the user ticked - not loaded, and named.
+                                failed.Add(row.Version);
+                                LogFailure($"{row.Version}: the server's files for it hold {release.Version} (released {release.ReleaseDate}) - not loaded.");
+                            }
                             else
                             {
                                 done.Add((row, release));
                                 LogSuccess($"{row.Version} downloaded and checked.");
                             }
+                        }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                            LogStep("Download cancelled.");
+                            break;
                         }
                         catch (OnlineReleaseException ex)
                         {
@@ -303,6 +336,11 @@ namespace XLEdge.Views
                 SetBusy(false);
             }
 
+            if (token.IsCancellationRequested || _isClosed)
+            {
+                if (done.Count > 0) LogStep($"Cancelled. Downloaded so far: {string.Join(", ", done.Select(d => d.Row.Version))} (in Version History).");
+                return;
+            }
             if (done.Count == 0)
             {
                 LogWarning("No version was downloaded - nothing to reload.");
@@ -318,6 +356,10 @@ namespace XLEdge.Views
                 CloseWith(true);
             });
         }
+
+        private static bool SameBuild(ResolvedRelease release, OnlineReleaseRow row) =>
+            string.Equals((release.Version ?? "").Trim(), (row.Version ?? "").Trim(), StringComparison.OrdinalIgnoreCase) &&
+            string.Equals((release.ReleaseDate ?? "").Trim(), (row.ReleaseDate ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Runs <paramref name="action"/> on the window's thread (code after an await may be on a pool thread).</summary>
         private void OnUi(Action action)
@@ -364,7 +406,7 @@ namespace XLEdge.Views
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
-            try { CloseWith(false); }
+            try { CancelOnlineWork(); CloseWith(false); }
             catch (Exception ex) { SafeLog(l => l.LogError(LogPrefix + "closing the window failed.", ex.ToString())); }
         }
 
@@ -407,7 +449,8 @@ namespace XLEdge.Views
             BtnCheck.IsEnabled = !busy;
             LstOnline.IsEnabled = !busy;
             UpdateReloadEnabled();
-            BtnCancel.IsEnabled = !busy;
+            // Cancel stays usable while an online check or download runs (it stops it); an offline scan is local and short.
+            BtnCancel.IsEnabled = !busy || IsOnlineSelected;
             RbOffline.IsEnabled = !busy;
         }
 

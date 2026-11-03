@@ -271,7 +271,8 @@ namespace XLEdge
                 ResolvedRelease online = picker.OnlineRelease;
                 if (online != null)
                 {
-                    Host.Reload(() => online);
+                    if (!Host.Reload(() => online))
+                        ShowMessage($"XLEdge {online.Version} is downloaded. When XLEdge is free, load it from Version History.", "Reload XLEdge Add-in");
                     return;
                 }
                 if (picker.ScanResult == null) return;

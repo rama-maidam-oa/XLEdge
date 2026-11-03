@@ -123,13 +123,25 @@ namespace XLEdge.Tests
             public List<VersionInfo> Releases = new List<VersionInfo>();
             public readonly Dictionary<string, (string Manifest, byte[] Zip)> Downloads = new Dictionary<string, (string, byte[])>();
             public Exception ListFailure;
+            /// <summary>Folders whose download waits until the token is cancelled (a slow server).</summary>
+            public readonly HashSet<string> Hang = new HashSet<string>();
             public readonly List<string> Downloaded = new List<string>();
             public Task<IReadOnlyList<VersionInfo>> GetReleasesAsync(CancellationToken ct) =>
                 ListFailure != null ? Task.FromException<IReadOnlyList<VersionInfo>>(ListFailure) : Task.FromResult<IReadOnlyList<VersionInfo>>(Releases);
-            public Task<(string ManifestJson, byte[] Zip)> DownloadAsync(string folderName, CancellationToken ct)
+            public async Task<(string ManifestJson, byte[] Zip)> DownloadAsync(string folderName, CancellationToken ct)
             {
                 Downloaded.Add(folderName);
-                return Task.FromResult(Downloads[folderName]);
+                if (Hang.Contains(folderName)) await Task.Delay(Timeout.Infinite, ct);
+                return Downloads[folderName];
+            }
+
+            /// <summary>An index entry whose folder's manifest describes another build (a hand-copy mistake on the server).</summary>
+            public void PublishMismatch(string indexVersion, string indexDate, string folder, string realVersion, string realDate)
+            {
+                byte[] zip = ReleaseFolders.FakeZip(("XLEdge.Addin.Core.dll", folder), ("XLEdge.Contracts.dll", "contracts"));
+                string checksum = ReleaseFolders.Sha256(zip);
+                Releases.Add(new VersionInfo { Version = indexVersion, ReleaseDate = indexDate, FolderName = folder, FileName = folder + ".zip", Checksum = checksum, ContractVersion = 1 });
+                Downloads[folder] = (ReleaseFolders.Manifest(realVersion, realDate, folder, checksum), zip);
             }
             public void Dispose() { }
 
@@ -235,6 +247,45 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void SourcePicker_ReloadOnline_TheServersManifestDescribesAnotherBuild_CountsAsFailed()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "v4");
+                source.PublishMismatch("11.1.5.0", "2026-11-20T10:00:00", "v5", "11.1.2.0", "2026-10-01T10:00:00");
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                foreach (var row in picker.OnlineRows) row.IsChecked = true;
+                Await(() => picker.ReloadOnlineAsync());
+                Assert.AreEqual("v4", picker.OnlineRelease?.FolderName, "not the mismatched build, even though its index row is newer");
+                StringAssert.Contains(picker.StatusText, "11.1.5.0");
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_CancelWhileDownloading_StopsAndLoadsNothing()
+        {
+            // Review fix: Cancel (and closing the window) stops a slow download; the rows after it are not fetched.
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "v4");
+                source.Publish("11.1.5.0", "2026-11-20T10:00:00", "v5");
+                source.Hang.Add("v4");
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                foreach (var row in picker.OnlineRows) row.IsChecked = true;
+                Task reload = picker.ReloadOnlineAsync();
+                Assert.IsTrue(Win32Test.PumpUntil(() => source.Downloaded.Count == 1, TimeSpan.FromSeconds(10)));
+                Assert.IsTrue(picker.IsCancelEnabled, "Cancel works while downloading");
+                picker.CancelOnlineWork();
+                Assert.IsTrue(Win32Test.PumpUntil(() => reload.IsCompleted, TimeSpan.FromSeconds(10)), "the download stopped");
+                reload.GetAwaiter().GetResult();
+                Assert.IsNull(picker.OnlineRelease);
+                CollectionAssert.AreEqual(new[] { "v4" }, source.Downloaded, "nothing after the cancelled one");
+            });
+        }
+
+        [TestMethod]
         public void SourcePicker_ReloadOnline_AllFail_StaysOpenWithTheErrors()
         {
             WithOnlinePicker((picker, source, context) =>
@@ -286,6 +337,9 @@ namespace XLEdge.Tests
             StringAssert.Contains(show, "GetLoginInfo()");
             StringAssert.Contains(show, "new XLEdgeReloadSourcePicker(_context, login)");
             StringAssert.Contains(show, "Host.Reload(() => online)");
+            // Review fix: a refused reload (busy, windows kept open) must say where the downloaded release now is.
+            StringAssert.Contains(show, "if (!Host.Reload(() => online))");
+            StringAssert.Contains(show, "Version History");
             int ask = show.IndexOf("GetLoginInfo()", StringComparison.Ordinal);
             Assert.IsTrue(show.LastIndexOf("try", ask, StringComparison.Ordinal) >= 0, "an older core may not answer");
         }
