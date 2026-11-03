@@ -201,15 +201,61 @@
                                      Margin="0,0,24,0"
                                      IsEnabled="False"
                                      ToolTipService.ShowOnDisabled="True"
-                                     ToolTip="Online updates are not available yet."/>
+                                     Checked="Mode_Checked"
+                                     ToolTip="Log in to XLEdge to check for online updates."/>
                         <RadioButton x:Name="RbOffline"
                                      Style="{StaticResource ModernRadioButton}"
                                      Content="Offline"
                                      GroupName="Mode"
                                      IsChecked="True"
+                                     Checked="Mode_Checked"
                                      ToolTip="Load an XLEdge version from a manifest.json and zip pair in a local folder."/>
                     </StackPanel>
                 </Grid>
+            </Border>
+
+            <Border x:Name="OnlinePanel"
+                    Grid.Row="1"
+                    Background="White"
+                    BorderBrush="#D6E0E7"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,12"
+                    Margin="0,0,0,12"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,7">
+                        <Button x:Name="BtnCheck"
+                                Style="{StaticResource BrowserButton}"
+                                Content="Check for updates"
+                                DockPanel.Dock="Right"
+                                Padding="10,5"
+                                Click="BtnCheck_Click"
+                                ToolTip="Ask the XLEdge server which versions it has."/>
+                        <TextBlock Text="Versions on the server"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#536772"
+                                   VerticalAlignment="Center"/>
+                    </DockPanel>
+                    <ListBox x:Name="LstOnline"
+                             MaxHeight="150"
+                             BorderBrush="#CBD8DF"
+                             BorderThickness="1"
+                             ToolTip="Tick the versions to download; the newest one ticked is loaded.">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsEnabled="{Binding IsSelectable, Mode=OneWay}">
+                                    <TextBlock>
+                                        <Run Text="{Binding Version, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="  released "/><Run Text="{Binding ReleaseDate, Mode=OneWay}"/>
+                                        <Run Text="  -  "/><Run Text="{Binding StatusText, Mode=OneWay}"/>
+                                    </TextBlock>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
             </Border>
 
             <Border x:Name="OfflinePanel"

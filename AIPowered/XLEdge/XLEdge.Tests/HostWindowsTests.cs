@@ -1,4 +1,6 @@
 using System;
+using XLEdge.Contracts;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.ExceptionServices;
@@ -91,22 +93,201 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void SourcePicker_OfflineOnly_ForNow()
+        public void SourcePicker_LoggedOut_OnlineDisabledWithTheReason()
         {
             using (var t = new TempFolder())
             {
                 var context = new FakeContext(new PathProvider(t.Combine("inst"), t.Combine("data")));
                 OnSta(() =>
                 {
-                    var picker = new XLEdgeReloadSourcePicker(context);
-                    Assert.AreEqual("Reload XLEdge Add-in", picker.Title);
-                    Assert.IsFalse(picker.IsOnlineEnabled, "online updates arrive with the orbitbootapp endpoints (Stage 6)");
-                    Assert.IsTrue(picker.IsOfflineSelected);
-                    Assert.IsNull(picker.SelectedSource);
-                    Assert.IsNull(picker.ScanResult, "the picker only verifies; the module stages after the reload is confirmed");
-                    picker.Close();
+                    foreach (LoginInfo login in new[] { null, new LoginInfo(), new LoginInfo { LoginUrl = "https://h/reporting", LoginToken = "t", IsLoggedIn = false } })
+                    {
+                        var picker = new XLEdgeReloadSourcePicker(context, login);
+                        Assert.AreEqual("Reload XLEdge Add-in", picker.Title);
+                        Assert.IsFalse(picker.IsOnlineEnabled);
+                        Assert.AreEqual("Log in to XLEdge to check for online updates.", picker.OnlineToolTip);
+                        Assert.IsTrue(picker.IsOfflineSelected);
+                        Assert.IsNull(picker.SelectedSource);
+                        Assert.IsNull(picker.ScanResult, "the picker only verifies; the module stages after the reload is confirmed");
+                        picker.Close();
+                    }
                 });
             }
+        }
+
+        // ---- Stage 6: Online ----
+
+        /// <summary>The server as the picker sees it: a release list, and per folder a download (or a failure).</summary>
+        internal sealed class FakeOnlineSource : XLEdge.Online.IOnlineReleaseSource
+        {
+            public List<VersionInfo> Releases = new List<VersionInfo>();
+            public readonly Dictionary<string, (string Manifest, byte[] Zip)> Downloads = new Dictionary<string, (string, byte[])>();
+            public Exception ListFailure;
+            public readonly List<string> Downloaded = new List<string>();
+            public Task<IReadOnlyList<VersionInfo>> GetReleasesAsync(CancellationToken ct) =>
+                ListFailure != null ? Task.FromException<IReadOnlyList<VersionInfo>>(ListFailure) : Task.FromResult<IReadOnlyList<VersionInfo>>(Releases);
+            public Task<(string ManifestJson, byte[] Zip)> DownloadAsync(string folderName, CancellationToken ct)
+            {
+                Downloaded.Add(folderName);
+                return Task.FromResult(Downloads[folderName]);
+            }
+            public void Dispose() { }
+
+            /// <summary>A release the server publishes: a core zip and its manifest (checksum right, or <paramref name="badChecksum"/>).</summary>
+            public void Publish(string version, string date, string folder, bool badChecksum = false)
+            {
+                byte[] zip = ReleaseFolders.FakeZip(("XLEdge.Addin.Core.dll", folder), ("XLEdge.Contracts.dll", "contracts"));
+                string checksum = badChecksum ? new string('0', 64) : ReleaseFolders.Sha256(zip);
+                Releases.Add(new VersionInfo { Version = version, ReleaseDate = date, FolderName = folder, FileName = folder + ".zip", Checksum = checksum, ContractVersion = 1 });
+                Downloads[folder] = (ReleaseFolders.Manifest(version, date, folder, checksum), zip);
+            }
+        }
+
+        private static readonly LoginInfo LoggedIn = new LoginInfo { LoginUrl = "https://h/reporting", LoginToken = "t", LoginUserName = "u", IsLoggedIn = true };
+
+        /// <summary>Runs <paramref name="work"/> on the picker's thread and pumps until it ends (the picker awaits).</summary>
+        private static void Await(Func<Task> work)
+        {
+            Task task = work();
+            Assert.IsTrue(Win32Test.PumpUntil(() => task.IsCompleted, TimeSpan.FromSeconds(30)), "the picker finished");
+            task.GetAwaiter().GetResult();
+        }
+
+        private static void WithOnlinePicker(Action<XLEdgeReloadSourcePicker, FakeOnlineSource, FakeContext> use)
+        {
+            using (var t = new TempFolder())
+            {
+                var paths = new PathProvider(t.Combine("inst"), t.Combine("data"));
+                paths.Ensure();
+                var context = new FakeContext(paths) { Logger = new RecordingLogger(), Version = "11.1.3.0", ReleaseDate = "2026-11-03T10:00:00", ShellVersion = "11.1.3.0" };
+                var source = new FakeOnlineSource();
+                OnSta(() =>
+                {
+                    var picker = new XLEdgeReloadSourcePicker(context, LoggedIn, _ => source);
+                    try { use(picker, source, context); }
+                    finally { picker.Close(); }
+                });
+            }
+        }
+
+        [TestMethod]
+        public void SourcePicker_LoggedIn_OnlineEnabled()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                Assert.IsTrue(picker.IsOnlineEnabled);
+                picker.SelectOnline();
+                Assert.IsFalse(picker.IsOfflineSelected);
+                Assert.IsFalse(picker.IsReloadEnabled, "nothing checked yet");
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_Check_ListsClassifiedRows()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.3.0", "2026-11-03T10:00:00", "vLoaded");
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "vNew");
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                CollectionAssert.AreEqual(new[] { "vNew", "vLoaded" }, picker.OnlineRows.Select(r => r.FolderName).ToArray());
+                Assert.IsTrue(picker.OnlineRows[0].IsChecked, "the newest new release is ticked");
+                Assert.IsFalse(picker.OnlineRows[1].IsSelectable, "the loaded release cannot be chosen");
+                Assert.IsTrue(picker.IsReloadEnabled);
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_ReloadOnline_DownloadsEveryTickedRelease_LoadsTheNewest()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "v4");
+                source.Publish("11.1.5.0", "2026-11-20T10:00:00", "v5");
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                foreach (var row in picker.OnlineRows) row.IsChecked = true;
+                Await(() => picker.ReloadOnlineAsync());
+                CollectionAssert.AreEqual(new[] { "v4", "v5" }, source.Downloaded, "oldest first");
+                Assert.AreEqual("v5", picker.OnlineRelease?.FolderName, "the newest loads");
+                Assert.AreEqual("Online", picker.SelectedSource);
+                foreach (string folder in new[] { "v4", "v5" })
+                    Assert.IsTrue(System.IO.File.Exists(System.IO.Path.Combine(context.Paths.VersionsPath, folder, "XLEdge.Addin.Core.dll")), folder + " catalogued");
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_ReloadOnline_OneFails_KeepsTheOthers_AndSaysWhichFailed()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "v4");
+                source.Publish("11.1.5.0", "2026-11-20T10:00:00", "v5", badChecksum: true);
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                foreach (var row in picker.OnlineRows) row.IsChecked = true;
+                Await(() => picker.ReloadOnlineAsync());
+                Assert.AreEqual("v4", picker.OnlineRelease?.FolderName, "the newest release that was catalogued");
+                StringAssert.Contains(picker.StatusText, "11.1.5.0", "the failed release is named");
+                Assert.IsFalse(System.IO.Directory.Exists(System.IO.Path.Combine(context.Paths.VersionsPath, "v5")));
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_ReloadOnline_AllFail_StaysOpenWithTheErrors()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.5.0", "2026-11-20T10:00:00", "v5", badChecksum: true);
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                Await(() => picker.ReloadOnlineAsync());
+                Assert.IsNull(picker.OnlineRelease);
+                Assert.IsNull(picker.SelectedSource);
+                Assert.IsTrue(picker.IsVisibleOrOpen, "not closed");
+                StringAssert.Contains(picker.StatusText, "11.1.5.0");
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_ReloadOnline_NothingTicked_ReloadDisabled()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.Publish("11.1.4.0", "2026-11-10T10:00:00", "v4");
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                picker.OnlineRows[0].IsChecked = false;
+                Assert.IsFalse(picker.IsReloadEnabled);
+            });
+        }
+
+        [TestMethod]
+        public void SourcePicker_Check_Unauthorized_ShowsTheSessionMessage()
+        {
+            WithOnlinePicker((picker, source, context) =>
+            {
+                source.ListFailure = new XLEdge.Online.OnlineReleaseException(XLEdge.Online.OnlineReleaseClient.SessionExpired, 401);
+                picker.SelectOnline();
+                Await(() => picker.CheckForUpdatesAsync());
+                StringAssert.Contains(picker.StatusText, "Your XLEdge session has expired. Log in again, then check for updates again.");
+                Assert.AreEqual(0, picker.OnlineRows.Count);
+            });
+        }
+
+        [TestMethod]
+        public void ShellModule_ReloadsIntoTheOnlineRelease()
+        {
+            // ShowReloadWindow is shell ADX code (checked in Excel): the wiring is checked in the source.
+            string module = System.IO.File.ReadAllText(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(typeof(HostWindowsTests).Assembly.Location), @"..\..\..\XLEdge\AddinModule.cs"));
+            string show = CorePortParityTests.MethodText(module.Replace("\r\n", "\n"), "void ShowReloadWindow()");
+            Assert.IsNotNull(show);
+            StringAssert.Contains(show, "GetLoginInfo()");
+            StringAssert.Contains(show, "new XLEdgeReloadSourcePicker(_context, login)");
+            StringAssert.Contains(show, "Host.Reload(() => online)");
+            int ask = show.IndexOf("GetLoginInfo()", StringComparison.Ordinal);
+            Assert.IsTrue(show.LastIndexOf("try", ask, StringComparison.Ordinal) >= 0, "an older core may not answer");
         }
 
         [TestMethod]

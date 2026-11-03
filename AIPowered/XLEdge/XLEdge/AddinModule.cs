@@ -253,9 +253,13 @@ namespace XLEdge
                 XLEdgeReloadSourcePicker picker;
                 try
                 {
-                    picker = new XLEdgeReloadSourcePicker(_context);
+                    // Online needs the core's login; an older core may not answer (or answer empty) - Online then stays disabled.
+                    XLEdge.Contracts.LoginInfo login = null;
+                    try { login = Host.Addin?.GetLoginInfo(); }
+                    catch (Exception ex) { LogError("AddinModule: the core did not report its login - Online stays disabled.", ex); }
+                    picker = new XLEdgeReloadSourcePicker(_context, login);
                     new WindowInteropHelper(picker).Owner = ReadExcelHandle();
-                    if (picker.ShowDialog() != true || picker.ScanResult == null) return;
+                    if (picker.ShowDialog() != true) return;
                 }
                 catch (Exception ex)
                 {
@@ -263,6 +267,14 @@ namespace XLEdge
                     ShowMessage($"Could not open the reload window: {ex.Message}", "Reload XLEdge Add-in");
                     return;
                 }
+                // Online: already downloaded and catalogued by the picker - reload into the newest one (as Release History).
+                ResolvedRelease online = picker.OnlineRelease;
+                if (online != null)
+                {
+                    Host.Reload(() => online);
+                    return;
+                }
+                if (picker.ScanResult == null) return;
                 string source = picker.SelectedSource ?? "Offline";
                 OfflineScanResult release = picker.ScanResult;
                 // Staged only now that the reload goes ahead (not refused, not cancelled) and the old core is unloaded.
