@@ -3225,3 +3225,50 @@ disabled when logged out / no permission (`XLEdgeRibbonHelper` lists, `RibbonIni
 
 **GLSense counterpart**: same button in GLSense 11.1.2 / 11.1.3. **AIPowered XLEdge**: not done yet, noted
 in `AIPoweredXLEdge.md` to carry in.
+
+## 2026-11-03: OISR-22766 - Fusion attachment link fails with "Failed to download the attachment." (QA retest of 11.1.2)
+
+Root cause: the report's calculated column writes the business object id as a placeholder,
+`fileDownLoadByHref(event,"fusion-attachments",{documentId:6693168,businessObjectId:{businessObjectId}})`.
+The web report grid replaces `{businessObjectId}` with the report's `businessObjectId` before the link is used
+(orbitbootapp `TableController.js`, `value.replace("{businessObjectId}", resultModel.businessObjectId)`).
+`AttachmentLinkHelper.TryParseAttachmentLink` did not: it stripped the braces and stored
+`businessObjectId=businessObjectId` in the ScreenTip, so the click requested
+`/web/secure/fusion-attachments?businessObjectId=businessObjectId&documentId=...`. The server's
+`OracleErpController` takes `businessObjectId` as a `Long` (it finds the Fusion data source through it) and
+answered 400. Same for `get-oracle-lob-file`. The VB add-in parses links the same way.
+
+Fix: `AttachmentLinkHelper.TryParseAttachmentLink(rawCellText, businessObjectId, ...)` overload replaces
+`{businessObjectId}` with the report's id (`ReplaceBusinessObjectIdPlaceholder`; unchanged when the id is 0)
+before parsing; `ReportGenerator.AddAttachmentColumn` passes `reportMeta.BusinessObjectId` (Run and Refresh
+both go through `AddAttachmentAndImageColumns`). Links already in a saved workbook keep the old ScreenTip
+until the sheet is run or refreshed again.
+
+Also (developer's request after testing): `AddinModule.HandleAttachmentDownloadAsync` shows an `XLEdgeWaitWindow`
+("Downloading attachment", Cancel stops the request) while the file downloads, and closes it
+(`CloseWaitWindowAsync`) before the saved / "Failed to download the attachment." message, so no popup shows
+alongside it. Cancel shows no message; a URL that cannot be built still only logs.
+
+**VB.NET counterpart**: not ported (developer's decision). **AIPowered XLEdge**: same change in 11.1.3.
+
+## 2026-11-03: OISR-22697 - dates before 1900 show as "####" (value -43106) in XLEdge
+
+Root cause: since OISR-22663 (`3a69119`) `XLEdgeValueFormatter.ToExcelCellValue` writes every DATE/TIME value as
+`DateTime.ToOADate()`. Excel's dates start on 1-Jan-1900, so a server value like `22-Dec-1781 00:00:00` became the
+serial -43106, which Excel can only show as `####`. Before OISR-22663 the text was written as-is and Excel, unable to
+parse a pre-1900 date, kept it as readable text (why 11.0.3.6.2 looked right). Also, Excel counts a 29-Feb-1900 that
+never was, so for 1-Jan..28-Feb-1900 the OLE serial is one more than Excel's: 01-Jan-1900 showed as 02-Jan-1900.
+The server's Export to Excel, with the column's "Year Prior to 1900" (`pryr`) on, writes such a date as text in the
+column's format (`'22-Dec-1781'`).
+
+Fix: `ToExcelCellValue(value, columnType, columnFormat)` (the 2-argument overload passes no format) sends parsed dates
+through `ToExcelDateValue`: before 1-Jan-1900 -> text in the column's format (`ExcelDateFormatToDotNet` converts the
+Excel/report format, e.g. `dd-MMM-YYYY` -> `22-Dec-1781`; anything it can't read falls back to `dd-MMM-yyyy`), written
+with a leading apostrophe so Excel keeps it as text; 1-Jan..28-Feb-1900 -> serial - 1; time-only values and dates from
+1-Mar-1900 unchanged. Written as text for every pre-1900 date, whatever `pryr` says (developer's decision: a negative
+serial can never be displayed). `ReportGenerator`'s three write paths (`BuildDataWriteArray`,
+`WriteBuildDataRespectingPreservedFormulas`, `BuildRefreshedColumnArray`) pass `ResolveColumnNumberFormat(column)`.
+Pre-1900 cells are text, so Excel cannot sort or calculate them as dates (as in the server's export).
+
+**VB.NET counterpart**: same code in 11.1.1 `FormProcessBar.GetExcelCellValue`; not ported (developer's decision).
+**AIPowered XLEdge**: same change in 11.1.3.

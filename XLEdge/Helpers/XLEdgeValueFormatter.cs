@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using XLEdge.Utilities;
 
 namespace XLEdge.Helpers
@@ -89,6 +91,15 @@ namespace XLEdge.Helpers
         /// </summary>
         public static object ToExcelCellValue(object value, string columnType)
         {
+            return ToExcelCellValue(value, columnType, null);
+        }
+
+        /// <summary>
+        /// Same as <see cref="ToExcelCellValue(object, string)"/>; <paramref name="columnFormat"/> is the column's Excel number
+        /// format (the report's fmt), used to write a date before 1900 as text (OISR-22697, see <see cref="ToExcelDateValue"/>).
+        /// </summary>
+        public static object ToExcelCellValue(object value, string columnType, string columnFormat)
+        {
             object formatted = FormatValue(value, columnType);
             if (!(formatted is string text) || text.Length == 0 ||
                 string.Equals(columnType, "STRING", StringComparison.OrdinalIgnoreCase))
@@ -107,7 +118,7 @@ namespace XLEdge.Helpers
                     DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.NoCurrentDateDefault, out date) ||
                     DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.NoCurrentDateDefault, out date))
                 {
-                    return date.ToOADate();
+                    return ToExcelDateValue(date, columnFormat);
                 }
 
                 return formatted;
@@ -120,6 +131,203 @@ namespace XLEdge.Helpers
             }
 
             return formatted;
+        }
+
+        private static readonly DateTime ExcelFirstDate = new DateTime(1900, 1, 1);
+        private static readonly DateTime ExcelLeapYearBugEnd = new DateTime(1900, 3, 1);
+        private const string Pre1900FallbackFormat = "dd-MMM-yyyy";
+
+        /// <summary>
+        /// The value written into a cell for a parsed date (OISR-22697). Excel's dates start on 1-Jan-1900 and Excel
+        /// counts a 29-Feb-1900 that never was, so an OLE Automation serial is wrong there:
+        /// - a time-only value (day zero) stays a pure time fraction (OISR-22663);
+        /// - before 1-Jan-1900 the serial is negative and Excel shows "####": the date is written as text in the
+        ///   column's format instead (as the server's Export to Excel does with "Year Prior to 1900"), with a leading
+        ///   apostrophe so Excel keeps it as text;
+        /// - 1-Jan..28-Feb-1900 the OLE serial is one more than Excel's, so it is written one lower;
+        /// - from 1-Mar-1900 the OLE serial is Excel's.
+        /// </summary>
+        public static object ToExcelDateValue(DateTime date, string columnFormat)
+        {
+            if (date.Ticks < TimeSpan.TicksPerDay)
+            {
+                return date.ToOADate();
+            }
+
+            if (date < ExcelFirstDate)
+            {
+                return "'" + FormatPre1900Date(date, columnFormat);
+            }
+
+            double serial = date.ToOADate();
+            return date < ExcelLeapYearBugEnd ? serial - 1 : serial;
+        }
+
+        /// <summary>A date Excel cannot hold, as the text the column's Excel format would show (dd-MMM-yyyy when it can't be read).</summary>
+        public static string FormatPre1900Date(DateTime date, string columnFormat)
+        {
+            string format = ExcelDateFormatToDotNet(columnFormat) ?? Pre1900FallbackFormat;
+            try
+            {
+                return date.ToString(format, CultureInfo.InvariantCulture);
+            }
+            catch (FormatException ex)
+            {
+                LogUtility.LogDebug($"{nameof(FormatPre1900Date)}: format '{columnFormat}' -> '{format}' failed, using {Pre1900FallbackFormat} - {ex.Message}");
+                return date.ToString(Pre1900FallbackFormat, CultureInfo.InvariantCulture);
+            }
+        }
+
+        /// <summary>
+        /// Converts an Excel date/time number format (e.g. "dd-MMM-YYYY", "yyyy/mm/dd hh:mm AM/PM") into a .NET custom
+        /// format. Excel's codes are case-insensitive; "m"/"mm" are minutes after an hour or before a second. Returns
+        /// null for anything else (General, "@", numbers, colours, conditions, ...), so the caller falls back.
+        /// </summary>
+        public static string ExcelDateFormatToDotNet(string excelFormat)
+        {
+            if (string.IsNullOrWhiteSpace(excelFormat))
+            {
+                return null;
+            }
+
+            string section = excelFormat.Split(';')[0];
+            bool twelveHour = section.IndexOf("AM/PM", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              section.IndexOf("A/P", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // Each token: a code letter ('d','m','y','h','s','t' for AM/PM, 'a' for A/P) with its run length, or 'L' with literal text.
+            var tokens = new List<KeyValuePair<char, string>>();
+            int i = 0;
+            while (i < section.Length)
+            {
+                char c = section[i];
+                if (c == '"')
+                {
+                    int end = section.IndexOf('"', i + 1);
+                    if (end < 0)
+                    {
+                        return null;
+                    }
+
+                    tokens.Add(new KeyValuePair<char, string>('L', section.Substring(i + 1, end - i - 1)));
+                    i = end + 1;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    if (i + 1 >= section.Length)
+                    {
+                        return null;
+                    }
+
+                    tokens.Add(new KeyValuePair<char, string>('L', section[i + 1].ToString()));
+                    i += 2;
+                    continue;
+                }
+
+                if (string.Compare(section, i, "AM/PM", 0, 5, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    tokens.Add(new KeyValuePair<char, string>('t', "tt"));
+                    i += 5;
+                    continue;
+                }
+
+                if (string.Compare(section, i, "A/P", 0, 3, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    tokens.Add(new KeyValuePair<char, string>('a', "t"));
+                    i += 3;
+                    continue;
+                }
+
+                char code = char.ToLowerInvariant(c);
+                if ("dmyhs".IndexOf(code) >= 0)
+                {
+                    int j = i;
+                    while (j < section.Length && char.ToLowerInvariant(section[j]) == code)
+                    {
+                        j++;
+                    }
+
+                    tokens.Add(new KeyValuePair<char, string>(code, new string(code, j - i)));
+                    i = j;
+                    continue;
+                }
+
+                if (char.IsLetterOrDigit(c) || "[@*_?#".IndexOf(c) >= 0)
+                {
+                    return null;
+                }
+
+                tokens.Add(new KeyValuePair<char, string>('L', c.ToString()));
+                i++;
+            }
+
+            var result = new StringBuilder();
+            bool hasDatePart = false;
+            for (int t = 0; t < tokens.Count; t++)
+            {
+                char code = tokens[t].Key;
+                int length = tokens[t].Value.Length;
+                switch (code)
+                {
+                    case 'L':
+                        foreach (char literal in tokens[t].Value)
+                        {
+                            result.Append('\\').Append(literal);
+                        }
+                        break;
+                    case 'd':
+                        result.Append(new string('d', Math.Min(length, 4)));
+                        hasDatePart = true;
+                        break;
+                    case 'y':
+                        result.Append(length <= 2 ? "yy" : "yyyy");
+                        hasDatePart = true;
+                        break;
+                    case 'h':
+                        result.Append(new string(twelveHour ? 'h' : 'H', Math.Min(length, 2)));
+                        break;
+                    case 's':
+                        result.Append(new string('s', Math.Min(length, 2)));
+                        break;
+                    case 't':
+                    case 'a':
+                        result.Append(tokens[t].Value);
+                        break;
+                    case 'm':
+                        bool minutes = length <= 2 && (NeighbourCode(tokens, t, -1) == 'h' || NeighbourCode(tokens, t, +1) == 's');
+                        if (minutes)
+                        {
+                            result.Append(new string('m', length));
+                        }
+                        else if (length <= 4)
+                        {
+                            result.Append(new string('M', length));
+                            hasDatePart = true;
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                        break;
+                }
+            }
+
+            return hasDatePart ? result.ToString() : null;
+        }
+
+        // The nearest date/time code before (direction -1) or after (+1) token t, skipping literals; '\0' if none.
+        private static char NeighbourCode(List<KeyValuePair<char, string>> tokens, int t, int direction)
+        {
+            for (int k = t + direction; k >= 0 && k < tokens.Count; k += direction)
+            {
+                if (tokens[k].Key != 'L')
+                {
+                    return tokens[k].Key;
+                }
+            }
+
+            return '\0';
         }
 
         // Ported from AddinModule.vb's InferDataType (line ~1933) - distinct from the report-column
