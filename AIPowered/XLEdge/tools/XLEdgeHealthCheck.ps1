@@ -96,7 +96,9 @@ else {
         $version = FileVersion $path
         if ($shellVersion -and $version -ne $shellVersion) { $mismatched += "$name $version" }
     }
-    if ($missing.Count -gt 0) { Report 'SharedAssemblies' 'FAIL' ("Missing next to the shell: " + ($missing -join ', ')) }
+    $singleDll = ($missing.Count -eq 3) -and -not (Test-Path -LiteralPath (Join-Path $InstallRoot 'AddinCore'))
+    if ($singleDll) { Report 'SharedAssemblies' 'WARN' 'The single-DLL XLEdge (11.1.2 or older): no Contracts/Shared/Loader.Core - none expected there.' }
+    elseif ($missing.Count -gt 0) { Report 'SharedAssemblies' 'FAIL' ("Missing next to the shell: " + ($missing -join ', ')) }
     elseif ($mismatched.Count -gt 0) { Report 'SharedAssemblies' 'WARN' ("Not the shell's version ($shellVersion): " + ($mismatched -join ', ')) }
     else { Report 'SharedAssemblies' 'PASS' "XLEdge.Contracts, Shared, Loader.Core present ($shellVersion)." }
 
@@ -122,12 +124,13 @@ else {
         }
 
         $selectedFile = Join-Path $addinCore 'SelectedRelease.txt'
-        if (-not (Test-Path -LiteralPath $selectedFile)) {
+        # An empty file is "no choice" to the loader (RememberLoaded writes ""); Get-Content -Raw gives $null for it.
+        $selected = if (Test-Path -LiteralPath $selectedFile) { "$(Get-Content -LiteralPath $selectedFile -Raw)".Trim() } else { '' }
+        if (-not $selected) {
             Report 'SelectedRelease' 'PASS' 'No release chosen yet: the newest catalogued release loads.'
         }
         else {
-            $selected = (Get-Content -LiteralPath $selectedFile -Raw).Trim()
-            if ($selected -and (Test-Path -LiteralPath (Join-Path $versions $selected))) { Report 'SelectedRelease' 'PASS' "Excel loads $selected next." }
+            if (Test-Path -LiteralPath (Join-Path $versions $selected)) { Report 'SelectedRelease' 'PASS' "Excel loads $selected next." }
             else { Report 'SelectedRelease' 'FAIL' "SelectedRelease.txt names '$selected', which is gone: the next start falls back to the newest catalogued release." }
         }
 
@@ -148,7 +151,8 @@ else {
         # Shared read: Excel may have the log open.
         $stream = New-Object IO.FileStream($log, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
         try { $text = (New-Object IO.StreamReader($stream)).ReadToEnd() } finally { $stream.Dispose() }
-        $errors = @($text -split "`r?`n" | Where-Object { $_ -match '^\s*ERROR\s*\|' })
+        # Logger.cs: NLog's "${longdate}|" then "{indent}ERROR | HH:mm:ss | message".
+        $errors = @($text -split "`r?`n" | Where-Object { $_ -match '^(\d{4}-\d{2}-\d{2} [0-9:.]+\|)?\s*ERROR\s*\|' })
         $last = @($errors | Select-Object -Last $LogErrors | ForEach-Object { $_.Trim() })
         $detail = "$($errors.Count) ERROR line(s) today in $log"
         if ($last.Count -gt 0) { $detail += ': ' + ($last -join ' || ') }

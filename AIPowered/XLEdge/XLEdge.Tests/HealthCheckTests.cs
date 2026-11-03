@@ -30,10 +30,16 @@ namespace XLEdge.Tests
             public string DataRoot => _temp.Combine("data");
             public string LogFile => Path.Combine(DataRoot, @"XLEdge_Logs\Logs", "XLEdge_Logs_" + DateTime.Now.ToString("dd-MMM-yyyy", System.Globalization.CultureInfo.InvariantCulture) + ".log");
 
-            public Machine(bool registered = true, bool addinCore = true)
+            /// <param name="addinCore">false: an AddinCore never set up.</param>
+            /// <param name="oldSingleDll">11.1.2's install: XLEdge.dll and the loaders only (its MSI ships no Contracts/Shared/Loader.Core), no AddinCore.</param>
+            public Machine(bool registered = true, bool addinCore = true, bool oldSingleDll = false)
             {
                 Directory.CreateDirectory(InstallRoot);
-                foreach (string dll in new[] { "XLEdge.dll", "XLEdge.Contracts.dll", "XLEdge.Shared.dll", "XLEdge.Loader.Core.dll", "adxloader.dll", "adxloader64.dll" })
+                if (oldSingleDll) addinCore = false;
+                var dlls = oldSingleDll
+                    ? new[] { "XLEdge.dll", "adxloader.dll", "adxloader64.dll" }
+                    : new[] { "XLEdge.dll", "XLEdge.Contracts.dll", "XLEdge.Shared.dll", "XLEdge.Loader.Core.dll", "adxloader.dll", "adxloader64.dll" };
+                foreach (string dll in dlls)
                     File.Copy(Path.Combine(ShellBuild, dll), Path.Combine(InstallRoot, dll));
                 if (addinCore)
                 {
@@ -45,9 +51,13 @@ namespace XLEdge.Tests
                     File.WriteAllText(Path.Combine(InstallRoot, @"AddinCore\SelectedRelease.txt"), "vA");
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(LogFile));
-                File.WriteAllText(LogFile, "INFO  | 10:00:00 | started\r\n");
+                File.WriteAllText(LogFile, LogLine("INFO  ", "10:00:00", "started"));
                 if (registered) Register(Path.Combine(InstallRoot, "adxloader64.dll"));
             }
+
+            /// <summary>A line as XLEdge.Shared.Logger writes it: NLog's "${longdate}|" before the level (Logger.cs Layout and Format).</summary>
+            public static string LogLine(string level, string time, string message, string indent = "") =>
+                DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + " " + time + ".1234|" + indent + level + "| " + time + " | " + message + "\r\n";
 
             public void Register(string loader, int loadBehavior = 3)
             {
@@ -161,7 +171,9 @@ namespace XLEdge.Tests
         {
             using (var m = new Machine())
             {
-                File.AppendAllText(m.LogFile, "ERROR | 10:01:00 | first failure\r\nINFO  | 10:02:00 | fine\r\n    ERROR | 10:03:00 | second failure\r\n");
+                // Review: the real lines start with NLog's longdate; an "ERROR |" inside a message is not a level.
+                File.AppendAllText(m.LogFile, Machine.LogLine("ERROR ", "10:01:00", "first failure") + Machine.LogLine("INFO  ", "10:02:00", "fine ERROR | not a level")
+                    + Machine.LogLine("ERROR ", "10:03:00", "second failure", indent: "    "));
                 var (_, checks, output) = m.Run();
                 StringAssert.Contains(checks["Log"].Detail, "2 ERROR", output);
                 StringAssert.Contains(checks["Log"].Detail, "first failure");
@@ -186,12 +198,42 @@ namespace XLEdge.Tests
         [TestMethod]
         public void HealthCheck_OldSingleDllInstall_WarnsNotSetUp()
         {
-            using (var m = new Machine(addinCore: false))
+            // Review: 11.1.2's MSI ships no Contracts/Shared/Loader.Core - the way back (runbook B2) must not FAIL.
+            using (var m = new Machine(oldSingleDll: true))
             {
                 var (exit, checks, output) = m.Run();
                 Assert.AreEqual(0, exit, output);
                 Assert.AreEqual("WARN", checks["AddinCore"].Status, output);
                 StringAssert.Contains(checks["AddinCore"].Detail, "not set up");
+                Assert.AreEqual("WARN", checks["SharedAssemblies"].Status, output);
+                StringAssert.Contains(checks["SharedAssemblies"].Detail, "single-DLL");
+            }
+        }
+
+        [TestMethod]
+        public void HealthCheck_SharedAssemblyMissingNextToTheTwin_Fails()
+        {
+            using (var m = new Machine())
+            {
+                File.Delete(Path.Combine(m.InstallRoot, "XLEdge.Shared.dll"));
+                var (exit, checks, output) = m.Run();
+                Assert.AreEqual(1, exit, output);
+                Assert.AreEqual("FAIL", checks["SharedAssemblies"].Status, output);
+                StringAssert.Contains(checks["SharedAssemblies"].Detail, "XLEdge.Shared.dll");
+            }
+        }
+
+        [TestMethod]
+        public void HealthCheck_EmptySelectedRelease_IsNoChoice()
+        {
+            // Review: UpdateBootstrapper.RememberLoaded can write "" - the loader reads that as no choice.
+            using (var m = new Machine())
+            {
+                File.WriteAllText(Path.Combine(m.InstallRoot, @"AddinCore\SelectedRelease.txt"), "");
+                var (exit, checks, output) = m.Run();
+                Assert.AreEqual(0, exit, output);
+                Assert.AreEqual("PASS", checks["SelectedRelease"].Status, output);
+                StringAssert.Contains(checks["SelectedRelease"].Detail, "No release chosen yet");
             }
         }
     }
