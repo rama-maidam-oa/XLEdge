@@ -172,6 +172,8 @@ phase 2 (carving `AddinModule`) and phases 1/3 (the WebView2 pane in the core).
 not referenced by any shipped project) holds the unit tests for Shared, Loader.Core and later the core.
 2. **`AppDomainSetup.ApplicationName` set**, so `CachePath` (shadow cache) is honoured.
 3. **Shell referenced as a plain File in the vdproj** from the start (GLSense CLAUDE.md §67/§68 lesson).
+   **Superseded (Stage 5, developer's decision 2026-11-03):** GLSense §74 reversed §67/§68 - with the shell as a plain File the
+   MSI silently dropped dependencies. The twin's setup project keeps the shell's Primary Output and excludes per entry.
 4. No UDF/XLL module, no SQLite, no ribbon combo primer — XLEdge doesn't use them.
 5. `InvokedFromGLSense` stays a public method on the shell's COM-visible `AddinModule` and forwards
    to the core (GLSense calls it by ProgId through `COMAddIns`).
