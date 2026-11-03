@@ -1,7 +1,7 @@
 # AIPowered XLEdge — migration status and how to continue
 
 Resume with: **"continue AIPoweredXLEdge.md"**. Read this file first, then the spec and the next stage's plan, and pick up at
-"Next step" below. Last updated: 2026-11-02, after Stage 2f (XLEdge ↔ GLSense login/logout sync, both code bases).
+"Next step" below. Last updated: 2026-11-03, after Stage 4 (remoting hardening; a run keeps its workbook).
 
 ## What this is
 
@@ -46,8 +46,9 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 | 2e | 11.1.2's task pane (`ADXExcelTaskPane1`) as the core's pane content; Server Configuration + About; login, logout of all panes, Show/Hide, Param Refresh; contract 4 (pane of a given Excel window); title commands only from the instance's origin; login survives a reload (session value `XLEdge.Login`) | `fd0f2c9` |
 | 22777 | 11.1.2 merged into this branch (reference = 11.1.2 at `eb78362`); OISR-22777 **Broadcast** ribbon button: shell ribbon regenerated (`make_designer.py` / `make_resx.py`), click forwarded to the core's verbatim `RibEdgeBroadcast_OnClick`, state lists (core helper + shell `RibbonControlIds`), `RibbonInitialize`; new test: every shell ribbon click forwards its own id | see `git log` |
 | 2f | XLEdge ↔ GLSense login/logout sync. XLEdge core: 11.1.2's `InvokedFromGLSense` / `NotifyGLSenseOfLogin` / `NotifyGLSenseOfLogout` verbatim; `GetGLSenseAddinObject` returns `GLSenseAddin`, which asks the shell to make the COM call (contract 5); GLSense-started logoff counted as busy; a reload re-attaches GLSense. GLSense AIPowered (11.1.2 worktree `8879b28`, `7489d20`, `2dbe4e9`; 11.1.3 main checkout `02adf7d`, `b16b76a`): shell `GetGLCubeInformation` / `LogoutSession` → core `LoginFromXLEdge` / `LogoutFromXLEdge` | see `git log` |
+| 4 | Remoting hardening (audit: leases and older-core compatibility already complete). A failing core start fails the load (rollback + error); Shutdown runs every step (`ShutdownSteps`); a stuck unload (5 s cap) is reported, the next core still loads; busy covers the pane's background work (`ExcelThreadContext.Track`, 15-min stale limit) and async-void WebView2 handlers (`Counted`); guard: the core never uses the shell's COM proxies. **Developer's request:** a report / refresh keeps writing to the workbook it started in (`RunWorkbookScope`, per run via AsyncLocal; verbatim files keep parity through `CorePortParityTests.TwinSubstitutions` — the twin now differs from 11.1.2 by those 14 changes until 11.1.2 gets the OISR) | `01637bd` |
 
-Test suite now: **302 tests — 296 pass, 6 Inconclusive** (the real-Excel tests, see "Machine notes").
+Test suite now: **318 tests — 311 pass, 7 Inconclusive** (the real-Excel tests, see "Machine notes").
 
 ## Next step (where we stopped)
 
@@ -72,14 +73,16 @@ Test suite now: **302 tests — 296 pass, 6 Inconclusive** (the real-Excel tests
       - GLSense login for a user without XLEdge permission → XLEdge stays logged out, its Login disabled.
       - GLSense not loaded → XLEdge login/logout work, nothing shown (log has a warning).
       - Logged in through GLSense → Reload Add-in (XLEdge) → Logout in XLEdge → GLSense logged out too.
-   Fix whatever it finds (with a test) before Stage 4.
-2. Then **Stage 3** (only if the Excel check finds pane/login gaps) or **Stage 4** — on the developer's "proceed".
+   10. Stage 4: Reload while a report started from the pane runs, during an XLSX download, and while the pane is logging in
+       → refused with the busy message. Switch to another workbook while a report loads, and while Refresh All runs →
+       the report / refresh ends in the workbook it started in (that workbook comes back to the front when it writes).
+       Two windows on one workbook ("Book1:2"): running a report keeps you in your window.
+   Fix whatever it finds (with a test) before Stage 5.
+2. Then **Stage 3** (only if the Excel check finds pane/login gaps) or **Stage 5** — on the developer's "proceed".
 
 ## Pending stages
 
 - **3** — remaining pane/login items not covered by 2e, if the Excel check finds any (spec §5 phase 3 was pulled into 2e).
-- **4 — Remoting hardening** (spec §5): leases, cached Workbook/Sheet in async chains, fire-and-forget entry points, Shutdown of
-  running reports, 5 s unload cap review, IsBusy guard review.
 - **5 — Packaging & MSI**: core post-build (sign Release, zip, manifest SHA256, ReleaseNotes), seed `InstallerPayload\OrbitXLEdge.zip`,
   `OrbitXLEdge.vdproj` on the GLSense pattern (shell as plain File, uninstall cleanup of `AddinCore\`), upgrade from today's MSI.
 - **6 — Online update**: orbitbootapp `XLEdgeAddinController` mirroring GLSense's.
@@ -134,8 +137,22 @@ Test suite now: **302 tests — 296 pass, 6 Inconclusive** (the real-Excel tests
 - GLSense AIPowered lacked `GetGLCubeInformation` / `LogoutSession` (added in 2f on 11.1.2 and 11.1.3).
 - GLSense AIPowered **11.1.2** `Logout()` touches ribbon controls from a pool thread after its `applogout` await — fixed on
   11.1.3 by OISR-22460, not on 11.1.2 (proposed OISR port; 2f's own new code marshals).
+- (Stage 4 audit, proposed OISRs) a report writes into the workbook active after its HTTP awaits — switching workbooks during
+  a run writes it into the other one (`BuildReportTable`, `BuildLogsSheet`, `GetParameterSheet`, Refresh All) — **fixed in
+  the twin** (`CorePortParityTests.TwinSubstitutions` is the exact change set for 11.1.2); title-command reports run on a
+  pool thread (cross-apartment COM); `ImageDownloadHelper` blocks on synchronous HTTP; the wait window is non-modal with no
+  owner.
 
 ## Rulings still open / carried
 - Broadcast messages are fetched again for each open pane after a reload (as 11.1.2 per pane load) — popup per pane per reload.
 - An async-void started inside a WPF/WinForms continuation is not counted in IsBusy (none in today's code).
 - Shell-only code (ADX panes: per-window members, re-attach after reload, active-window pane creation) is checked only in Excel.
+- Stage 4 accepted risks: Excel closing during a report (no bounded wait, as GLSense); Excel's thread waits up to 5 s during
+  an unload; `IsBusy` answers "not busy" when the call fails (old/broken core); background work stuck for 15+ minutes stops
+  counting as busy; a failing newest core on Reload leaves no core (roll back through Release History).
+- Stage 4 deferred minors: stuck-unload message only when the next load succeeds; cleanup after a failed start is one try;
+  the busy message does not name background work; the COM-proxy guard only matches receivers named Context/context/_context;
+  `WebView_CoreWebView2InitializationCompleted` not counted; a counted handler's escaping exception is logged by
+  ExcelThreadContext instead of WinForms; a title-command run reads its workbook from a pool thread.
+- Tools: a mutant script must `touch` a file it restores (`mv file.bak file` gives it the backup's older time and MSBuild keeps
+  the mutant's DLL - this happened after Stage 2f, fixed with a full Debug Rebuild).
