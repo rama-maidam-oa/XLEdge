@@ -47,9 +47,18 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 - Every decision taken on the developer's behalf is reported as a **"Ruling"** with what it costs if wrong.
 
 ### Tools (kept in `.superpowers\tools\`, git-ignored)
-- **Solutions** (developer's request, 03-Nov-2026): `XLEdge.sln` = the 6 product projects (build and register in VS; no
-  tests), `XLEdge.Tests.sln` = those + `XLEdge.Tests` (what bt.sh / rt.sh build), `OrbitXLEdgeSetup.sln` = product + MSI (no
-  tests). `SetupProjectTests.TestProject_LivesOnlyInTheTestsSolution_WhichHasEveryProjectOfXLEdgeSln` keeps them in step. The
+- **Solutions** (developer's requests, 03-Nov-2026): `XLEdge.sln` = the 6 product projects + the MSI project `OrbitXLEdge`
+  (build and register in VS; no tests; the MSI builds in Release only), as GLSense AIPowered. `XLEdge.Tests.sln` = the
+  product projects + `XLEdge.Tests`, MSBuild-only (what bt.sh / rt.sh build). `OrbitXLEdgeSetup.sln` is gone. The MSI
+  project is the developer's Add-in Express setup project (`XLEdge\OrbitXLEdgeSetups\OrbitXLEdge.vdproj`) with the old
+  project's settings ported in (11.1.2's UpgradeCode, the 11.1.3 Product/PackageCode, signing pre-build, core zip + manifest
+  into `AddinCore\Manifest`, AddinCore cleanup on a real uninstall, no unregister during an upgrade, signed loaders from
+  bin\Release, GAC System.IO.Compression 4.0.0.0 excluded); the wizard kept 11.1.2's component keys.
+  `SetupProjectTests` pin all of it; `TestProject_LivesOnlyInTheTestsSolution_WhichHasEveryProjectOfXLEdgeSln` keeps the
+  solutions in step. **Open (found 03-Nov-2026, 20:xx):** `CoreWindowsTests.Windows_OpenFromTheCore_AreListed_AndNothingSurvivesTheUnload`
+  fails intermittently on the Release build only (2 of 3 alone; Debug 3 of 3 pass; it passed in every earlier run that day): an
+  `HwndWrapper[CoreWindows;...]` outlives the 5 s wait after `AddinEntry.Shutdown` although every core window raised Closed. Not
+  caused by the MSI/solution change (no code changed); to investigate (a window leak at shutdown, or only the test's wait). The
   scripts pass `-p:RegisterForComInterop=false`: VS's "Register ADX Project" turns it on in the shell csproj (a local change,
   never committed).
 - **Logging** (developer's request, 03-Nov-2026): versions are shown as 11.1.3 (`XLEdge.Shared.VersionText.Display`; catalog,
@@ -119,11 +128,11 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
    Fix whatever it finds (with a test) before Stage 7.
 2. **Developer's release check of Stage 5** (Claude cannot sign or install):
    1. Copy `sign_file.cmd` to `AIPowered\XLEdge\` (git-ignored). Never set `XLEDGE_SKIP_SIGNING` for a release build.
-   2. Open `AIPowered\XLEdge\OrbitXLEdgeSetup.sln` in VS once: check the setup project's Detected Dependencies (VS adds
+   2. Open `AIPowered\XLEdge\XLEdge.sln` in VS once: check the setup project's Detected Dependencies (VS adds
       Contracts/Shared/Loader.Core entries - expected; nothing from the core: MahApps, WebView2, Wpf.Ui, Xaml.Behaviors,
       XLEdge.Addin.Core); discard VS's GUID/order drift in the vdproj (GLSense §65.3) but keep the component keys (pinned by
       `SetupProjectTests.SetupProject_KeepsTheKeysUpgradesDependOn`).
-   3. Build: `devenv.com AIPowered\XLEdge\OrbitXLEdgeSetup.sln /Rebuild "Release"` (always **/Rebuild**: a plain Build can
+   3. Build: `devenv.com AIPowered\XLEdge\XLEdge.sln /Rebuild "Release"` (always **/Rebuild**: a plain Build can
       reuse unsigned outputs - `verify-signed.ps1` then fails it with XLEDGE0005). MSI: `AIPowered\XLEdge\XLEdge\OrbitXLEdgeSetups\Release\OrbitXLEdge.msi`;
       sign the `.msi` itself with signtool as today.
    4. On a machine with XLEdge 11.1.2 installed: install the 11.1.3 MSI with `msiexec /i ... /l*v upgrade.log` - one XLEdge in
@@ -234,7 +243,7 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
   ExcelThreadContext instead of WinForms; a title-command run reads its workbook from a pool thread.
 - Stage 5 deferred minors: the cleanup action (copied Windows 11 cmd.exe, exit code not ignored) could fail an uninstall on an
   older Windows - test on Windows 10; every Release build re-signs Contracts/Shared/Loader.Core/core (metered, as GLSense);
-  sign.ps1 untested with spaced paths; OrbitXLEdgeSetup.sln can drift from XLEdge.sln; test fixtures still use ShellVersion
+  sign.ps1 untested with spaced paths; test fixtures still use ShellVersion
   "11.1.2.0"; a core post-build failing before it writes leaves the previous manifest+payload pair.
 - Stage 6 deferred minors: "newest" by release date only; an index row with a blank folderName fails as a 404; a history
   entry whose folder is gone cannot be re-downloaded from Online; an unreadable ReleaseHistory.json makes every row "New"

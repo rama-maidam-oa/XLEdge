@@ -33,7 +33,7 @@ must show PASS.
 
 | ID | Step | Expected | Result |
 |---|---|---|---|
-| S1 | Release build per `AIPoweredXLEdge.md` → "Developer's release check of Stage 5" (sign_file.cmd in `AIPowered\XLEdge\`, `devenv … OrbitXLEdgeSetup.sln /Rebuild "Release"`, sign the `.msi`) | build succeeds; no `XLEDGE0005` (unsigned file) | |
+| S1 | Release build per `AIPoweredXLEdge.md` → "Developer's release check of Stage 5" (sign_file.cmd in `AIPowered\XLEdge\`, `devenv … XLEdge.sln /Rebuild "Release"`, sign the `.msi`) | build succeeds; no `XLEDGE0005` (unsigned file) | |
 | S2 | Test machine: Excel 64-bit (and one 32-bit machine if supported), XLEdge 11.1.2 installed from today's MSI for the upgrade tests; one clean machine for the fresh install | | |
 | S3 | ORBIT instance reachable; a user with XLEdge permission and one without; a user with GLSense cubes | | |
 
@@ -125,7 +125,7 @@ Nothing below is done yet. In order, each a decision:
    release notes / OISRs).
 3. **Version/date**: `XLEdgeSharedVersion.cs` (11.1.3.0), `XLEdgeAppConstants.DefaultCommitDate` (release day; a
    TwinSubstitutions entry), the vdproj ProductVersion/ProductCode/PackageCode for the next MSI.
-4. **MSI**: build/sign per the release memory (twin section): `OrbitXLEdgeSetup.sln /Rebuild "Release"`, sign the `.msi`,
+4. **MSI**: build/sign per the release memory (twin section): `XLEdge.sln /Rebuild "Release"`, sign the `.msi`,
    copy to `D:\Orbit Excel Add-ons\Setup Files\XLEdge\<version>\`.
 5. **orbitbootapp** (both branches as for 11.1.2: `development` and `release/ORBIT<version>`): the MSI under
    `orbit-app\ORBIT_HOME\download-artifacts\addons\xledge\`; `orbit-artifacts.xml` XLEDGE `<version>` **and** `<release_date>`;

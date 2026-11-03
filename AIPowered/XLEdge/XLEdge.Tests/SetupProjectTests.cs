@@ -7,7 +7,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace XLEdge.Tests
 {
     /// <summary>
-    /// Stage 5: the twin's setup project (XLEdge\OrbitXLEdgeSetups\OrbitXLEdge.vdproj) - an MSI 11.1.3 that upgrades today's
+    /// Stage 5: the twin's setup project (XLEdge\OrbitXLEdgeSetups\OrbitXLEdge.vdproj; since 03-Nov-2026 the developer's Add-in
+    /// Express setup project in XLEdge.sln, as GLSense AIPowered, with these settings ported into it) - an MSI 11.1.3 that upgrades today's
     /// XLEdge 11.1.2 (same UpgradeCode), installs the shell + signed loaders + the first core, and removes AddinCore\ on a real
     /// uninstall. Source checks; the MSI's real contents are checked with msiexec /a (ledger), the install by the developer.
     /// </summary>
@@ -247,21 +248,25 @@ namespace XLEdge.Tests
             }
         }
 
+        /// <summary>
+        /// The developer's layout (03-Nov-2026, as GLSense AIPowered): the Add-in Express setup project lives in XLEdge.sln. It is
+        /// built in Release only: its pre-build signs and checks bin\Release, and its payload is the Release core zip.
+        /// </summary>
         [TestMethod]
-        public void SetupSolution_BuildsTheSetupProjectInReleaseOnly()
+        public void MainSolution_BuildsTheSetupProjectInReleaseOnly()
         {
-            string sln = File.ReadAllText(Path.Combine(TwinRoot, "OrbitXLEdgeSetup.sln"));
+            string sln = File.ReadAllText(Path.Combine(TwinRoot, "XLEdge.sln"));
             Match project = Regex.Match(sln, "Project\\(\"\\{54435603-DBB4-11D2-8724-00A0C9A8B90C\\}\"\\) = \"OrbitXLEdge\", \"XLEdge\\\\OrbitXLEdgeSetups\\\\OrbitXLEdge.vdproj\", \"(\\{[0-9A-F-]+\\})\"");
-            Assert.IsTrue(project.Success, "the setup project is in OrbitXLEdgeSetup.sln");
+            Assert.IsTrue(project.Success, "the setup project is in XLEdge.sln");
             string guid = project.Groups[1].Value;
             StringAssert.Contains(sln, guid + ".Release|Any CPU.Build.0 = Release");
             Assert.IsFalse(sln.Contains(guid + ".Debug|Any CPU.Build.0"), "Debug builds do not make an MSI");
-            Assert.IsFalse(File.ReadAllText(Path.Combine(TwinRoot, "XLEdge.sln")).Contains(".vdproj"), "XLEdge.sln stays MSBuild-only");
+            Assert.IsFalse(File.Exists(Path.Combine(TwinRoot, "OrbitXLEdgeSetup.sln")), "one solution for the product and its MSI");
         }
 
         /// <summary>
-        /// The developer's request (03-Nov-2026): building XLEdge.sln or OrbitXLEdgeSetup.sln in Visual Studio never builds (or
-        /// runs) the tests; XLEdge.Tests.sln has every project of XLEdge.sln plus XLEdge.Tests, so the two cannot drift apart.
+        /// The developer's request (03-Nov-2026): building XLEdge.sln in Visual Studio never builds (or runs) the tests;
+        /// XLEdge.Tests.sln (MSBuild-only: no setup project) has every other project of XLEdge.sln plus XLEdge.Tests.
         /// </summary>
         [TestMethod]
         public void TestProject_LivesOnlyInTheTestsSolution_WhichHasEveryProjectOfXLEdgeSln()
@@ -269,11 +274,11 @@ namespace XLEdge.Tests
             var projectLine = new Regex("^Project\\(\"\\{[0-9A-F-]+\\}\"\\) = \"([^\"]+)\", \"([^\"]+)\"", RegexOptions.Multiline);
             string[] Projects(string sln) => projectLine.Matches(File.ReadAllText(Path.Combine(TwinRoot, sln))).Cast<Match>().Select(m => m.Groups[2].Value).ToArray();
 
-            foreach (string sln in new[] { "XLEdge.sln", "OrbitXLEdgeSetup.sln" })
-                Assert.IsFalse(Projects(sln).Any(p => p.Contains("XLEdge.Tests")), sln + " must not hold the test project");
+            Assert.IsFalse(Projects("XLEdge.sln").Any(p => p.Contains("XLEdge.Tests")), "XLEdge.sln must not hold the test project");
 
             string[] tests = Projects("XLEdge.Tests.sln");
-            CollectionAssert.IsSubsetOf(Projects("XLEdge.sln"), tests, "XLEdge.Tests.sln misses a project of XLEdge.sln");
+            Assert.IsFalse(tests.Any(p => p.EndsWith(".vdproj")), "XLEdge.Tests.sln stays MSBuild-only");
+            CollectionAssert.IsSubsetOf(Projects("XLEdge.sln").Where(p => !p.EndsWith(".vdproj")).ToArray(), tests, "XLEdge.Tests.sln misses a project of XLEdge.sln");
             CollectionAssert.Contains(tests, @"XLEdge.Tests\XLEdge.Tests.csproj");
         }
     }
