@@ -164,7 +164,7 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
   `[TestCategory("Excel")]` tests run — the developer's call. After that, run them ×3 and their mutants.
 - Twin and today's XLEdge share assembly name / key / ProgId `XLEdge.AddinModule`: only one can be registered at a time.
 - adxregistrator needed the ADX DLLs copied into `bin\Debug` (dev-only step).
-- An untracked `.github/` folder exists in `D:\SQLLite_Test\XLEdge` — not created by this work, left alone.
+- An untracked `.github/` folder (someone's Copilot instructions) exists in `<checkout>` — not created by this work, left alone.
 - **GLSense here:** `D:\SQLLite_Test\GLSense` (main checkout) is on **11.1.3**; 11.1.2 is the worktree
   `D:\SQLLite_Test\worktrees\GLSense-11.1.2`. MSBuild cannot build GLSense from this session (its strong-name key
   `GLSense.Contracts.pfx` is password-protected and not installed; Claude never imports it) — Claude compiles a git export
