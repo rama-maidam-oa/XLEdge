@@ -51,7 +51,7 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
 | 6 | Online update, **client side** (developer: orbitbootapp untouched for now; server = spec `docs/superpowers/specs/2026-11-03-xledge-addin-online-update-server.md`, a copy-style `XLEdgeAddinController` with live tests). The core reports its login (`GetLoginInfo`); `XLEdge\Online\OnlineReleaseClient` calls `{LoginUrl}/rest/secure/xledge-addin/...` with the Bearer token (TLS 1.2/1.3, no proxy, as the core); the Reload picker's Online lists releases (loaded / already downloaded / needs a newer install / new), downloads every ticked one (cancellable), catalogues each through `ExtractAndCatalog` (and checks it is the build the index row describes), then reloads into the newest (GLSense's multi-release design, developer's decision) | see `git log` |
 | 7 | QA & cutover **support** (developer: cutover documented only, decided later; the orbitbootapp controller by a separate engineer). `AIPowered\XLEdge\tools\XLEdgeHealthCheck.ps1` (read-only, PS 5.1, PASS/WARN/FAIL or `-Json`, exit 1 on FAIL: registration/LoadBehavior, registered loader → install root, shell version + signature, shared assemblies (the 11.1.2 single-DLL layout = WARN), catalogued releases, selected/staged release, today's ERROR lines, GLSense); `docs/superpowers/qa/2026-11-03-xledge-aipowered-qa-runbook.md` (installs, regression matrix R1-R25, GLSense side by side G1-G10 with the log lines - **Debug logging on in both add-ins**, rollback, uninstall, cutover steps) | see `git log` |
 
-Test suite now: **373 tests — 366 pass, 7 Inconclusive** (the real-Excel tests, see "Machine notes").
+Test suite now: **386 tests — 379 pass, 7 Inconclusive** (the real-Excel tests, see "Machine notes").
 
 ## Next step (where we stopped)
 
@@ -109,9 +109,9 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
    6. Release day: `XLEdgeAppConstants.DefaultCommitDate` needs a `CorePortParityTests.TwinSubstitutions` entry (verbatim file).
 3. Then: fix what QA finds (with a test); **Stage 3** only if it finds pane/login gaps; the **cutover** per the runbook §7
    when the developer decides (nothing of it is done); the orbitbootapp controller (spec above) by the separate engineer.
-   Health-check limits (deferred minors, Stage 7 review): reads only the base log file (not `(1)` rollovers or
-   `XLEdge_Error_*.log`); does not check the 32-bit loader registration (WOW64 view); a staged zip without
-   `manifest.json` still reads "staged"; an empty catalog is PASS.
+   Health check (after the Stage 7 review): reads every part of today's log (rollovers, `XLEdge_Error_*.log`), checks the
+   loader for Excel's bitness (32-bit = WOW6432Node / adxloader.dll), and follows UpdateBootstrapper's rules for staged,
+   refused and selected releases and an empty/unreadable catalog (runbook §0).
 
 ## Pending stages
 

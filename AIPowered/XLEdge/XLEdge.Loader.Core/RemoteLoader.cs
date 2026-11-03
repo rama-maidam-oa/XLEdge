@@ -39,14 +39,12 @@ namespace XLEdge.Loader.Core
             string path = Path.Combine(releaseFolder, CoreAssemblyFile);
             try
             {
-                logger?.LogDebug($"RemoteLoader.Create: loading '{path}'.");
                 if (!File.Exists(path)) throw new FileNotFoundException("XLEdge core not found: " + path, path);
 
                 Assembly core = Assembly.LoadFrom(path);
                 Type entryType = FindEntryType(core, logger)
                     ?? throw new InvalidOperationException("No IXLEdgeAddin entry type found in " + CoreAssemblyFile);
                 var instance = (IXLEdgeAddin)Activator.CreateInstance(entryType);
-                logger?.LogDebug($"RemoteLoader.Create: created '{entryType.FullName}' from '{core.FullName}'.");
                 return new RemoteAddinProxy(instance);
             }
             catch (Exception ex)
@@ -128,7 +126,6 @@ namespace XLEdge.Loader.Core
                 try
                 {
                     Assembly assembly = Assembly.LoadFrom(candidate);
-                    logger?.LogDebug($"RemoteLoader.ResolveFromFolders: '{requestedName}' loaded from '{candidate}'.");
                     return assembly;
                 }
                 catch (Exception ex)

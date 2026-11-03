@@ -233,7 +233,6 @@ namespace XLEdge
         {
             try
             {
-                _context?.Logger.LogDebug($"AddinModule: ribbon '{action}'.");
                 Host?.Addin?.OnRibbonAction(action, parameter);
             }
             catch (Exception ex)
@@ -375,8 +374,7 @@ namespace XLEdge
             // A click on a cell while the keyboard is in a pane's WebView2 must give the keyboard back to the worksheet.
             try
             {
-                if (PaneFocus.ReturnToGridAfterClick(AllPanes().Where(p => p.IsHandleCreated).Select(p => p.Handle)))
-                    _context?.Logger.LogDebug("AddinModule: keyboard focus returned from the task pane to the worksheet.");
+                PaneFocus.ReturnToGridAfterClick(AllPanes().Where(p => p.IsHandleCreated).Select(p => p.Handle));
             }
             catch (Exception ex)
             {

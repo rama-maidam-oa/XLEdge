@@ -4,7 +4,7 @@ For QA and the developer. Everything here runs on a real Windows machine with Ex
 from its session). Fill the **Result** column with PASS / FAIL / N/A and a note; a FAIL gets a ticket (OISR) with the
 health-check output and the XLEdge log attached.
 
-- Build/test status at hand-over (2026-11-03): 373 automated tests, 366 pass, 7 Inconclusive (the real-Excel tests: this dev
+- Build/test status at hand-over (2026-11-03): 386 automated tests, 379 pass, 7 Inconclusive (the real-Excel tests: this dev
   machine's Office cannot marshal Excel's typed interfaces); branch `11.1.2-aipowered` (pushed to origin).
 - Logs: `%LOCALAPPDATA%\ORBIT\Excel_Logs\XLEdge_Logs\Logs\XLEdge_Logs_dd-MMM-yyyy.log` (GLSense: its own `GLSense_Logs`).
 - Install folder: `%LOCALAPPDATA%\Orbit Analytics\XLEdge` (per user); cores under `AddinCore\Versions\`.
@@ -19,10 +19,15 @@ powershell -ExecutionPolicy Bypass -File XLEdgeHealthCheck.ps1            # PASS
 powershell -ExecutionPolicy Bypass -File XLEdgeHealthCheck.ps1 -Json > health.json
 ```
 
-It reports: the Excel add-in registration (LoadBehavior 3), the registered loader (→ install root), XLEdge.dll's version and
-signature, Contracts/Shared/Loader.Core, the catalogued core releases, the release Excel loads next, a staged release,
-today's ERROR lines, and whether GLSense is registered. A development build shows `Signature: WARN` (unsigned) — a release
-build must show PASS.
+It reports: the Excel add-in registration (LoadBehavior 3); the loader registered for Excel's bitness (`Loader`: adxloader64.dll
+for 64-bit Excel, adxloader.dll in the WOW6432Node view for 32-bit; the bitness comes from Office's Click-to-Run settings, or
+pass `-ExcelBitness 32|64`) and the other one (`OtherLoader`, information only) → the install root; XLEdge.dll's version and
+signature; Contracts/Shared/Loader.Core (the 11.1.2 single-DLL layout is a WARN, not a FAIL); the catalogued core releases
+(empty or unreadable catalog = WARN: the next start rebuilds it); a staged release (a zip without `manifest.json` is not
+installed - WARN; refused `*.zip.rejected-*` zips - WARN); the release Excel loads next (a staged one goes first); today's
+ERROR lines across `XLEdge_Logs_<date>.log` and its `(1)`, `(2)` rollovers, plus `XLEdge_Error_<date>.log` (the logger failed
+to start - WARN); and whether GLSense is registered. A development build shows `Signature: WARN` (unsigned) — a release build
+must show PASS.
 
 ## 1. Setup
 
@@ -40,7 +45,8 @@ build must show PASS.
 | I2 | Start Excel once | XLEdge tab; About: shell 11.1.3.0, core 11.1.3.0; health check: AddinCore 1 release, StagedRelease "Nothing staged" (`Manifest\manifest.json` stays; only the zip goes) | |
 | I3 | Upgrade over 11.1.2: `msiexec /i OrbitXLEdge.msi /l*v upgrade.log` | one XLEdge in Apps; XLEdge.dll 11.1.3.0 signed; first Excel start loads core 11.1.3.0; `upgrade.log`: 11.1.2's `adxregistrator /uninstall` **runs** during RemoveExistingProducts (11.1.2's package has no upgrade guard; 11.1.3's guard applies from the next upgrade on), then 11.1.3's `/install` registers again; health check Registration PASS (LoadBehavior 3); XLEdge loads at the first **and** a second Excel start | |
 | I4 | After I3: `adxloader.dll` / `adxloader64.dll` | still 11.1.2's files (same binary, unsigned) — accepted, note it | |
-| I5 | Repair (Apps → Modify/Repair) | XLEdge still loads; catalogued releases kept | |
+| I5 | Release History → pick another core, then Repair (Apps → Modify/Repair) | the repair stages the MSI's core again (health check: StagedRelease "Staged: …"); the next Excel start loads **the MSI's core** (About), not the one picked before; catalogued releases kept; pick again in Release History if needed | |
+| I6 | 32-bit Excel machine (if supported): fresh install | health check `-ExcelBitness 32` (or auto): Loader PASS with `adxloader.dll` [32-bit Excel]; XLEdge loads | |
 
 ## 3. Regression matrix (spec §7 + every stage's Excel checks)
 
@@ -58,7 +64,7 @@ build must show PASS.
 | R10 | Drilldown | drilldown hyperlink, "Goto Report Data" | opens the drilldown / activates the data sheet | |
 | R11 | Attachments | Fusion/EBS attachment link; an empty attachment cell (OISR-22766/22767) | downloads; empty cell does nothing harmful | |
 | R12 | Pickers | Calendar and segment pickers on cell selection | open, apply, close | |
-| R13 | Sheet delete | delete a report sheet | its `P_` sheet and named ranges go a moment later | |
+| R13 | Sheet delete | delete a report's data sheet (table layout), and a report sheet without a table (the `ORB_…_P` marker layout); then run the same report again | the companion `P_` sheet and its named ranges go a moment later, in both layouts; the re-run builds a fresh data + `P_` sheet (no stale parameters) | |
 | R14 | Regional formats | non-English region (OISR-22663/22696) | numbers/dates right | |
 | R15 | Broadcast | logged out / logged in / after a Reload Add-in | disabled / shows messages or "No broadcast messages available." / still enabled | |
 | R16 | Reload offline | Reload Add-in → Offline → a folder with a release zip + manifest | loads it; Release History lists it | |
@@ -71,6 +77,8 @@ build must show PASS.
 | R23 | Excel close | close Excel with an XLEdge window open | no orphan EXCEL.EXE (Task Manager); next start clean | |
 | R24 | Update extraction | after R16/R17, restart Excel | the chosen core loads; health check SelectedRelease PASS | |
 | R25 | Stuck unload | (hard to provoke) a reload whose previous core does not unload in 5 s | message "did not close within 5 seconds … restart Excel"; XLEdge keeps working | |
+| R26 | Catalog recovery | Excel closed: rename `AddinCore\ReleaseHistory.json` away (or replace its text with `{ broken`); health check (AddinCore WARN "unreadable"/missing … rebuilds); start Excel | XLEdge loads a catalogued core; the log has `the release catalog is missing` / `unreadable` (WARN); Release History lists every release folder again; `Versions\` **not** cleared | |
+| R27 | Refused staged release | Excel closed: put a damaged zip (e.g. a renamed text file) with a valid `manifest.json` into `AddinCore\Manifest\`; start Excel | XLEdge loads the installed core; log: `the staged release was refused and parked as '…rejected-…'`; health check StagedRelease WARN naming the parked file; the next start does not retry it | |
 
 ## 4. GLSense side by side (both installed and loaded in one Excel)
 

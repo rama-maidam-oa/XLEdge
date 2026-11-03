@@ -66,7 +66,9 @@ namespace XLEdge.Addin.Core
         {
             try
             {
-                Logger?.LogDebug($"AddinEntry.OnRibbonAction: '{action}'.");
+                // One line per click; the ribbon's property-changing callbacks run at every invalidation - not logged.
+                if (action == null || !action.EndsWith("_PropertyChanging", StringComparison.Ordinal))
+                    Logger?.LogDebug($"AddinEntry.OnRibbonAction: '{action}'.");
                 ExcelThreadContext.Run(() =>
                 {
                     _module?.OnRibbonAction(action, parameter);
@@ -79,7 +81,6 @@ namespace XLEdge.Addin.Core
         {
             try
             {
-                Logger?.LogDebug($"AddinEntry.OnExcelEvent: '{eventName}'.");
                 ExcelThreadContext.Run(() => _module?.OnExcelEvent(eventName, args));
             }
             catch (Exception ex) { Log(ex, "AddinEntry.OnExcelEvent"); }

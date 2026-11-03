@@ -69,7 +69,6 @@ namespace XLEdge.Shared
                     FileName = latest.FileName,
                     AllVersions = versions,
                 };
-                _logger?.LogDebug($"Parsed version: {result.Version}, Release Date: {result.ReleaseDate.ToString("dd-MMM-yyyy", CultureInfo.InvariantCulture)}");
                 return result;
             }
             catch (JsonException ex)
@@ -84,7 +83,6 @@ namespace XLEdge.Shared
 
         public VersionParseResult ParseVersionFile(string path)
         {
-            _logger?.LogDebug($"ParseVersionFile: reading manifest file '{path}'.");
             try
             {
                 if (!File.Exists(path)) return Fail("Manifest file not found: " + path);

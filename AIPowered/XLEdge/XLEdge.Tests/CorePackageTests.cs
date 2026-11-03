@@ -294,7 +294,9 @@ namespace XLEdge.Tests
                     var loader = new AddinDomainLoader();
                     try
                     {
-                        loader.Load(context, release).OnRibbonAction("RibEdgeRefresh", null);
+                        var addin = loader.Load(context, release);
+                        addin.OnRibbonAction("RibEdgeRefresh", null);
+                        addin.OnRibbonAction("RibEdgeLogout_PropertyChanging", "Visible");
                     }
                     finally
                     {
@@ -304,6 +306,8 @@ namespace XLEdge.Tests
                 string log = File.ReadAllText(Directory.GetFiles(paths.Logs, "XLEdge_Logs_*.log").Single());
                 StringAssert.Contains(log, "AddinEntry.Initialize: XLEdge core initialized in AppDomain 'XLEdgeCore_");
                 StringAssert.Contains(log, "AddinEntry.OnRibbonAction: 'RibEdgeRefresh'.");
+                // Ribbon invalidations are not traced (one per ribbon refresh, not a user action).
+                Assert.IsFalse(log.Contains("RibEdgeLogout_PropertyChanging"), log);
             }
         }
 
