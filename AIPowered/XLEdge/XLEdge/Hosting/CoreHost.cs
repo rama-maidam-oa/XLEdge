@@ -14,6 +14,10 @@ namespace XLEdge.Hosting
     /// meanwhile (the progress window pumps messages) never reach the core being replaced. Excel closing in the middle of a
     /// reload (<see cref="Shutdown"/>) stops it from loading anything.
     /// </para>
+    /// <para>
+    /// A reload first logs XLEdge out - and GLSense with it - when the core is logged in (<c>LogOutBeforeReload</c>), so both
+    /// add-ins end logged out and the next core starts logged out.
+    /// </para>
     /// </summary>
     internal sealed class CoreHost
     {
@@ -105,6 +109,9 @@ namespace XLEdge.Hosting
                     Log(l => l.LogDebug("CoreHost.Reload: cancelled by the user because core windows are open."));
                     return false;
                 }
+
+                // Before the progress window (topmost; it would hide the core's "Logging Off" window).
+                LogOutBeforeReload();
 
                 IXLEdgeAddin old = Addin;
                 Addin = null;
@@ -289,6 +296,43 @@ namespace XLEdge.Hosting
             _context.Version = null;
             _context.ReleaseDate = null;
             _context.ActiveFolderName = null;
+        }
+
+        /// <summary>How long a reload waits for the core's logout (its panes' applogout navigations have their own limits).</summary>
+        internal static TimeSpan LogoutTimeout = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// A hot reload logs XLEdge out, and GLSense with it: the outgoing core runs its Logout button's sequence (each pane's
+        /// applogout, GLSense's LogoutSession, the login cleared, the logged-out ribbon), so it leaves no login for the next
+        /// core and both add-ins end logged out. The shell keeps Excel's messages flowing until the core is logged out and no
+        /// longer busy; a logout that does not end in time is logged and the reload goes on. Nothing happens when not logged in.
+        /// </summary>
+        private void LogOutBeforeReload()
+        {
+            if (!CoreIsLoggedIn()) return;
+            try
+            {
+                Log(l => l.LogInfo("CoreHost.Reload: logging out of XLEdge (and GLSense) before the reload."));
+                Addin.OnRibbonAction(RibbonControlIds.RibEdgeLogout, null);
+                bool loggedOut = _ui.WaitWhile(() => !_shutdownRequested && CoreIsLoggedIn(), LogoutTimeout)
+                                 && _ui.WaitWhile(() => !_shutdownRequested && CoreIsBusy(), LogoutTimeout);
+                if (loggedOut) Log(l => l.LogInfo("CoreHost.Reload: logged out; reloading."));
+                else Log(l => l.LogWarn($"CoreHost.Reload: the logout did not end within {LogoutTimeout.TotalSeconds:0} s; reloading anyway."));
+            }
+            catch (Exception ex)
+            {
+                Log(l => l.LogWarn("CoreHost.Reload: the logout before the reload failed; reloading anyway: " + ex.Message));
+            }
+        }
+
+        private bool CoreIsLoggedIn()
+        {
+            try { return Addin?.GetLoginInfo()?.IsLoggedIn ?? false; }
+            catch (Exception ex)
+            {
+                Log(l => l.LogDebug("CoreHost.Reload: could not ask the core whether it is logged in: " + ex.Message));
+                return false;
+            }
         }
 
         private bool CoreIsBusy()

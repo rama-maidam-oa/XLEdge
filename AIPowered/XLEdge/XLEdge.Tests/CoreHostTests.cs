@@ -27,9 +27,16 @@ namespace XLEdge.Tests
             public FakeAddin(Recorder r, string name) { _r = r; Name = name; }
             public string Name { get; }
             public string[] Titles = new string[0];
-            public bool ThrowOnTitles, ThrowOnShutdown, Busy;
+            public bool ThrowOnTitles, ThrowOnShutdown, Busy, LoggedIn;
+            /// <summary>Polls of GetLoginInfo after the Logout action before the fake reports logged out (-1: never).</summary>
+            public int LogoutAfterPolls;
+            private int _pollsSinceLogout = -1;
             public void Initialize(IXLEdgeContext context) { }
-            public void OnRibbonAction(string action, object parameter) { }
+            public void OnRibbonAction(string action, object parameter)
+            {
+                _r.Add($"Action:{action}:{Name}");
+                if (action == "RibEdgeLogout") _pollsSinceLogout = 0;
+            }
             public bool OnExcelEvent(string eventName, object[] args) => true;
             public void Shutdown() { _r.Add("Shutdown:" + Name); if (ThrowOnShutdown) throw new InvalidOperationException("shutdown failed"); }
             public IntPtr CreateTaskPaneContent(IntPtr excelWindowHandle) => IntPtr.Zero;
@@ -37,7 +44,16 @@ namespace XLEdge.Tests
             public void OnTaskPaneShown(IntPtr excelWindowHandle) { }
             public void OnLoginFromGLSense(string i, string u, string t, string n, bool p) { }
             public void OnLogoutFromGLSense() { }
-            public LoginInfo GetLoginInfo() => new LoginInfo();
+            public LoginInfo GetLoginInfo()
+            {
+                // The logout is async in the core: it ends after a few polls (each one is a turn of the shell's message pump).
+                if (LoggedIn && _pollsSinceLogout >= 0 && LogoutAfterPolls >= 0 && _pollsSinceLogout++ >= LogoutAfterPolls)
+                {
+                    LoggedIn = false;
+                    _r.Add("LoggedOut:" + Name);
+                }
+                return new LoginInfo { IsLoggedIn = LoggedIn };
+            }
             public string[] GetOpenWindowTitles() { if (ThrowOnTitles) throw new InvalidOperationException("old core"); return Titles; }
             public bool IsBusy() => Busy;
         }
@@ -72,6 +88,15 @@ namespace XLEdge.Tests
             public bool ConfirmCloseOpenWindows(string[] titles) { _r.Add("Confirm:" + string.Join("|", titles)); return ConfirmAnswer; }
             public IReloadProgress ShowProgress(string currentVersion, string currentReleaseDate) { _r.Add("ProgressShown:" + currentVersion); return new Progress(_r, this); }
             public void ShowError(string message, string title) { _r.Add("Error"); Errors.Add(title + ": " + message); }
+
+            /// <summary>Most turns of the message pump a wait gets before it times out.</summary>
+            public int MaxPumpTurns = 20;
+            public bool WaitWhile(Func<bool> condition, TimeSpan timeout)
+            {
+                for (int turn = 0; condition(); turn++)
+                    if (turn >= MaxPumpTurns) { _r.Add("WaitTimedOut"); return false; }
+                return true;
+            }
 
             private sealed class Progress : IReloadProgress
             {
@@ -237,6 +262,53 @@ namespace XLEdge.Tests
             Assert.AreEqual("vB", s.Context.ActiveFolderName);
             var sessions = s.Log.Lines.Where(l => l.StartsWith("SESSION")).ToArray();
             CollectionAssert.AreEqual(new[] { "SESSION | begin ver-vA", "SESSION | end ver-vA", "SESSION | begin ver-vB" }, sessions);
+        }
+
+        [TestMethod]
+        public void Reload_WhenLoggedIn_LogsOutFirst_ThenShutsTheCoreDown()
+        {
+            // A hot reload logs XLEdge out (the Logout button's sequence, which also logs GLSense out) before the core goes.
+            var s = new Setup();
+            s.Host.Start();
+            s.Addins["vA"].LoggedIn = true;
+            s.Addins["vA"].LogoutAfterPolls = 3;
+            s.R.Events.Clear();
+            Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")));
+
+            CollectionAssert.AreEqual(new[]
+            {
+                "Action:RibEdgeLogout:vA", "LoggedOut:vA",
+                "ProgressShown:ver-vA",
+                "Stage1:Closing the current XLEdge session...",
+                "Detach:vA", "Shutdown:vA", "Unload",
+            }, s.R.Events.Take(7).ToArray());
+            Assert.AreSame(s.Addins["vB"], s.Host.Addin);
+            Assert.IsTrue(s.Log.Contains("CoreHost.Reload: logging out of XLEdge (and GLSense) before the reload."), s.Log.Dump());
+            Assert.IsTrue(s.Log.Contains("CoreHost.Reload: logged out; reloading."), s.Log.Dump());
+            Assert.AreEqual(0, s.Ui.Errors.Count);
+        }
+
+        [TestMethod]
+        public void Reload_WhenLoggedOut_DoesNotLogOut()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            s.R.Events.Clear();
+            Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")));
+            Assert.IsFalse(s.R.Events.Any(e => e.StartsWith("Action:")), string.Join(" | ", s.R.Events));
+        }
+
+        [TestMethod]
+        public void Reload_LogoutThatNeverEnds_IsLogged_AndTheReloadGoesOn()
+        {
+            var s = new Setup();
+            s.Host.Start();
+            s.Addins["vA"].LoggedIn = true;
+            s.Addins["vA"].LogoutAfterPolls = -1;
+            Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")));
+            CollectionAssert.Contains(s.R.Events, "WaitTimedOut");
+            Assert.AreSame(s.Addins["vB"], s.Host.Addin);
+            Assert.IsTrue(s.Log.Contains("CoreHost.Reload: the logout did not end within 60 s; reloading anyway."), s.Log.Dump());
         }
 
         [TestMethod]

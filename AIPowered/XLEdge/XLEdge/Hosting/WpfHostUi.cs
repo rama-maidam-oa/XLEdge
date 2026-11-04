@@ -1,5 +1,7 @@
 using System;
+using System.Threading;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using XLEdge.Shared;
 using XLEdge.Views;
 using WinForms = System.Windows.Forms;
@@ -77,6 +79,48 @@ namespace XLEdge.Hosting
             catch
             {
                 // Nothing more can be done; CoreHost has already logged the failure.
+            }
+        }
+
+        public bool WaitWhile(Func<bool> condition, TimeSpan timeout)
+        {
+            DateTime until = DateTime.UtcNow + timeout;
+            while (true)
+            {
+                bool waiting;
+                try { waiting = condition(); }
+                catch { return true; } // nothing more to wait for
+                if (!waiting) return true;
+                if (DateTime.UtcNow >= until) return false;
+                PumpFor(150);
+            }
+        }
+
+        /// <summary>
+        /// Runs this thread's message loop for <paramref name="milliseconds"/>: a nested dispatcher frame that a timer ends (it
+        /// dispatches every Win32 message, so the core's dispatcher and its WebView2 run too). When a nested frame is not
+        /// allowed here, WinForms' DoEvents and a short sleep instead.
+        /// </summary>
+        private static void PumpFor(int milliseconds)
+        {
+            DispatcherTimer timer = null;
+            try
+            {
+                var frame = new DispatcherFrame();
+                timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher.CurrentDispatcher) { Interval = TimeSpan.FromMilliseconds(milliseconds) };
+                timer.Tick += (s, e) =>
+                {
+                    timer.Stop();
+                    frame.Continue = false;
+                };
+                timer.Start();
+                Dispatcher.PushFrame(frame);
+            }
+            catch (InvalidOperationException)
+            {
+                timer?.Stop();
+                WinForms.Application.DoEvents();
+                Thread.Sleep(milliseconds);
             }
         }
 

@@ -14,6 +14,12 @@ namespace XLEdge.Hosting
         IReloadProgress ShowProgress(string currentVersion, string currentReleaseDate);
 
         void ShowError(string message, string title);
+
+        /// <summary>
+        /// Keeps Excel's messages flowing on this thread while <paramref name="condition"/> is true, so the core's async work
+        /// (e.g. its logout) can run. True when the condition ended, false when <paramref name="timeout"/> passed first.
+        /// </summary>
+        bool WaitWhile(Func<bool> condition, TimeSpan timeout);
     }
 
     internal interface IReloadProgress
