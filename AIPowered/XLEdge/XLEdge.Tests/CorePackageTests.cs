@@ -238,8 +238,9 @@ namespace XLEdge.Tests
                     "Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll",
                     "runtimes/win-x86/native/WebView2Loader.dll", "runtimes/win-x64/native/WebView2Loader.dll",
                 }, names, string.Join(", ", names));
-                Assert.AreEqual(new System.Version(1, 0, 4022, 49), System.Reflection.AssemblyName.GetAssemblyName(
-                    Path.Combine(ReleaseFolders.CoreBuildFolder, "Microsoft.Web.WebView2.Core.dll")).Version, "today's XLEdge WebView2 version");
+                // 04-Nov-2026: aligned with GLSense AIPowered 11.1.3 (was 11.1.2's 1.0.4022.49).
+                Assert.AreEqual(new System.Version(1, 0, 4129, 50), System.Reflection.AssemblyName.GetAssemblyName(
+                    Path.Combine(ReleaseFolders.CoreBuildFolder, "Microsoft.Web.WebView2.Core.dll")).Version, "the WebView2 version GLSense AIPowered ships");
             }
         }
 
