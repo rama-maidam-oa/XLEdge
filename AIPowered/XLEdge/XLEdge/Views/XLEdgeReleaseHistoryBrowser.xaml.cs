@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Threading.Tasks;
 using XLEdge.Contracts;
 using XLEdge.Loader.Core;
 using XLEdge.Shared;
@@ -27,7 +28,7 @@ namespace XLEdge.Views
             _context = context ?? throw new ArgumentNullException(nameof(context));
             InitializeComponent();
             SourceInitialized += (s, e) => WindowChromeHelper.RemoveMinimizeMaximizeButtons(this);
-            LoadEntries();
+            Loaded += XLEdgeReleaseHistoryBrowser_Loaded;
         }
 
         /// <summary>The rows shown, newest first.</summary>
@@ -36,24 +37,58 @@ namespace XLEdge.Views
         /// <summary>The release to load once Load was clicked; null until then.</summary>
         public ResolvedRelease Chosen { get; private set; }
 
-        private void LoadEntries()
+        private async void XLEdgeReleaseHistoryBrowser_Loaded(object sender, RoutedEventArgs e)
         {
-            List<ReleaseEntry> entries;
+            Loaded -= XLEdgeReleaseHistoryBrowser_Loaded;
+            GridReleases.IsEnabled = false;
+            TxtStatus.Text = "Loading version history...";
+            TxtLoadedStatus.Text = LoadedStatusText(null);
+
             try
             {
-                entries = ReleaseHistoryStore.Reconcile(_context.Paths.ReleaseHistoryFile, _context.Paths.VersionsPath);
-                _rows = ReleaseHistoryRows.Build(entries, _context);
+                List<ReleaseEntry> entries = await Task.Run(() =>
+                    ReleaseHistoryStore.Reconcile(_context.Paths.ReleaseHistoryFile, _context.Paths.VersionsPath));
+
+                if (!IsLoaded)
+                {
+                    return;
+                }
+
+                PopulateEntries(entries);
             }
             catch (Exception ex)
             {
-                SafeLog(l => l.LogError(LogPrefix + "reading the version history failed.", ex.ToString()));
-                _rows = new List<ReleaseRow>();
-                GridReleases.ItemsSource = _rows;
-                TxtStatus.Text = $"The version history could not be read: {ex.Message}";
-                TxtLoadedStatus.Text = LoadedStatusText(null);
-                return;
-            }
+                if (!IsLoaded)
+                {
+                    return;
+                }
 
+                ShowLoadFailure(ex);
+            }
+            finally
+            {
+                if (IsLoaded)
+                {
+                    GridReleases.IsEnabled = true;
+                }
+            }
+        }
+
+        private void LoadEntries()
+        {
+            try
+            {
+                PopulateEntries(ReleaseHistoryStore.Reconcile(_context.Paths.ReleaseHistoryFile, _context.Paths.VersionsPath));
+            }
+            catch (Exception ex)
+            {
+                ShowLoadFailure(ex);
+            }
+        }
+
+        private void PopulateEntries(List<ReleaseEntry> entries)
+        {
+            _rows = ReleaseHistoryRows.Build(entries, _context);
             GridReleases.ItemsSource = _rows;
 
             if (_rows.Count == 0)
@@ -75,6 +110,15 @@ namespace XLEdge.Views
                 GridReleases.SelectedItem = loaded;
                 GridReleases.ScrollIntoView(loaded);
             }
+        }
+
+        private void ShowLoadFailure(Exception ex)
+        {
+            SafeLog(l => l.LogError(LogPrefix + "reading the version history failed.", ex.ToString()));
+            _rows = new List<ReleaseRow>();
+            GridReleases.ItemsSource = _rows;
+            TxtStatus.Text = $"The version history could not be read: {ex.Message}";
+            TxtLoadedStatus.Text = LoadedStatusText(null);
         }
 
         private string LoadedStatusText(ReleaseRow loaded)

@@ -384,6 +384,8 @@ namespace XLEdge.Tests
                 {
                     var browser = new XLEdgeReleaseHistoryBrowser(context);
                     Assert.AreEqual("XLEdge Version History", browser.Title);
+                    browser.Show();
+                    Assert.IsTrue(Win32Test.PumpUntil(() => browser.Rows.Count == 2, TimeSpan.FromSeconds(10)), "the version history loaded");
                     CollectionAssert.AreEqual(new[] { "vNew", "vOld" }, browser.Rows.Select(r => r.FolderName).ToArray());
                     Assert.IsTrue(browser.Rows.Single(r => r.FolderName == "vOld").IsCurrentlyLoaded);
                     Assert.IsNull(browser.Chosen);

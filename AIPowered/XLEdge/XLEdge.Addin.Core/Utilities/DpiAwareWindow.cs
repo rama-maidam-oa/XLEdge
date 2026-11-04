@@ -325,6 +325,15 @@ namespace XLEdge.Utilities
                 LogUtility.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+
+                // SourceInitialized occurs after the HWND is available but before Show/ShowDialog
+                // paints the window. Complete the initial sizing and centering here so users never
+                // see the placeholder size before the fitted size is applied.
+                if (!DisableAutoSizing)
+                {
+                    CaptureInitialWindowConstraints();
+                    ApplyLayoutRefresh();
+                }
             }
             catch (Exception ex)
             {
@@ -336,23 +345,7 @@ namespace XLEdge.Utilities
         {
             try
             {
-                LogUtility.LogDebug($"[{_windowName}] loaded - applying DPI adjustments");
-
-
-                if (!DisableAutoSizing)
-                {
-                    CaptureInitialWindowConstraints();
-                    QueueLayoutRefresh(System.Windows.Threading.DispatcherPriority.Loaded);
-                }
-
-                // For non-Manual SizeToContent windows, force a resettle so the window doesn't get
-                // stuck at a stale/undersized initial measurement. No-op for Manual-sized windows.
-                if (!DisableAutoSizing && this.SizeToContent != SizeToContent.Manual)
-                {
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
-
+                LogUtility.LogDebug($"[{_windowName}] loaded");
             }
             catch (Exception ex)
             {
@@ -937,83 +930,12 @@ namespace XLEdge.Utilities
             try
             {
                 LogUtility.LogDebug($"[{_windowName}] content rendered");
-
-                // ContentRendered fires only after the window's content has actually painted, so the
-                // resettle here (unlike the one in OnLoaded) can reliably force a native frame update.
-                if (!DisableAutoSizing && this.SizeToContent != SizeToContent.Manual)
-                {
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
             }
             catch (Exception ex)
             {
                 LogUtility.LogError($"Error in OnContentRenderedDebug: {ex.Message}");
             }
         }
-
-        // Forces a genuine native HWND resize by toggling SizeToContent off/on with a full-pixel
-        // Width/Height nudge (sub-pixel nudges round to zero physical device pixels at most DPI
-        // scales), then asks Windows to recompute the window's non-client frame via
-        // SetWindowPos(SWP_FRAMECHANGED).
-        protected void ForceSizeToContentResettle()
-        {
-            try
-            {
-                var mode = this.SizeToContent;
-                this.SizeToContent = SizeToContent.Manual;
-                this.UpdateLayout();
-
-                if (this.ActualWidth > 0 && this.ActualHeight > 0)
-                {
-                    this.Width = this.ActualWidth + 1.0;
-                    this.Height = this.ActualHeight + 1.0;
-                    this.UpdateLayout();
-                }
-
-                this.SizeToContent = mode;
-                this.UpdateLayout();
-
-                if (_hwndSource?.Handle != null && _hwndSource.Handle != IntPtr.Zero)
-                {
-                    SetWindowPos(_hwndSource.Handle, IntPtr.Zero, 0, 0, 0, 0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-                }
-
-                LogUtility.LogDebug($"[{_windowName}] SizeToContent resettled ({mode})");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogError($"Error in ForceSizeToContentResettle: {ex.Message}");
-            }
-        }
-
-        // WPF's "DoEvents" equivalent: pumps a nested dispatcher frame so pending layout/resize work
-        // is fully flushed before the caller continues.
-        protected void PumpDispatcherFrame()
-        {
-            try
-            {
-                var frame = new System.Windows.Threading.DispatcherFrame();
-                this.Dispatcher.BeginInvoke(new Action(() => frame.Continue = false),
-                    System.Windows.Threading.DispatcherPriority.Background);
-                System.Windows.Threading.Dispatcher.PushFrame(frame);
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogError($"Error in PumpDispatcherFrame: {ex.Message}");
-            }
-        }
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
-            int X, int Y, int cx, int cy, uint uFlags);
-
-        private const uint SWP_NOMOVE = 0x0002;
-        private const uint SWP_NOSIZE = 0x0001;
-        private const uint SWP_NOZORDER = 0x0004;
-        private const uint SWP_NOACTIVATE = 0x0010;
-        private const uint SWP_FRAMECHANGED = 0x0020;
 
         private void OnClosedDebug(object sender, EventArgs e)
         {
