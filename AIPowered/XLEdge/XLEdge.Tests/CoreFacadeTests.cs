@@ -171,11 +171,12 @@ namespace XLEdge.Tests
             using (var core = new Core())
             {
                 core.Context.DebugMode = true;
-                string payload = "{\"rows\":[" + string.Join(",", Enumerable.Repeat("12345", 30000)) + "]}";
+                string payload = "{\"rows\":[" + string.Join(",", Enumerable.Repeat("\"zqzq\"", 30000)) + "]}";
                 core.Probe.CallStatic(Log, "LogRawJson", "fetch", payload);
                 string line = core.Logger.Lines.Single();
                 Assert.IsFalse(line.Contains(payload), "the full payload is not in the log");
-                StringAssert.Contains(line, $"[{payload.Length:N0} chars - full text saved to ");
+                Assert.IsFalse(line.Contains("zqzq"), "no preview either - only the size and the file's path");
+                StringAssert.Contains(line, $"[{payload.Length:N0} chars saved to ");
 
                 string temp = (string)core.Probe.CallStatic(Paths, "TempFolder");
                 string saved = Directory.GetFiles(temp, "*_raw-json_fetch.json").Single();

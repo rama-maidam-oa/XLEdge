@@ -460,19 +460,8 @@ namespace XLEdge.Helpers
                 return (false, null);
             }
 
-            try
-            {
-                await SetMessage("Writing temporary CSV file...");
-                await Task.Run(() => WriteTempCsv(csvResponse, _edgeRequest.ReportRunId));
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "Failed to write temporary CSV file");
-                await DisplayErrorAsync($"Failed to write temporary CSV file for report generation.{Environment.NewLine}{ex.Message}");
-                await CleanupAsync();
-                return (false, null);
-            }
-
+            // No temporary <runId>.csv any more: nothing read it back (the report is built from csvResponse), and it
+            // duplicated the debug copy ApiHelper saves to XLEdge_Logs\Temp with Debug on (LargeLogText).
             return (true, csvResponse);
         }
 
@@ -3374,20 +3363,6 @@ namespace XLEdge.Helpers
             }
         }
 
-        private static void WriteTempCsv(string recsStr, string reportRunId)
-        {
-            string tempFile = Path.Combine(XLEdgeAppPaths.TempFolder, $"{reportRunId}.csv");
-            try
-            {
-                Directory.CreateDirectory(XLEdgeAppPaths.TempFolder);
-                File.WriteAllText(tempFile, recsStr);
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, $"Error writing to file: {tempFile}");
-                throw;
-            }
-        }
 
         public static async Task CreateReportFromListObjectAsync(string listObjectName, AppOverlay appOverlay = null, bool useWaitWindow = false)
         {

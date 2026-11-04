@@ -8,8 +8,8 @@ namespace XLEdge.Utilities
     /// <summary>
     /// Keeps very large texts (API responses - report CSV data or JSON - and raw JSON) out of the main log file. Ported from
     /// GLSense AIPowered's GLSense.Shared.LargeLogText (OISR-22830). Text over <see cref="ThresholdChars"/> is written in full
-    /// to the add-in's Temp folder (XLEdge_Logs\Temp) and the main log gets only a short preview plus that file's path, so the
-    /// debug log stays readable. This replaces the "Include Output Data" ribbon option: with Debug on, the full data is always
+    /// to the add-in's Temp folder (XLEdge_Logs\Temp) and the main log gets only its size and that file's path, so the debug
+    /// log stays readable. This replaces the "Include Output Data" ribbon option: with Debug on, the full data is always
     /// kept - small texts in the log, large ones in a Temp file. <see cref="CleanUp"/> runs at add-in start: it creates the
     /// folder if missing and removes this helper's own files older than <see cref="KeepDays"/> days (other files in the
     /// folder, e.g. report working CSVs, are left to XLEdgeTempFileCleaner).
@@ -69,23 +69,23 @@ namespace XLEdge.Utilities
 
         /// <summary>
         /// Returns <paramref name="text"/> unchanged when it is small. Otherwise saves it to the Temp folder (extension from
-        /// <see cref="ExtensionFor"/>) and returns a preview plus the saved file's path.
+        /// <see cref="ExtensionFor"/>) and returns only its size and the saved file's path - none of the text. When the file
+        /// cannot be written, a preview is returned instead, since the log is then the only record.
         /// </summary>
         public static string ToLogText(string text, string tempFolder, string nameHint, string mediaType = null)
         {
             if (text == null || text.Length <= ThresholdChars)
                 return text;
 
-            string preview = text.Substring(0, PreviewChars);
             try
             {
                 string path = NewFilePath(tempFolder, nameHint, ExtensionFor(text, mediaType));
                 File.WriteAllText(path, text);
-                return $"{preview}... [{text.Length:N0} chars - full text saved to {path}]";
+                return $"[{text.Length:N0} chars saved to {path}]";
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                return $"{preview}... [{text.Length:N0} chars - truncated, could not save the full text: {ex.Message}]";
+                return $"{text.Substring(0, PreviewChars)}... [{text.Length:N0} chars - truncated, could not save the full text: {ex.Message}]";
             }
         }
 

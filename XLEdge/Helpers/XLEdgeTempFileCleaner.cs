@@ -5,7 +5,7 @@ using XLEdge.Utilities;
 namespace XLEdge.Helpers
 {
     /// <summary>
-    /// Clears out leftover temporary report CSV files (see ReportGenerator.WriteTempCsv) from
+    /// Clears out leftover temporary report files (e.g. a process's {processId}_Logs.txt) from
     /// XLEdgeAppPaths.TempFolder, both once at add-in startup and after every completed report run,
     /// so temp files don't silently accumulate. Files still open/locked are skipped rather than
     /// risking a delete failure. LargeLogText's debug output files are not touched here - they are
