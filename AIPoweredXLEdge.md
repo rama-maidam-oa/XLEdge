@@ -55,7 +55,12 @@ look as 11.1.2. Built from scratch ("no smell from GLSense"); 11.1.2's business 
   into `AddinCore\Manifest`, AddinCore cleanup on a real uninstall, no unregister during an upgrade, signed loaders from
   bin\Release, GAC System.IO.Compression 4.0.0.0 excluded); the wizard kept 11.1.2's component keys.
   `SetupProjectTests` pin all of it; `TestProject_LivesOnlyInTheTestsSolution_WhichHasEveryProjectOfXLEdgeSln` keeps the
-  solutions in step. **Open (found 03-Nov-2026, 20:xx):** `CoreWindowsTests.Windows_OpenFromTheCore_AreListed_AndNothingSurvivesTheUnload`
+  solutions in step.
+- **Files Visual Studio changes on "Register ADX Project"** (ruling, 04-Nov-2026): `XLEdge.csproj` `RegisterForComInterop`
+  true is a developer-machine setting - never committed (the repo keeps false; registration needs admin). The loaders
+  `XLEdge\Loader\adxloader*.dll` are re-stamped with the shell's version resource (company, version): commit them when that
+  information changes (it did on 04-Nov-2026: Add-in Express's placeholder 1.0.0.0 / "Default Company" -> Orbit Analytics
+  11.1.3.0), as they are what the MSI installs. **Open (found 03-Nov-2026, 20:xx):** `CoreWindowsTests.Windows_OpenFromTheCore_AreListed_AndNothingSurvivesTheUnload`
   fails intermittently on the Release build only (2 of 3 alone; Debug 3 of 3 pass; it passed in every earlier run that day): an
   `HwndWrapper[CoreWindows;...]` outlives the 5 s wait after `AddinEntry.Shutdown` although every core window raised Closed. Not
   caused by the MSI/solution change (no code changed); to investigate (a window leak at shutdown, or only the test's wait). The
