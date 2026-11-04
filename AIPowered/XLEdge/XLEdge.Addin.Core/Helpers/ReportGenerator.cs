@@ -917,14 +917,9 @@ namespace XLEdge.Helpers
                 return;
             }
 
-            if (XLEdgeAppState.Instance.DebugOutputData)
-            {
-                LogUtility.LogDebug($"{context}: {response}");
-            }
-            else
-            {
-                LogUtility.LogDebug($"{context}: <{response?.Length ?? 0} character(s) - enable 'Include Output Data' to log the full payload>");
-            }
+            // Length only: ApiHelper.ServerAPI has already logged this same body (or, over 100 KB, saved it to a
+            // XLEdge_Logs\Temp file - LargeLogText), so it is not logged or saved a second time here.
+            LogUtility.LogDebug($"{context}: {response?.Length ?? 0} character(s) - full body in the preceding API Response entry");
         }
 
         // Cognitive-complexity refactor (SonarQube S3776, was 85): the original single method is

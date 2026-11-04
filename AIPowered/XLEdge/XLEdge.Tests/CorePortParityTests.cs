@@ -43,6 +43,8 @@ namespace XLEdge.Tests
             @"Helpers\ReportParameterRequestSerializer.cs", @"Helpers\ProgressCoordinator.cs",
             // Stage 2e
             @"Views\XLEdgeServerConfiguration.xaml", @"Views\XLEdgeServerConfiguration.xaml.cs", @"Views\XLEdgeAbout.xaml", @"Views\XLEdgeAbout.xaml.cs",
+            // GLSense OISR-22830 port: large API responses go to XLEdge_Logs\Temp instead of the log (both twins)
+            @"Utilities\LargeLogText.cs",
         };
 
         /// <summary>
@@ -107,7 +109,7 @@ namespace XLEdge.Tests
             "void TryShowCalendarControl(Excel.Worksheet selectedSheet, Excel.Range selectedRange)",
             "void TryShowSegmentSelectionWindow(Excel.Worksheet selectedSheet, Excel.Range selectedRange)",
             "void RibEdgeOptions_OnClick(", "void RibEdgeDialogBoxLauncher_OnAction(", "void RibEdgeHelp_OnClick(",
-            "void UpdateTabLabel(Excel.Worksheet workSheet)", "void RibEdgeIncludeOutputData_OnClick(", "void RibEdgeDebug_OnClick(",
+            "void UpdateTabLabel(Excel.Worksheet workSheet)", "void RibEdgeDebug_OnClick(",
             "void AdxExcelAppEvents1_SheetBeforeDelete(object sender, object sheet)", "void DeleteTimer_Tick(object sender, EventArgs e)",
             "Excel.Worksheet FindSheetWithTableName(Excel.Workbook workbook, string tableName)", "void DeleteHashNamedRanges()",
             "void DeleteNamedCache()", "string SafeRefersTo(Excel.Name nm)", "bool NmSheetExists(string sheetName, Excel.Workbook workbook)",

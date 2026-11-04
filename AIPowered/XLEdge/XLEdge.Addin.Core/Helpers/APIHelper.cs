@@ -399,10 +399,19 @@ namespace XLEdge.Helpers
         {
             LogUtility.LogDebug($"API Response: {(int)response.StatusCode} {response.StatusCode} (ContentType: {response.Content?.Headers?.ContentType?.MediaType ?? "N/A"}, ContentLength: {response.Content?.Headers?.ContentLength ?? 0})");
 
-            // No trimming - see LogPayloadChunks' comment above for why.
             if (!string.IsNullOrWhiteSpace(responseBody))
             {
-                LogUtility.LogDebug($"Response ({responseBody.Length} chars): {responseBody}");
+                // Ported from GLSense OISR-22830 (replaces the "Include Output Data" option): a body over 100 KB - report
+                // CSV data or JSON - is saved in full to XLEdge_Logs\Temp (.csv/.json, named after the endpoint) and the
+                // log gets a preview plus that file's path; a smaller body is logged as is. Checked here, not left to
+                // LogDebug, so the file is not written with Debug off.
+                if (LogUtility.DebugMode)
+                {
+                    var segments = response.RequestMessage?.RequestUri?.Segments;
+                    string name = segments != null && segments.Length > 0 ? segments[segments.Length - 1].Trim('/') : "response";
+                    string mediaType = response.Content?.Headers?.ContentType?.MediaType;
+                    LogUtility.LogDebug($"Response ({responseBody.Length} chars): {LargeLogText.ToLogText(responseBody, XLEdgeAppPaths.TempFolder, name, mediaType)}");
+                }
             }
             else
             {

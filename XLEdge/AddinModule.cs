@@ -309,7 +309,6 @@ namespace XLEdge
                     RibEdgeLogin.Enabled = false;
                     RibControlSheet.Enabled = false;
                     RibEdgeDebug.Enabled = false;
-                    RibEdgeIncludeOutputData.Enabled = false;
                     RibEdgeBroadcast.Enabled = false;
 
                     if (edgeExcelPane != null && edgeExcelPane.Visible)
@@ -351,8 +350,6 @@ namespace XLEdge
 
                     RibEdgeDebug.Enabled = true;
                     RibEdgeDebug.Pressed = false;
-                    RibEdgeIncludeOutputData.Enabled = true;
-                    RibEdgeIncludeOutputData.Pressed = false;
                     RibEdgeHelp.Enabled = true;
                     RibEdgeShowHide.Enabled = true;
                     RibEdgeOptions.Enabled = true;
@@ -582,6 +579,17 @@ namespace XLEdge
                 catch (Exception cleanupEx)
                 {
                     SafeLogException(cleanupEx, "Exception occured cleaning up temp files on ribbon load");
+                }
+
+                // Debug output files (full API responses saved by LargeLogText instead of logged - ported
+                // from GLSense OISR-22830) older than 7 days go. Best effort: CleanUp never throws for I/O.
+                try
+                {
+                    LargeLogText.CleanUp(XLEdgeAppPaths.TempFolder);
+                }
+                catch (Exception cleanupEx)
+                {
+                    SafeLogException(cleanupEx, "Exception occured cleaning up debug output files on ribbon load");
                 }
 
                 _ribbonHelper = new XLEdgeRibbonHelper(AddinModule.CurrentInstance, ribbon);
@@ -1359,19 +1367,6 @@ namespace XLEdge
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, nameof(RibEdgeLogout_PropertyChanging));
-            }
-        }
-
-        /// <summary>Ported from AddinModule.vb's RibEdgeIncludeOutputData_OnClick.</summary>
-        private void RibEdgeIncludeOutputData_OnClick(object sender, IRibbonControl control, bool pressed)
-        {
-            try
-            {
-                XLEdgeAppState.Instance.DebugOutputData = pressed;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, nameof(RibEdgeIncludeOutputData_OnClick));
             }
         }
 

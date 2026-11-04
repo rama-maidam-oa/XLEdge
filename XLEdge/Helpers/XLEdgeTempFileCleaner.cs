@@ -8,7 +8,8 @@ namespace XLEdge.Helpers
     /// Clears out leftover temporary report CSV files (see ReportGenerator.WriteTempCsv) from
     /// XLEdgeAppPaths.TempFolder, both once at add-in startup and after every completed report run,
     /// so temp files don't silently accumulate. Files still open/locked are skipped rather than
-    /// risking a delete failure.
+    /// risking a delete failure. LargeLogText's debug output files are not touched here - they are
+    /// kept for 7 days (LargeLogText.CleanUp).
     /// </summary>
     public static class XLEdgeTempFileCleaner
     {
@@ -39,6 +40,13 @@ namespace XLEdge.Helpers
                 {
                     try
                     {
+                        // Debug output files (LargeLogText: full API responses saved instead of logged) are kept for
+                        // diagnosis; LargeLogText.CleanUp removes them after 7 days.
+                        if (LargeLogText.IsOwnFile(file.Name))
+                        {
+                            continue;
+                        }
+
                         if (IsFileOpen(file.FullName))
                         {
                             continue;

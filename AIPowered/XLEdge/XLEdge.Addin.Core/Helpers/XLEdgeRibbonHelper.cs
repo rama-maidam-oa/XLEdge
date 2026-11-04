@@ -22,7 +22,6 @@ namespace XLEdge.Helpers
         private const string RibEdgeRefreshAll = "RibEdgeRefreshAll";
         private const string RibEdgeParamRefresh = "RibEdgeParamRefresh";
         private const string RibEdgeShowHide = "RibEdgeShowHide";
-        private const string RibEdgeIncludeOutputData = "RibEdgeIncludeOutputData";
         private const string RibEdgeOptions = "RibEdgeOptions";
         private const string RibEdgeHelp = "RibEdgeHelp";
         private const string RibEdgeLogin = "RibEdgeLogin";
@@ -39,7 +38,6 @@ namespace XLEdge.Helpers
             RibEdgeRefreshAll,
             RibEdgeParamRefresh,
             RibEdgeShowHide,
-            RibEdgeIncludeOutputData,
             RibEdgeOptions,
             RibEdgeHelp,
             RibEdgeBroadcast
@@ -60,7 +58,6 @@ namespace XLEdge.Helpers
             RibEdgeRefreshAll,
             RibEdgeParamRefresh,
             RibEdgeShowHide,
-            RibEdgeIncludeOutputData,
             RibEdgeOptions,
             RibEdgeHelp,
             RibEdgeBroadcast
@@ -73,7 +70,6 @@ namespace XLEdge.Helpers
             RibEdgeRefreshAll,
             RibEdgeParamRefresh,
             RibEdgeShowHide,
-            RibEdgeIncludeOutputData,
             RibEdgeOptions,
             RibEdgeHelp,
             RibEdgeLogin,
@@ -249,7 +245,6 @@ namespace XLEdge.Helpers
                 SetControlVisible(RibEdgeLogin, true);
                 SetControlVisible(EibEdgeLogout, false);
                 SetControlPressed(RibEdgeDebug, false);
-                SetControlPressed(RibEdgeIncludeOutputData, false);
                 // Fixed in the core: XLEdge 11.1.2 un-pressed the Debug button here but left debug logging on.
                 XLEdgeAppState.Instance.DebugLogs = false;
 
@@ -266,7 +261,6 @@ namespace XLEdge.Helpers
         {
             try
             {
-                SetControlPressed(RibEdgeIncludeOutputData, false);
                 SetControlPressed(RibEdgeDebug, false);
                 // Fixed in the core, as for LoggedOut: the Debug button is un-pressed, so debug logging goes off too.
                 XLEdgeAppState.Instance.DebugLogs = false;
@@ -286,7 +280,6 @@ namespace XLEdge.Helpers
 
                 SetControlVisible(RibEdgeLogin, false);
                 SetControlVisible(EibEdgeLogout, true);
-                SetControlPressed(RibEdgeIncludeOutputData, false);
 
                 // Logout shows the selected instance name.
                 SetControlCaption(EibEdgeLogout, XLEdgeAppState.Instance.LoginUrlName);

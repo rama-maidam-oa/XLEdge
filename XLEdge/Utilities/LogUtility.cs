@@ -233,9 +233,10 @@ namespace XLEdge.Utilities
             FlushCurrentBuffer("exception logged");
         }
 
-        // Logs a raw JSON payload (e.g. on a parse failure) at Error level. The full payload is
-        // only included when both DebugMode and "Include Output Data" are enabled; otherwise only
-        // a short length + preview snippet is logged.
+        // Logs a raw JSON payload (e.g. on a parse failure) at Error level. With DebugMode on, the
+        // full payload - in the log when small, in a XLEdge_Logs\Temp file (preview + path in the
+        // log) when over 100 KB (LargeLogText, ported from GLSense OISR-22830; replaces the
+        // "Include Output Data" option). With DebugMode off, a short length + preview snippet.
         public static void LogRawJson(string context, string rawJson)
         {
             var sb = new StringBuilder();
@@ -245,19 +246,29 @@ namespace XLEdge.Utilities
             {
                 sb.AppendLine("<empty>");
             }
-            else if (DebugMode && XLEdgeAppState.Instance.DebugOutputData)
+            else if (DebugMode)
             {
-                sb.AppendLine(rawJson);
+                sb.AppendLine(LargeLogText.ToLogText(rawJson, XLEdgeAppPaths.TempFolder, "raw-json_" + context));
             }
             else
             {
                 string preview = rawJson.Substring(0, Math.Min(200, rawJson.Length));
-                sb.AppendLine($"<{rawJson.Length} character(s) - enable Debug mode + 'Include Output Data' to log the full payload> Preview: {preview}");
+                sb.AppendLine($"<{rawJson.Length} character(s) - enable Debug mode to log the full payload> Preview: {preview}");
             }
 
             sb.AppendLine($"{Indent()}----- End Raw JSON -----");
             WriteImmediate(sb.ToString(), NLog.LogLevel.Error);
             FlushCurrentBuffer("raw JSON logged");
+        }
+
+        // A response body for a log line: with DebugMode on, the full text when small or a preview +
+        // the XLEdge_Logs\Temp file holding it (see LargeLogText); with DebugMode off, only its length.
+        public static string BodyForLog(string body, string nameHint)
+        {
+            if (string.IsNullOrEmpty(body)) return "<empty>";
+            return DebugMode
+                ? LargeLogText.ToLogText(body, XLEdgeAppPaths.TempFolder, nameHint)
+                : $"<{body.Length} character(s) - enable Debug mode to log the full body>";
         }
         #endregion
 

@@ -199,7 +199,6 @@ namespace XLEdge
         private void RibEdgeParamRefresh_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeParamRefresh);
         private void RibEdgeParamRefreshBook_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeParamRefreshBook);
         private void RibEdgeShowHide_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeShowHide);
-        private void RibEdgeIncludeOutputData_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeIncludeOutputData, pressed);
         private void RibEdgeOptions_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeOptions);
         private void RibControlSheet_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibControlSheet);
         private void RibEdgeAbout_OnClick(object sender, IRibbonControl control, bool pressed) => Forward(RibbonControlIds.RibEdgeAbout);

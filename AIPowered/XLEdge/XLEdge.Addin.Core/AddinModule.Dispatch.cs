@@ -22,7 +22,6 @@ namespace XLEdge
             ["RibEdgeDialogBoxLauncher"] = (m, pressed) => m.RibEdgeDialogBoxLauncher_OnAction(null, null, pressed),
             ["RibEdgeHelp"] = (m, pressed) => m.RibEdgeHelp_OnClick(null, null, pressed),
             ["RibControlSheet"] = (m, pressed) => m.RibControlSheet_OnClick(null, null, pressed),
-            ["RibEdgeIncludeOutputData"] = (m, pressed) => m.RibEdgeIncludeOutputData_OnClick(null, null, pressed),
             ["RibEdgeDebug"] = (m, pressed) => m.RibEdgeDebug_OnClick(null, null, pressed),
             // Stage 2e: login and the task pane.
             ["RibEdgeLogin"] = (m, pressed) => m.RibLogin_OnClick(null, null, pressed),

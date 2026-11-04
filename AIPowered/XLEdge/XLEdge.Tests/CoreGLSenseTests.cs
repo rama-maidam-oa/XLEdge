@@ -121,7 +121,7 @@ namespace XLEdge.Tests
             {
                 p.EntryLoginFromGLSense("Prod", "http://x", "tok", "u", false);
                 string[] expected = { "Enabled:RibEdgeLogin=False", "Enabled:RibControlSheet=False", "Enabled:RibEdgeDebug=False",
-                                      "Enabled:RibEdgeIncludeOutputData=False", "Enabled:RibEdgeBroadcast=False" };
+                                      "Enabled:RibEdgeBroadcast=False" };
                 Assert.IsTrue(Win32Test.PumpUntil(() => expected.All(RibbonCalls(context).Contains), Wait), string.Join(Environment.NewLine, RibbonCalls(context)));
                 Assert.AreEqual(false, AppState(p, "IsLoginCompleted"));
                 Assert.IsTrue(string.IsNullOrEmpty((string)AppState(p, "LoginToken")), "GLSense's token is not taken");

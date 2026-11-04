@@ -34,17 +34,9 @@ namespace XLEdge.Helpers
 
             if (!IsLikelyJson(rawResponse))
             {
-                // Only log the full response body when Debug mode + "Include Output Data" are both
-                // on, since a non-JSON response is often a large HTML error page; otherwise log a
-                // short length-only warning.
-                if (LogUtility.DebugMode && XLEdgeAppState.Instance.DebugOutputData)
-                {
-                    LogUtility.LogWarn($"ApiResponseHelper | Non-JSON response: {rawResponse}");
-                }
-                else
-                {
-                    LogUtility.LogWarn($"ApiResponseHelper | Non-JSON response received ({rawResponse.Length} character(s) - enable Debug mode + 'Include Output Data' to log the full body).");
-                }
+                // A non-JSON response is often a large HTML error page: with Debug mode on, the full body
+                // (a XLEdge_Logs\Temp file when over 100 KB - LargeLogText); otherwise only its length.
+                LogUtility.LogWarn($"ApiResponseHelper | Non-JSON response ({rawResponse.Length} character(s)): {LogUtility.BodyForLog(rawResponse, "non-json-response")}");
 
                 string apiMessage = string.Empty;
 

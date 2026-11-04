@@ -20,7 +20,7 @@ namespace XLEdge.Tests
             "adxRibbonGroup1", "adxRibbonGroup2", "adxRibbonGroup3", "adxRibbonGroup4", "adxRibbonGroup5", "adxRibbonGroup6",
             "adxRibbonGroup7", "adxRibbonGroup8", "adxRibbonGroup9",
             "RibEdgeLogin", "RibEdgeLogout", "RibEdgeBroadcast", "RibLoginURL", "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll",
-            "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeShowHide", "RibEdgeDebug", "RibEdgeIncludeOutputData",
+            "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeShowHide", "RibEdgeDebug",
             "RibEdgeOptions", "RibControlSheet", "RibEdgeAbout", "RibEdgeHelp", "RibSheetLabel",
         };
 
@@ -134,7 +134,7 @@ namespace XLEdge.Tests
                 checkedCount++;
             }
             Assert.AreEqual(0, problems.Count, string.Join(Environment.NewLine, problems));
-            Assert.AreEqual(15, checkedCount, "every forwarded button of today's ribbon (Broadcast included) is checked");
+            Assert.AreEqual(14, checkedCount, "every forwarded button of today's ribbon (Broadcast included) is checked");
         }
 
         [TestMethod]

@@ -102,7 +102,7 @@ namespace XLEdge.Tests
         }
 
         private static readonly string[] Feature8 =
-            { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp" };
+            { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeOptions", "RibEdgeHelp" };
 
         [TestMethod]
         public void Members_ReachTheShellsRibbon()
@@ -147,7 +147,7 @@ namespace XLEdge.Tests
                 core.Call("ApplyState", "LoggedOut");
                 var expected = Feature8.Concat(new[] { "RibEdgeBroadcast" }).Select(id => $"Enabled:{id}=False")
                     .Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }.Select(id => $"Enabled:{id}=True"))
-                    .Concat(new[] { "Visible:RibEdgeLogin=True", "Visible:RibEdgeLogout=False", "Pressed:RibEdgeDebug=False", "Pressed:RibEdgeIncludeOutputData=False",
+                    .Concat(new[] { "Visible:RibEdgeLogin=True", "Visible:RibEdgeLogout=False", "Pressed:RibEdgeDebug=False",
                         "Label:RibEdgeLogin=Login", "InvalidateAll" }).ToArray();
                 CollectionAssert.AreEqual(expected, core.Ribbon.Calls);
                 // Fixed: today the Debug button was un-pressed while debug logging stayed on.
@@ -163,7 +163,7 @@ namespace XLEdge.Tests
             {
                 core.Context.DebugMode = true;
                 core.Call("ApplyState", "NoXLEdePermission");
-                var expected = new[] { "Pressed:RibEdgeIncludeOutputData=False", "Pressed:RibEdgeDebug=False" }
+                var expected = new[] { "Pressed:RibEdgeDebug=False" }
                     .Concat(Feature8.Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout", "RibEdgeBroadcast" }).Select(id => $"Enabled:{id}=False"))
                     .Concat(new[] { "InvalidateAll" }).ToArray();
                 CollectionAssert.AreEqual(expected, core.Ribbon.Calls);
@@ -179,7 +179,7 @@ namespace XLEdge.Tests
                 core.Probe.OnSingleton(State, "Instance", "LoginUrlName", "Production");
                 core.Call("ApplyState", "LoggedIn");
                 var expected = Feature8.Concat(new[] { "RibEdgeBroadcast" }).Select(id => $"Enabled:{id}=True")
-                    .Concat(new[] { "Visible:RibEdgeLogin=False", "Visible:RibEdgeLogout=True", "Pressed:RibEdgeIncludeOutputData=False",
+                    .Concat(new[] { "Visible:RibEdgeLogin=False", "Visible:RibEdgeLogout=True",
                         "Label:RibEdgeLogout=Production", "InvalidateAll" }).ToArray();
                 CollectionAssert.AreEqual(expected, core.Ribbon.Calls, "not logged in yet: no workbook-dependent state");
             }

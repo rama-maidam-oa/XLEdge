@@ -49,7 +49,6 @@ namespace XLEdge
                     Set(RibbonControlIds.RibEdgeLogin, "Visible", true);
                     Set(RibbonControlIds.RibEdgeLogout, "Visible", false);
                     Set(RibbonControlIds.RibEdgeDebug, "Pressed", false);
-                    Set(RibbonControlIds.RibEdgeIncludeOutputData, "Pressed", false);
                     Set(RibbonControlIds.RibEdgeLogin, "Caption", "Login");
                     _shell.DebugModeChanged(false);
                     break;
@@ -57,10 +56,8 @@ namespace XLEdge
                     foreach (string id in RibbonControlIds.LoggedOutDisabled) Set(id, "Enabled", true);
                     Set(RibbonControlIds.RibEdgeLogin, "Visible", false);
                     Set(RibbonControlIds.RibEdgeLogout, "Visible", true);
-                    Set(RibbonControlIds.RibEdgeIncludeOutputData, "Pressed", false);
                     break;
                 case "NoXLEdgePermission":
-                    Set(RibbonControlIds.RibEdgeIncludeOutputData, "Pressed", false);
                     Set(RibbonControlIds.RibEdgeDebug, "Pressed", false);
                     foreach (string id in RibbonControlIds.NoPermissionDisabled) Set(id, "Enabled", false);
                     _shell.DebugModeChanged(false);

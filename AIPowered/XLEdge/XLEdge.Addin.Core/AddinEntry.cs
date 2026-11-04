@@ -127,6 +127,11 @@ namespace XLEdge.Addin.Core
         {
             try { XLEdgeTempFileCleaner.DeleteAllTempFiles(); }
             catch (Exception ex) { Log(ex, "AddinEntry.Initialize (temp files)"); }
+
+            // Debug output files (full API responses saved by LargeLogText instead of logged - ported from GLSense
+            // OISR-22830) older than 7 days go. Best effort: CleanUp never throws for I/O.
+            try { LargeLogText.CleanUp(XLEdgeAppPaths.TempFolder); }
+            catch (Exception ex) { Log(ex, "AddinEntry.Initialize (debug output files)"); }
         }
 
         private void KeepSessionLogin()

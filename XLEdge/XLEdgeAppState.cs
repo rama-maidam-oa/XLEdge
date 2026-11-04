@@ -241,8 +241,6 @@ namespace XLEdge
         /// AddinModule.NotifyGLSenseOfLogin.</summary>
         public bool LoginSentToGLSense { get; set; } = false;
         public bool DebugLogs { get; set; }
-        /// <summary>When true, the report engine includes response payload contents in debug logging.</summary>
-        public bool DebugOutputData { get; set; }
         /// <summary>Set by UpdateTabLabel based on whether the active sheet has a valid,
         /// refreshable XLEdge table.</summary>
         public bool RefreshAll { get; set; }

@@ -160,7 +160,7 @@ namespace XLEdge.Tests
             {
                 p.AnswerMessages();
                 foreach (string button in new[] { "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeOptions", "RibEdgeDialogBoxLauncher", "RibEdgeHelp",
-                                                  "RibControlSheet", "RibEdgeIncludeOutputData", "RibEdgeDebug",
+                                                  "RibControlSheet", "RibEdgeDebug",
                                                   // Stage 2e
                                                   "RibEdgeLogin", "RibEdgeShowHide", "RibEdgeParamRefresh", "RibEdgeParamRefreshBook", "RibEdgeAbout",
                                                   // OISR-22777
@@ -181,20 +181,17 @@ namespace XLEdge.Tests
         [TestMethod]
         public void EachCore_StartsInXLEdge11_1_2sRibbonLoadState()
         {
-            // 11.1.2's OnRibbonLoaded: LoggedOut until a login; IncludeOutputData's flag follows its (now un-pressed) button.
+            // 11.1.2's OnRibbonLoaded: LoggedOut until a login.
             Win32Test.OnSta(() =>
             {
                 using (var t = new TempFolder())
                 {
                     FakeContext context = NewContext(t);
                     var ribbon = (CoreRibbonFacadeTests.FakeRibbon)context.RibbonController;
-                    ribbon.SetControlPressed("RibEdgeIncludeOutputData", true);
                     CoreOnThisThread(context, p =>
                     {
                         Assert.IsTrue(ribbon.Calls.Contains("Enabled:RibEdgeRefresh=False"), string.Join(" | ", ribbon.Calls));
                         Assert.IsTrue(ribbon.Calls.Contains("Visible:RibEdgeLogin=True"), string.Join(" | ", ribbon.Calls));
-                        Assert.IsFalse(ribbon.GetControlPressed("RibEdgeIncludeOutputData"));
-                        Assert.AreEqual(false, p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "DebugOutputData"));
                     });
                 }
             });
@@ -273,14 +270,45 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void IncludeOutputData_SetsTheFlag_TheReportCodeReads()
+        public void DebugOutputFiles_OutliveTheTempFolderClearing_ForSevenDays()
         {
-            WithCore((p, _) =>
+            // GLSense OISR-22830 port: full API responses saved by LargeLogText (yyyyMMdd_HHmmss_fff_<name>.<ext>) are not
+            // cleared with the temp report files; the next start removes only those older than 7 days.
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                {
+                    FakeContext context = NewContext(t);
+                    string report = null, recent = null, old = null;
+                    CoreOnThisThread(context, p =>
+                    {
+                        string folder = (string)p.CallStatic("XLEdge.XLEdgeAppPaths", "TempFolder");
+                        Directory.CreateDirectory(folder);
+                        report = Path.Combine(folder, "12345.csv");
+                        recent = Path.Combine(folder, "20261101_101500_123_runner.csv");
+                        old = Path.Combine(folder, "20261020_101500_123_report-meta.json");
+                        File.WriteAllText(report, "a,b");
+                        File.WriteAllText(recent, "a,b");
+                        File.WriteAllText(old, "{}");
+                        File.SetLastWriteTime(recent, DateTime.Now.AddDays(-2));
+                        File.SetLastWriteTime(old, DateTime.Now.AddDays(-8));
+                    });
+                    CoreOnThisThread(context, p => { });
+                    Assert.IsFalse(File.Exists(report), "a temp report file is cleared");
+                    Assert.IsTrue(File.Exists(recent), "a debug output file under 7 days old is kept");
+                    Assert.IsFalse(File.Exists(old), "a debug output file over 7 days old is removed");
+                }
+            });
+        }
+
+        [TestMethod]
+        public void IncludeOutputData_FromAnOlderShell_IsIgnored()
+        {
+            // The "Include Output Data" button is gone; an older shell that still forwards it gets no handler, not an error.
+            WithCore((p, context) =>
             {
                 p.EntryRibbonAction("RibEdgeIncludeOutputData", true);
-                Assert.AreEqual(true, p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "DebugOutputData"));
-                p.EntryRibbonAction("RibEdgeIncludeOutputData", false);
-                Assert.AreEqual(false, p.OnSingleton("XLEdge.XLEdgeAppState", "Instance", "DebugOutputData"));
+                Assert.IsTrue(((RecordingLogger)context.Logger).Contains("no handler for ribbon action 'RibEdgeIncludeOutputData'"));
             });
         }
 

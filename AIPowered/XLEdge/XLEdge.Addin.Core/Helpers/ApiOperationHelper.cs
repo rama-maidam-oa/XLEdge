@@ -150,16 +150,9 @@ namespace XLEdge.Helpers
                 {
                     errorMessage = response;
 
-                    // Only log the full response body when Debug mode + "Include Output Data" are
-                    // both on, since it can be very large; otherwise log a short length-only summary.
-                    if (LogUtility.DebugMode && XLEdgeAppState.Instance.DebugOutputData)
-                    {
-                        LogUtility.LogError($"API returned error: {response}");
-                    }
-                    else
-                    {
-                        LogUtility.LogError($"API returned error ({response.Length} character(s) - enable Debug mode + 'Include Output Data' to log the full response).");
-                    }
+                    // The body can be very large: with Debug mode on, the full body (a XLEdge_Logs\Temp
+                    // file when over 100 KB - LargeLogText); otherwise only its length.
+                    LogUtility.LogError($"API returned error ({response.Length} character(s)): {LogUtility.BodyForLog(response, "api-error")}");
 
                     return false;
                 }

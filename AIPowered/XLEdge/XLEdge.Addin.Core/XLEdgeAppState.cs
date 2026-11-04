@@ -237,8 +237,6 @@ namespace XLEdge
                 catch (Exception) { /* the shell is gone (closing session) */ }
             }
         }
-        /// <summary>When true, the report engine includes response payload contents in debug logging.</summary>
-        public bool DebugOutputData { get; set; }
         /// <summary>Set by UpdateTabLabel based on whether the active sheet has a valid,
         /// refreshable XLEdge table.</summary>
         public bool RefreshAll { get; set; }

@@ -59,7 +59,7 @@ namespace XLEdge
 
         /// <summary>
         /// 11.1.2's AddinModule_OnRibbonLoaded: LoggedOut, or LoggedIn after a login (a queued state is applied by the constructor).
-        /// Each core starts from it; IncludeOutputData's flag is then the button's state, which the shell's ribbon keeps across reloads.
+        /// Each core starts from it.
         /// </summary>
         internal void ApplyStartRibbonState()
         {
@@ -71,7 +71,6 @@ namespace XLEdge
                 RibbonHelper?.SetControlPressed("RibEdgeDebug", true);
                 XLEdgeAppState.Instance.DebugLogs = true;
             }
-            XLEdgeAppState.Instance.DebugOutputData = RibbonHelper?.GetControlPressed("RibEdgeIncludeOutputData") ?? false;
         }
 
         /// <summary>At core Shutdown: no deferred delete may fire into an unloaded AppDomain, and the timer's window goes with it.</summary>
@@ -168,7 +167,6 @@ namespace XLEdge
 
         private static readonly RibbonControl RibEdgeDialogBoxLauncher = new RibbonControl("RibEdgeDialogBoxLauncher");
         private static readonly RibbonControl RibEdgeDebug = new RibbonControl("RibEdgeDebug");
-        private static readonly RibbonControl RibEdgeIncludeOutputData = new RibbonControl("RibEdgeIncludeOutputData");
         private static readonly RibbonControl RibControlSheet = new RibbonControl("RibControlSheet");
         private static readonly RibbonControl RibLoginURL = new RibbonControl("RibLoginURL");
 
@@ -197,7 +195,6 @@ namespace XLEdge
                     RibEdgeLogin.Enabled = false;
                     RibControlSheet.Enabled = false;
                     RibEdgeDebug.Enabled = false;
-                    RibEdgeIncludeOutputData.Enabled = false;
                     RibEdgeBroadcast.Enabled = false;
 
                     if (edgeExcelPane != null && edgeExcelPane.Visible)
@@ -239,8 +236,6 @@ namespace XLEdge
 
                     RibEdgeDebug.Enabled = true;
                     RibEdgeDebug.Pressed = false;
-                    RibEdgeIncludeOutputData.Enabled = true;
-                    RibEdgeIncludeOutputData.Pressed = false;
                     RibEdgeHelp.Enabled = true;
                     RibEdgeShowHide.Enabled = true;
                     RibEdgeOptions.Enabled = true;
@@ -896,19 +891,6 @@ namespace XLEdge
             finally
             {
                 DeleteNamedCache();
-            }
-        }
-
-        /// <summary>Ported from AddinModule.vb's RibEdgeIncludeOutputData_OnClick.</summary>
-        private void RibEdgeIncludeOutputData_OnClick(object sender, object control, bool pressed)
-        {
-            try
-            {
-                XLEdgeAppState.Instance.DebugOutputData = pressed;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, nameof(RibEdgeIncludeOutputData_OnClick));
             }
         }
 

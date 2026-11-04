@@ -223,11 +223,11 @@ namespace XLEdge.Tests
         [TestMethod]
         public void RibbonControlIds_StateListsMatchTodaysAddin()
         {
-            CollectionAssert.AreEquivalent(new[] { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp", "RibEdgeBroadcast" },
+            CollectionAssert.AreEquivalent(new[] { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeOptions", "RibEdgeHelp", "RibEdgeBroadcast" },
                 RibbonControlIds.LoggedOutDisabled.ToArray());
             CollectionAssert.AreEquivalent(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }, RibbonControlIds.LoggedOutEnabled.ToArray());
             CollectionAssert.AreEquivalent(new[] { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide",
-                "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp", "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout", "RibEdgeBroadcast" },
+                "RibEdgeOptions", "RibEdgeHelp", "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout", "RibEdgeBroadcast" },
                 RibbonControlIds.NoPermissionDisabled.ToArray());
         }
     }

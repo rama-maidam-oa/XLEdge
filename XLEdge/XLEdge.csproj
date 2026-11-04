@@ -216,6 +216,7 @@
     <Compile Include="Utilities\DpiAwarenessHelper.cs" />
     <Compile Include="Utilities\DpiAwareWindow.cs" />
     <Compile Include="Utilities\LogUtility.cs" />
+    <Compile Include="Utilities\LargeLogText.cs" />
     <Compile Include="Utilities\WpfUiBootstrapper.cs" />
     <Compile Include="Utilities\MessageFunctions.cs" />
     <Compile Include="Utilities\StrictCertificateValidator.cs" />

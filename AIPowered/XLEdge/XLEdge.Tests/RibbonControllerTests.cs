@@ -31,7 +31,6 @@ namespace XLEdge.Tests
             private FakeControl RibEdgeParamRefresh = new FakeControl("idParam");
             private FakeControl RibEdgeShowHide = new FakeControl("idShowHide");
             private FakeControl RibEdgeDebug = new FakeControl("idDebug");
-            private FakeControl RibEdgeIncludeOutputData = new FakeControl("idOutput");
             private FakeControl RibEdgeOptions = new FakeControl("idOptions");
             private FakeControl RibControlSheet = new FakeControl("idControlSheet");
             private FakeControl RibEdgeAbout = new FakeControl("idAbout");
@@ -72,8 +71,8 @@ namespace XLEdge.Tests
         }
 
         private static readonly string[] Feature8 =
-            { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeIncludeOutputData", "RibEdgeOptions", "RibEdgeHelp",
-              "RibEdgeBroadcast" }; // OISR-22777: Broadcast follows the login like the other eight
+            { "RibEdgeDialogBoxLauncher", "RibEdgeRefresh", "RibEdgeRefreshAll", "RibEdgeParamRefresh", "RibEdgeShowHide", "RibEdgeOptions", "RibEdgeHelp",
+              "RibEdgeBroadcast" }; // OISR-22777: Broadcast follows the login like the others
 
         [TestMethod]
         public void PaneOfAnExcelWindow_GoesToThatWindowsPane()
@@ -98,7 +97,6 @@ namespace XLEdge.Tests
         {
             var (c, controls, shell) = Create();
             controls.Get("RibEdgeDebug").Pressed = true;
-            controls.Get("RibEdgeIncludeOutputData").Pressed = true;
             c.SetState("LoggedOut");
 
             foreach (var id in Feature8) Assert.IsFalse(controls.Get(id).Enabled, id);
@@ -106,7 +104,6 @@ namespace XLEdge.Tests
             Assert.IsTrue(controls.Get("RibEdgeLogin").Visible);
             Assert.IsFalse(controls.Get("RibEdgeLogout").Visible);
             Assert.IsFalse(controls.Get("RibEdgeDebug").Pressed);
-            Assert.IsFalse(controls.Get("RibEdgeIncludeOutputData").Pressed);
             Assert.AreEqual("Login", controls.Get("RibEdgeLogin").Caption);
             CollectionAssert.Contains(shell.Calls, "DebugMode:False", "the Debug box is unchecked, so debug logging stops too");
             Assert.AreEqual("InvalidateAll", shell.Calls.Last());
@@ -117,12 +114,10 @@ namespace XLEdge.Tests
         {
             var (c, controls, shell) = Create();
             c.SetState("LoggedOut");
-            controls.Get("RibEdgeIncludeOutputData").Pressed = true;
             c.SetState("LoggedIn");
             foreach (var id in Feature8) Assert.IsTrue(controls.Get(id).Enabled, id);
             Assert.IsFalse(controls.Get("RibEdgeLogin").Visible);
             Assert.IsTrue(controls.Get("RibEdgeLogout").Visible);
-            Assert.IsFalse(controls.Get("RibEdgeIncludeOutputData").Pressed);
         }
 
         [TestMethod]
@@ -130,13 +125,11 @@ namespace XLEdge.Tests
         {
             var (c, controls, shell) = Create();
             controls.Get("RibEdgeDebug").Pressed = true;
-            controls.Get("RibEdgeIncludeOutputData").Pressed = true;
             c.SetState("NoXLEdgePermission");
             foreach (var id in Feature8.Concat(new[] { "RibEdgeLogin", "RibEdgeDebug", "RibControlSheet", "RibEdgeAbout" }))
                 Assert.IsFalse(controls.Get(id).Enabled, id);
             Assert.IsTrue(controls.Get("RibEdgeLogout").Enabled, "a user without XLEdge permission can still log out");
             Assert.IsFalse(controls.Get("RibEdgeDebug").Pressed);
-            Assert.IsFalse(controls.Get("RibEdgeIncludeOutputData").Pressed);
             CollectionAssert.Contains(shell.Calls, "DebugMode:False", "the shell's logger leaves debug mode with the Debug toggle");
         }
 

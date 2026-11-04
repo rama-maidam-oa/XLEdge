@@ -195,6 +195,7 @@
     <Compile Include="Utilities\UiDispatcher.cs" />
     <Compile Include="Utilities\WpfAppManager.cs" />
     <Compile Include="Utilities\LogUtility.cs" />
+    <Compile Include="Utilities\LargeLogText.cs" />
     <Compile Include="XLApp.cs" />
     <Compile Include="XLEdgeAppPaths.cs" />
     <Compile Include="XLEdgeAppState.cs" />

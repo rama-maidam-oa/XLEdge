@@ -49,7 +49,6 @@ namespace XLEdge
             this.RibEdgeShowHide = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonGroup5 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibEdgeDebug = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
-            this.RibEdgeIncludeOutputData = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.adxRibbonGroup6 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibEdgeOptions = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibControlSheet = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -271,7 +270,6 @@ namespace XLEdge
             // 
             this.adxRibbonGroup5.Caption = "Debug";
             this.adxRibbonGroup5.Controls.Add(this.RibEdgeDebug);
-            this.adxRibbonGroup5.Controls.Add(this.RibEdgeIncludeOutputData);
             this.adxRibbonGroup5.Id = "adxRibbonGroup_8cfdf3b5c4884dac9197c521145c58a1";
             this.adxRibbonGroup5.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.adxRibbonGroup5.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -284,16 +282,6 @@ namespace XLEdge
             this.RibEdgeDebug.ScreenTip = "Debug Option";
             this.RibEdgeDebug.SuperTip = "Check the option to enable debugging.";
             this.RibEdgeDebug.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibEdgeDebug_OnClick);
-            // 
-            // RibEdgeIncludeOutputData
-            // 
-            this.RibEdgeIncludeOutputData.Caption = "Include Output Data";
-            this.RibEdgeIncludeOutputData.Id = "adxRibbonCheckBox_dd81756b1a374d689a8de6b7672dc43d";
-            this.RibEdgeIncludeOutputData.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibEdgeIncludeOutputData.ScreenTip = "Debug";
-            this.RibEdgeIncludeOutputData.SuperTip = "When checked this will add the output data to the log file. Bydefault this is unc" +
-    "hecked and no output data is printed in log file.";
-            this.RibEdgeIncludeOutputData.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibEdgeIncludeOutputData_OnClick);
             // 
             // adxRibbonGroup6
             // 
@@ -472,7 +460,6 @@ namespace XLEdge
         private AddinExpress.MSO.ADXRibbonGroup adxRibbonGroup7;
         private AddinExpress.MSO.ADXRibbonGroup adxRibbonGroup8;
         private AddinExpress.MSO.ADXRibbonCheckBox RibEdgeDebug;
-        private AddinExpress.MSO.ADXRibbonCheckBox RibEdgeIncludeOutputData;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeOptions;
         private AddinExpress.MSO.ADXRibbonButton RibControlSheet;
         private AddinExpress.MSO.ADXRibbonButton RibEdgeAbout;

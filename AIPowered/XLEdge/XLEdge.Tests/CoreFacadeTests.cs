@@ -148,20 +148,39 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
-        public void LogUtility_RawJson_FullPayloadOnlyWithDebugAndOutputData()
+        public void LogUtility_RawJson_FullPayloadOnlyWithDebug()
         {
+            // "Include Output Data" is gone (GLSense OISR-22830 port): Debug alone logs the full payload.
             using (var core = new Core())
             {
                 string payload = "{\"rows\":[" + string.Join(",", Enumerable.Repeat("1", 200)) + "]}";
                 core.Probe.CallStatic(Log, "LogRawJson", "fetch", payload);
                 core.Context.DebugMode = true;
-                core.Probe.OnSingleton(State, "Instance", "DebugOutputData", true);
                 core.Probe.CallStatic(Log, "LogRawJson", "fetch", payload);
                 var lines = core.Logger.Lines;
                 Assert.AreEqual(2, lines.Length, string.Join("\n", lines));
-                StringAssert.Contains(lines[0], "enable Debug mode + 'Include Output Data' to log the full payload");
+                StringAssert.Contains(lines[0], "enable Debug mode to log the full payload");
                 Assert.IsFalse(lines[0].Contains(payload));
                 StringAssert.Contains(lines[1], payload);
+            }
+        }
+
+        [TestMethod]
+        public void LogUtility_RawJson_OverTheThreshold_GoesToATempJsonFile()
+        {
+            using (var core = new Core())
+            {
+                core.Context.DebugMode = true;
+                string payload = "{\"rows\":[" + string.Join(",", Enumerable.Repeat("12345", 30000)) + "]}";
+                core.Probe.CallStatic(Log, "LogRawJson", "fetch", payload);
+                string line = core.Logger.Lines.Single();
+                Assert.IsFalse(line.Contains(payload), "the full payload is not in the log");
+                StringAssert.Contains(line, $"[{payload.Length:N0} chars - full text saved to ");
+
+                string temp = (string)core.Probe.CallStatic(Paths, "TempFolder");
+                string saved = Directory.GetFiles(temp, "*_raw-json_fetch.json").Single();
+                StringAssert.Contains(line, saved);
+                Assert.AreEqual(payload, File.ReadAllText(saved));
             }
         }
 

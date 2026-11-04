@@ -14,7 +14,6 @@ namespace XLEdge.Helpers
         private const string RibEdgeRefreshAll = "RibEdgeRefreshAll";
         private const string RibEdgeParamRefresh = "RibEdgeParamRefresh";
         private const string RibEdgeShowHide = "RibEdgeShowHide";
-        private const string RibEdgeIncludeOutputData = "RibEdgeIncludeOutputData";
         private const string RibEdgeOptions = "RibEdgeOptions";
         private const string RibEdgeHelp = "RibEdgeHelp";
         private const string RibEdgeLogin = "RibEdgeLogin";
@@ -31,7 +30,6 @@ namespace XLEdge.Helpers
             RibEdgeRefreshAll,
             RibEdgeParamRefresh,
             RibEdgeShowHide,
-            RibEdgeIncludeOutputData,
             RibEdgeOptions,
             RibEdgeHelp,
             RibEdgeBroadcast
@@ -52,7 +50,6 @@ namespace XLEdge.Helpers
             RibEdgeRefreshAll,
             RibEdgeParamRefresh,
             RibEdgeShowHide,
-            RibEdgeIncludeOutputData,
             RibEdgeOptions,
             RibEdgeHelp,
             RibEdgeBroadcast
@@ -65,7 +62,6 @@ namespace XLEdge.Helpers
             RibEdgeRefreshAll,
             RibEdgeParamRefresh,
             RibEdgeShowHide,
-            RibEdgeIncludeOutputData,
             RibEdgeOptions,
             RibEdgeHelp,
             RibEdgeLogin,
@@ -402,7 +398,6 @@ namespace XLEdge.Helpers
                 SetControlVisible(RibEdgeLogin, true);
                 SetControlVisible(EibEdgeLogout, false);
                 SetControlPressed(RibEdgeDebug, false);
-                SetControlPressed(RibEdgeIncludeOutputData, false);
 
                 // Login always shows the plain "Login" caption, never an instance name.
                 SetControlCaption(RibEdgeLogin, "Login");
@@ -417,7 +412,6 @@ namespace XLEdge.Helpers
         {
             try
             {
-                SetControlPressed(RibEdgeIncludeOutputData, false);
                 SetControlPressed(RibEdgeDebug, false);
                 DisableControls(NoPermissionDisabledControls);
             }
@@ -435,7 +429,6 @@ namespace XLEdge.Helpers
 
                 SetControlVisible(RibEdgeLogin, false);
                 SetControlVisible(EibEdgeLogout, true);
-                SetControlPressed(RibEdgeIncludeOutputData, false);
 
                 // Logout shows the selected instance name.
                 SetControlCaption(EibEdgeLogout, XLEdgeAppState.Instance.LoginUrlName);
