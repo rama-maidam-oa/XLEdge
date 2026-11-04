@@ -41,6 +41,16 @@ namespace XLEdge.Addin.Core.Infrastructure
 
         public static void OnExcelThread(Action call) => OnExcelThread(() => { call(); return true; });
 
+        /// <summary>True on Excel's thread (or before Initialize, when it is not known yet).</summary>
+        public static bool IsExcelThread
+        {
+            get
+            {
+                Dispatcher excel = _excelThread;
+                return excel == null || excel.CheckAccess();
+            }
+        }
+
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Task, DateTime> Tracked =
             new System.Collections.Concurrent.ConcurrentDictionary<Task, DateTime>();
 

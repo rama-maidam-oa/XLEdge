@@ -89,6 +89,37 @@ namespace XLEdge.Tests
             WithCore((p, _) => Assert.AreEqual("resumedOnExcelThread=True busyAfter=False", p.HandlerStartedOffExcelsThread()));
         }
 
+        // GLSense AIPowered "Excel stays running after close" (04-Nov-2026): work the pane starts (a report, multi-report, Logs
+        // report or file download from a page title, the WebView2 start-up) ran on a pool (MTA) thread through Task.Run, and
+        // its Excel calls left cross-apartment references that keep EXCEL.EXE running after Excel is closed.
+
+        [TestMethod]
+        public void PaneWork_StartsAndResumesOnExcelsThread_AndKeepsTheCoreBusyUntilItEnds()
+        {
+            WithCore((p, _) => Assert.AreEqual("startedOnExcelThread=True resumedOnExcelThread=True busyWhilePending=True busyAfter=False",
+                p.PaneWorkStartedFrom(poolThread: false)));
+        }
+
+        [TestMethod]
+        public void PaneWork_StartedFromAPoolThread_StillRunsOnExcelsThread()
+        {
+            WithCore((p, _) => Assert.AreEqual("startedOnExcelThread=True resumedOnExcelThread=True busyWhilePending=True busyAfter=False",
+                p.PaneWorkStartedFrom(poolThread: true)));
+        }
+
+        [TestMethod]
+        public void ExcelUsedOffItsThread_IsLoggedOncePerCaller()
+        {
+            WithCore((p, context) =>
+            {
+                var log = (RecordingLogger)context.Logger;
+                p.ReadExcelOnTheExcelThread();
+                Assert.IsFalse(log.Lines.Any(l => l.Contains("off Excel's thread")), "Excel's own thread is fine: " + log.Dump());
+                p.ReadExcelFromAPoolThreadTwice();
+                Assert.AreEqual(1, log.Lines.Count(l => l.StartsWith("WARN") && l.Contains("CoreServices: Excel used off Excel's thread")), log.Dump());
+            });
+        }
+
         [TestMethod]
         public void AnExceptionEscapingAnAsyncHandler_IsLogged_NotThrownIntoExcel()
         {
@@ -344,7 +375,9 @@ namespace XLEdge.Tests
         {
             string pane = File.ReadAllText(Path.Combine(Path.GetDirectoryName(typeof(CoreHandlersTests).Assembly.Location),
                 @"..\..\..\XLEdge.Addin.Core\ADXExcelTaskPane1.cs")).Replace("\r\n", "\n");
-            StringAssert.Contains(CorePortParityTests.MethodText(pane, "void SafeFireAndForget("), "ExcelThreadContext.Track(Task.Run(");
+            string fire = CorePortParityTests.MethodText(pane, "void SafeFireAndForget(");
+            StringAssert.Contains(fire, "ExcelThreadContext.Track(");
+            Assert.IsFalse(fire.Contains("Task.Run("), "the pane's work runs on Excel's thread, never on a pool thread");
             string hook = CorePortParityTests.MethodText(pane, "void HookWebViewEvents()");
             StringAssert.Contains(hook, "SourceChanged += _countedSourceChanged;");
             StringAssert.Contains(hook, "DocumentTitleChanged += _countedTitleChanged;");

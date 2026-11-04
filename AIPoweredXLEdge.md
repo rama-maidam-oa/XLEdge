@@ -150,6 +150,25 @@ output (and the XLEdge log) to any FAIL. Items 1-2 are kept as the developer's o
    loader for Excel's bitness (32-bit = WOW6432Node / adxloader.dll), and follows UpdateBootstrapper's rules for staged,
    refused and selected releases and an empty/unreadable catalog (runbook §0).
 
+## Excel stays running after close (04-Nov-2026, from GLSense AIPowered)
+Applied GLSense's `AIPowered\GLSense\docs\excel-stays-running-after-close.md`. XLEdge already had most of it: the core's own
+Excel RCW (contract 2, released with FinalReleaseComObject at Shutdown; guard `TheCore_NeverUsesTheShellsComProxies`),
+`ExcelThreadContext` around ribbon clicks, Excel events and the GLSense calls (Stage 2d), and a ribbon that resets on a new
+core (no cube/ledger combos; LoggedOut resets the Login caption). **Found and fixed:** the pane's `SafeFireAndForget` (twin-only)
+ran everything a page title starts - reports, multi-reports, Logs report, file downloads - and the WebView2 start-up on a pool
+(MTA) thread through `Task.Run`, so a report run from the pane wrote the sheet from the MTA: the cross-apartment Excel
+references that keep EXCEL.EXE alive. It now starts the work on Excel's thread under `ExcelThreadContext` (still tracked as
+busy); the pane entry points (`CreateTaskPaneContent`, `CloseTaskPaneContent`, `OnTaskPaneShown`) run under it too. Safety
+net: `CoreServices.ExcelApp` / `ExcelAppIfCreated` used off Excel's thread logs one WARN per calling method ("CoreServices:
+Excel used off Excel's thread ... by <method>"). Tests: `PaneWork_StartsAndResumesOnExcelsThread_...`,
+`PaneWork_StartedFromAPoolThread_StillRunsOnExcelsThread`, `ExcelUsedOffItsThread_IsLoggedOncePerCaller`. Trade-off (as GLSense):
+the synchronous parts of a pane-started report now run on Excel's thread, as ribbon refreshes already did (e.g. the
+synchronous image download of image columns).
+**Developer's check in Excel** (close Excel after each; EXCEL.EXE must leave Task Manager within seconds, ~75 s with
+Bitdefender): open/close; login/close; a report from the pane, then close (Save and Don't Save); Refresh Sheet/Book; a
+drilldown; an attachment download; a Logs report; Reload Add-in then a report then close. Any "Excel used off Excel's thread"
+WARN in the log names a path still to fix.
+
 ## OISR fixes carried into 11.1.3
 - **11.1.2 release of 03-Nov-2026** (`5da5d37`, MSI in orbitbootapp `release/ORBIT11.1.2` `600efa7d08`; both tickets in QA
   Review) merged into 11.1.3 (`e52f964`), so the classic baseline (`XLEdge\`) = released 11.1.2; the twin core carries the

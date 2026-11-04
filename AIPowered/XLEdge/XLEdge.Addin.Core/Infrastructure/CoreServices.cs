@@ -42,6 +42,7 @@ namespace XLEdge.Addin.Core.Infrastructure
         {
             get
             {
+                WarnIfOffExcelThread();
                 lock (Gate)
                 {
                     if (_excel == null && _context != null)
@@ -59,7 +60,53 @@ namespace XLEdge.Addin.Core.Infrastructure
         /// <summary>The Excel RCW if one exists; never creates one (today's ExcelAppUnsafe semantics).</summary>
         public static object ExcelAppIfCreated
         {
-            get { lock (Gate) return _excel; }
+            get
+            {
+                WarnIfOffExcelThread();
+                lock (Gate) return _excel;
+            }
+        }
+
+        private const int MaxOffThreadCallers = 50;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> OffThreadCallers =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
+
+        /// <summary>
+        /// Safety net (GLSense AIPowered "Excel stays running after close", 04-Nov-2026): Excel used from a thread other than
+        /// Excel's - a pool (MTA) thread above all - leaves cross-apartment references that keep EXCEL.EXE running after Excel is
+        /// closed. Every path into the core runs on Excel's thread; one that does not is logged once per calling method (at most
+        /// <see cref="MaxOffThreadCallers"/>), so the log names it.
+        /// </summary>
+        private static void WarnIfOffExcelThread()
+        {
+            if (ExcelThreadContext.IsExcelThread) return;
+            try
+            {
+                string caller = Caller();
+                if (OffThreadCallers.Count >= MaxOffThreadCallers || !OffThreadCallers.TryAdd(caller, true)) return;
+                Thread thread = Thread.CurrentThread;
+                Log(l => l.LogWarn($"CoreServices: Excel used off Excel's thread (thread {thread.ManagedThreadId}, {thread.GetApartmentState()}, pool={thread.IsThreadPoolThread}) by {caller}."));
+            }
+            catch (Exception)
+            {
+                // A diagnostic only: never in the way of the Excel call itself.
+            }
+        }
+
+        /// <summary>The first method above the Excel accessors (CoreServices, XLEdgeAppState, XLApp and property getters).</summary>
+        private static string Caller()
+        {
+            foreach (System.Diagnostics.StackFrame frame in new System.Diagnostics.StackTrace(2, false).GetFrames() ?? new System.Diagnostics.StackFrame[0])
+            {
+                System.Reflection.MethodBase method = frame.GetMethod();
+                Type type = method?.DeclaringType;
+                if (type == null || type == typeof(CoreServices) || method.Name.StartsWith("get_", StringComparison.Ordinal) ||
+                    type.FullName == "XLEdge.XLEdgeAppState" || type.FullName == "XLEdge.XLApp")
+                    continue;
+                return type.FullName + "." + method.Name;
+            }
+            return "unknown caller";
         }
 
         /// <summary>

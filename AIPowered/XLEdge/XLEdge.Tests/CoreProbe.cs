@@ -485,6 +485,58 @@ namespace XLEdge.Tests
             return $"resumedOnExcelThread={resumedOn == excelThread} busyAfter={_entry.IsBusy()}";
         }
 
+        /// <summary>
+        /// The pane's SafeFireAndForget - how a report, a download or the WebView2 start-up begins from the pane - called from
+        /// Excel's thread or from a pool thread: the threads its work starts and resumes on, and IsBusy while pending and after.
+        /// </summary>
+        public string PaneWorkStartedFrom(bool poolThread)
+        {
+            MethodInfo fire = CoreType("XLEdge.ADXExcelTaskPane1").GetMethod("SafeFireAndForget", BindingFlags.Static | BindingFlags.NonPublic)
+                              ?? throw new MissingMethodException("ADXExcelTaskPane1", "SafeFireAndForget");
+            int excelThread = System.Threading.Thread.CurrentThread.ManagedThreadId, startedOn = -1, resumedOn = -1;
+            var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            Func<System.Threading.Tasks.Task> work = async () =>
+            {
+                startedOn = System.Threading.Thread.CurrentThread.ManagedThreadId;
+                await gate.Task;
+                resumedOn = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            };
+            object[] args = { work, "probe pane work" };
+            if (poolThread)
+            {
+                // Excel's thread (this one) keeps pumping while the pool thread hands the work over to it.
+                var call = System.Threading.Tasks.Task.Run(() => fire.Invoke(null, args));
+                WaitFor(() => call.IsCompleted);
+                call.Wait();
+            }
+            else
+            {
+                Unwrap(() => fire.Invoke(null, args));
+            }
+            WaitFor(() => startedOn >= 0);
+            bool busyWhilePending = _entry.IsBusy();
+            System.Threading.Tasks.Task.Run(() => gate.SetResult(true));
+            WaitFor(() => resumedOn >= 0);
+            WaitFor(() => !_entry.IsBusy());
+            return $"startedOnExcelThread={startedOn == excelThread} resumedOnExcelThread={resumedOn == excelThread} busyWhilePending={busyWhilePending} busyAfter={_entry.IsBusy()}";
+        }
+
+        /// <summary>
+        /// The core's Excel object read from a pool thread, twice from the same place: the safety net logs one warning naming the
+        /// caller (GLSense's "Excel stays running after close": Excel used off its thread keeps EXCEL.EXE alive).
+        /// </summary>
+        public void ReadExcelFromAPoolThreadTwice()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "ExcelApp");
+                CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "ExcelApp");
+            }).Wait();
+        }
+
+        /// <summary>The core's Excel object read on Excel's thread (this one).</summary>
+        public void ReadExcelOnTheExcelThread() => CallStatic("XLEdge.Addin.Core.Infrastructure.CoreServices", "ExcelApp");
+
         /// <summary>An async-void handler that throws (an IOException) after an await, started as AddinEntry starts handlers.</summary>
         public string HandlerThatThrowsAfterAnAwait()
         {

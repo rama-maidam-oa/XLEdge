@@ -247,9 +247,17 @@ namespace XLEdge.Addin.Core
             }
         }
 
+        // The pane calls run under Excel's thread context too (GLSense AIPowered "Excel stays running after close"): whatever they
+        // start - the pane's WebView2 start-up, its page's reports - resumes on Excel's thread, never on a pool thread.
+
         public IntPtr CreateTaskPaneContent(IntPtr excelWindowHandle)
         {
-            try { return _panes?.Create(excelWindowHandle) ?? IntPtr.Zero; }
+            try
+            {
+                IntPtr content = IntPtr.Zero;
+                ExcelThreadContext.Run(() => content = _panes?.Create(excelWindowHandle) ?? IntPtr.Zero);
+                return content;
+            }
             catch (Exception ex)
             {
                 Log(ex, "AddinEntry.CreateTaskPaneContent");
@@ -259,13 +267,13 @@ namespace XLEdge.Addin.Core
 
         public void CloseTaskPaneContent(IntPtr excelWindowHandle)
         {
-            try { _panes?.Close(excelWindowHandle); }
+            try { ExcelThreadContext.Run(() => _panes?.Close(excelWindowHandle)); }
             catch (Exception ex) { Log(ex, "AddinEntry.CloseTaskPaneContent"); }
         }
 
         public void OnTaskPaneShown(IntPtr excelWindowHandle)
         {
-            try { _panes?.Shown(excelWindowHandle); }
+            try { ExcelThreadContext.Run(() => _panes?.Shown(excelWindowHandle)); }
             catch (Exception ex) { Log(ex, "AddinEntry.OnTaskPaneShown"); }
         }
 

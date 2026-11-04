@@ -441,17 +441,29 @@ namespace XLEdge
         private static void SafeFireAndForget(Func<Task> taskFactory, string context)
         {
             // Twin (Stage 4): tracked, so the core counts as busy - a reload waits - while the work runs.
-            ExcelThreadContext.Track(Task.Run(async () =>
+            // Twin (04-Nov-2026, GLSense AIPowered "Excel stays running after close"): started on Excel's thread under
+            // ExcelThreadContext, not Task.Run. A report, download or the WebView2 start-up begun here used to run on a pool (MTA)
+            // thread, and its Excel calls left cross-apartment references that keep EXCEL.EXE running after Excel is closed. Its
+            // awaits now resume on Excel's thread, as the ribbon's handlers do.
+            Task? work = ExcelThreadContext.OnExcelThread(() =>
             {
-                try
-                {
-                    await taskFactory();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, context);
-                }
-            }));
+                Task? started = null;
+                ExcelThreadContext.Run(() => started = RunLogged(taskFactory, context));
+                return started;
+            });
+            ExcelThreadContext.Track(work);
+        }
+
+        private static async Task RunLogged(Func<Task> taskFactory, string context)
+        {
+            try
+            {
+                await taskFactory();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, context);
+            }
         }
 
         private async Task EnsureWebViewInitializedAsync()
