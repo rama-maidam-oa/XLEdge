@@ -401,16 +401,18 @@ namespace XLEdge.Helpers
 
             if (!string.IsNullOrWhiteSpace(responseBody))
             {
-                // Ported from GLSense OISR-22830 (replaces the "Include Output Data" option): a body over 100 KB - report
-                // CSV data or JSON - is saved in full to XLEdge_Logs\Temp (.csv/.json, named after the endpoint) and the
-                // log gets a preview plus that file's path; a smaller body is logged as is. Checked here, not left to
-                // LogDebug, so the file is not written with Debug off.
+                // Ported from GLSense OISR-22830 (replaces the "Include Output Data" option): report data (the type=csv
+                // endpoints: report/runner, process/excel-data) is always saved to XLEdge_Logs\Temp, whatever its size; any
+                // other body (JSON) only when over 100 KB. The log gets the size and that file's path; a smaller non-data
+                // body is logged as is. Checked here, not left to LogDebug, so no file is written with Debug off.
                 if (LogUtility.DebugMode)
                 {
-                    var segments = response.RequestMessage?.RequestUri?.Segments;
+                    Uri requestUri = response.RequestMessage?.RequestUri;
+                    var segments = requestUri?.Segments;
                     string name = segments != null && segments.Length > 0 ? segments[segments.Length - 1].Trim('/') : "response";
                     string mediaType = response.Content?.Headers?.ContentType?.MediaType;
-                    LogUtility.LogDebug($"Response ({responseBody.Length} chars): {LargeLogText.ToLogText(responseBody, XLEdgeAppPaths.TempFolder, name, mediaType)}");
+                    bool reportData = requestUri != null && requestUri.Query.IndexOf("type=csv", StringComparison.OrdinalIgnoreCase) >= 0;
+                    LogUtility.LogDebug($"Response ({responseBody.Length} chars): {LargeLogText.ToLogText(responseBody, XLEdgeAppPaths.TempFolder, name, reportData ? "text/csv" : mediaType, reportData)}");
                 }
             }
             else

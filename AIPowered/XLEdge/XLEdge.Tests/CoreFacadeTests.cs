@@ -166,6 +166,27 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void LargeLogText_ReportData_IsSavedWhateverItsSize_OtherTextOnlyOverTheThreshold()
+        {
+            // Debug run: a 76,750-char report CSV (under 100 KB) went into the log in full. Report data is always saved.
+            const string LargeLogText = "XLEdge.Utilities.LargeLogText";
+            using (var core = new Core())
+            using (var t = new TempFolder())
+            {
+                string csv = "\"Region\",\"Sales\"\r\n\"East\",\"5586.33\"\r\n";
+                string logged = (string)core.Probe.CallStatic(LargeLogText, "ToLogText", csv, t.Path, "runner", "text/csv", true);
+                string saved = Directory.GetFiles(t.Path, "*_runner.csv").Single();
+                Assert.AreEqual($"[{csv.Length:N0} chars saved to {saved}]", logged);
+                Assert.AreEqual(csv, File.ReadAllText(saved));
+
+                string json = "[{\"extraParameters\":{}}]";
+                Assert.AreEqual(json, (string)core.Probe.CallStatic(LargeLogText, "ToLogText", json, t.Path, "params", "application/json", false),
+                    "small non-data text stays in the log");
+                Assert.AreEqual(1, Directory.GetFiles(t.Path).Length);
+            }
+        }
+
+        [TestMethod]
         public void LogUtility_RawJson_OverTheThreshold_GoesToATempJsonFile()
         {
             using (var core = new Core())
