@@ -776,6 +776,12 @@ namespace XLEdge
             {
                 string rawResponse = await FetchApiResponseAsync(apiUrl, ct);
 
+                // OISR-22777: the raw get-broadcast-msg JSON as received, to check what the server
+                // actually sent (message text, line breaks, types). Debug mode only.
+                LogUtility.LogDebug(string.IsNullOrEmpty(rawResponse)
+                    ? "BroadcastMessageFromApi: get-broadcast-msg returned an empty response."
+                    : $"BroadcastMessageFromApi: get-broadcast-msg response ({rawResponse.Length} chars): {rawResponse}");
+
                 if (string.IsNullOrWhiteSpace(rawResponse))
                     return string.Empty;
 
@@ -850,10 +856,14 @@ namespace XLEdge
                   .Append(".) ")
                   .Append(msg.MsgType ?? "Info")
                   .Append(" : ")
-                  .Append(msg.Message ?? string.Empty);
+                  .Append((msg.Message ?? string.Empty).TrimEnd());
 
+                // OISR-22777: a message can span several lines, so a single line break made the
+                // next "N.) TYPE" line look like part of the previous message. A blank line between
+                // messages separates them; TrimEnd stops a message that ends with its own line
+                // break from producing a double gap.
                 if (i < messages.Count - 1)
-                    sb.AppendLine();
+                    sb.AppendLine().AppendLine();
             }
 
             return sb.ToString();
