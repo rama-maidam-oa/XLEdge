@@ -77,14 +77,16 @@ try {
     finally { $sha.Dispose() }
 
     # Same fields, order and layout as GLSense's manifest.json (GLSense.Addin.Core\post_build.cmd), plus XLEdge's
-    # contractVersion, which the loader needs to refuse a core built against a newer contract.
+    # contractVersion, which the loader needs to refuse a core built against a newer contract. "release" is written
+    # true; Online Reload lists only server releases whose "release" is true (any case) or missing
+    # (XLEdge\Online\OnlineReleaseFilter.cs), so earlier fix builds can be set to false on the server.
     $quote = { param($s) '"' + (($s -replace '\\', '\\') -replace '"', '\"' -replace "`r", '\r' -replace "`n", '\n' -replace "`t", '\t') + '"' }
     $json = @(
         '[',
         '  {',
         "    ""version"": $(& $quote $version),",
         "    ""releaseDate"": $(& $quote $releaseDate),",
-        '    "release": false,',
+        '    "release": true,',
         "    ""folderName"": $(& $quote $folderName),",
         "    ""fileName"": $(& $quote $fileName),",
         "    ""checksum"": $(& $quote $checksum),",

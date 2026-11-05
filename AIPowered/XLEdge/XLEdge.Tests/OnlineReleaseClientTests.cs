@@ -67,6 +67,22 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Client_ListsOnlyReleasesMarkedForRelease()
+        {
+            // "release": true / "TRUE" / blank / missing is shown; false, "false" or anything else is hidden.
+            string With(string folder, string release) => Entry("11.1.3", "2026-11-03T10:00:00", folder).TrimEnd('}') + ",\"release\":" + release + "}";
+            var server = new FakeServer();
+            server.Bodies[Base + "/manifests" + AddinTypeQuery] = System.Text.Encoding.UTF8.GetBytes("[" + string.Join(",",
+                With("vFalse", "false"), With("vTrue", "true"), Entry("11.1.3", "2026-11-03T10:00:00", "vMissing"), With("vUpper", "\"TRUE\""),
+                With("vFalseText", "\"false\""), With("vNull", "null"), With("vBlank", "\"\""), With("vYes", "\"yes\""), With("vZero", "0")) + "]");
+            using (var client = new OnlineReleaseClient(Login(), new RecordingLogger(), server))
+            {
+                var releases = client.GetReleasesAsync(CancellationToken.None).GetAwaiter().GetResult();
+                CollectionAssert.AreEqual(new[] { "vTrue", "vMissing", "vUpper", "vNull", "vBlank" }, releases.Select(r => r.FolderName).ToArray());
+            }
+        }
+
+        [TestMethod]
         public void Client_DownloadsManifestAndZip_OfTheEscapedFolder()
         {
             var server = new FakeServer();

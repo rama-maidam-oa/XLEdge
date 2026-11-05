@@ -61,9 +61,14 @@ namespace XLEdge.Online
         public async Task<IReadOnlyList<VersionInfo>> GetReleasesAsync(CancellationToken ct)
         {
             byte[] body = await GetAsync(_base + "/manifests" + AddinTypeQuery, ct, NoUpdatesHere).ConfigureAwait(false);
-            VersionParseResult parsed = new VersionParser(_logger).ParseVersionJson(System.Text.Encoding.UTF8.GetString(body));
+            string json = System.Text.Encoding.UTF8.GetString(body);
+            VersionParseResult parsed = new VersionParser(_logger).ParseVersionJson(json);
             if (!parsed.Success) throw new OnlineReleaseException("The server's release list could not be read: " + parsed.ErrorMessage, null);
-            return parsed.AllVersions;
+            // Only releases marked "release": true (or with no flag) are offered.
+            List<VersionInfo> released = OnlineReleaseFilter.ReleasedOnly(json, parsed.AllVersions);
+            int hidden = parsed.AllVersions.Count - released.Count;
+            if (hidden > 0) _logger?.LogInfo($"OnlineReleaseClient: {hidden} server release(s) not marked for release - not shown.");
+            return released;
         }
 
         public async Task<(string ManifestJson, byte[] Zip)> DownloadAsync(string folderName, CancellationToken ct)

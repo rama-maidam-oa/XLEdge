@@ -138,6 +138,7 @@
       <Link>Properties\XLEdgeSharedVersion.cs</Link>
     </Compile>
     <Compile Include="Online\OnlineReleaseClassifier.cs" />
+    <Compile Include="Online\OnlineReleaseFilter.cs" />
     <Compile Include="Online\OnlineReleaseClient.cs" />
     <Compile Include="Online\OnlineReleaseException.cs" />
     <Compile Include="Online\OnlineReleaseRow.cs" />
