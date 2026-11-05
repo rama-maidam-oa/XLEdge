@@ -21,8 +21,8 @@ namespace XLEdge.Online
 
     /// <summary>
     /// The ORBIT server's XLEdge add-in release endpoints (orbitbootapp XLEdgeAddinController - spec
-    /// 2026-11-03-xledge-addin-online-update-server.md), called with the user's login: {LoginUrl}/rest/secure/xledge-addin/manifests,
-    /// .../versions/{folderName}/manifest and .../zip, "Authorization: Bearer {LoginToken}". The shell's own HttpClient: the core's
+    /// OISR-22460), called with the user's login: {LoginUrl}/rest/secure/orbit-addons/manifests?type=xledge,
+    /// .../versions/{folderName}/manifest?type=xledge and .../zip?type=xledge, "Authorization: Bearer {LoginToken}". The shell's own HttpClient: the core's
     /// API helper lives in another AppDomain.
     /// </summary>
     internal sealed class OnlineReleaseClient : IOnlineReleaseSource
@@ -31,6 +31,7 @@ namespace XLEdge.Online
         internal const string NotOnServer = "That release is not on the server (any more).";
         internal const string NoUpdatesHere = "This XLEdge server does not offer XLEdge updates (yet).";
         internal const string Unreachable = "The XLEdge server could not be reached: ";
+        private const string AddinTypeQuery = "?type=xledge";
 
         private readonly HttpClient _http;
         private readonly string _base;
@@ -40,7 +41,7 @@ namespace XLEdge.Online
         {
             if (login == null || string.IsNullOrWhiteSpace(login.LoginUrl)) throw new ArgumentException("No login URL.", nameof(login));
             _logger = logger;
-            _base = login.LoginUrl.Trim().TrimEnd('/') + "/rest/secure/xledge-addin";
+            _base = login.LoginUrl.Trim().TrimEnd('/') + "/rest/secure/orbit-addons";
             _http = handler == null ? new HttpClient(CreateHandler(), disposeHandler: true) : new HttpClient(handler, disposeHandler: false);
             _http.Timeout = TimeSpan.FromMinutes(5);
             if (!string.IsNullOrWhiteSpace(login.LoginToken))
@@ -59,7 +60,7 @@ namespace XLEdge.Online
 
         public async Task<IReadOnlyList<VersionInfo>> GetReleasesAsync(CancellationToken ct)
         {
-            byte[] body = await GetAsync(_base + "/manifests", ct, NoUpdatesHere).ConfigureAwait(false);
+            byte[] body = await GetAsync(_base + "/manifests" + AddinTypeQuery, ct, NoUpdatesHere).ConfigureAwait(false);
             VersionParseResult parsed = new VersionParser(_logger).ParseVersionJson(System.Text.Encoding.UTF8.GetString(body));
             if (!parsed.Success) throw new OnlineReleaseException("The server's release list could not be read: " + parsed.ErrorMessage, null);
             return parsed.AllVersions;
@@ -68,8 +69,8 @@ namespace XLEdge.Online
         public async Task<(string ManifestJson, byte[] Zip)> DownloadAsync(string folderName, CancellationToken ct)
         {
             string release = _base + "/versions/" + Uri.EscapeDataString(folderName ?? string.Empty);
-            byte[] manifest = await GetAsync(release + "/manifest", ct).ConfigureAwait(false);
-            byte[] zip = await GetAsync(release + "/zip", ct).ConfigureAwait(false);
+            byte[] manifest = await GetAsync(release + "/manifest" + AddinTypeQuery, ct).ConfigureAwait(false);
+            byte[] zip = await GetAsync(release + "/zip" + AddinTypeQuery, ct).ConfigureAwait(false);
             return (System.Text.Encoding.UTF8.GetString(manifest), zip);
         }
 

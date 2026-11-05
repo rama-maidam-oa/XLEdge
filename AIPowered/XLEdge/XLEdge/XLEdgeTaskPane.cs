@@ -1,5 +1,8 @@
 using System;
+using System.Drawing;
 using System.Reflection;
+using System.Windows;
+using System.Windows.Resources;
 using AddinExpress.XL;
 using XLEdge.Hosting;
 
@@ -23,9 +26,22 @@ namespace XLEdge
         public XLEdgeTaskPane()
         {
             InitializeComponent();
+            Icon = LoadTaskPaneIcon();
             HandleCreated += (s, e) => EmbedContent();
             HandleDestroyed += (s, e) => OnPaneDestroyed();
             Resize += (s, e) => PaneEmbedding.Resize(_content, ClientSize.Width, ClientSize.Height);
+        }
+
+        private static Icon LoadTaskPaneIcon()
+        {
+            StreamResourceInfo resource = Application.GetResourceStream(
+                new Uri("pack://application:,,,/XLEdge;component/Resources/Orbit.ico", UriKind.Absolute));
+            if (resource == null)
+                throw new InvalidOperationException("The XLEdge task pane icon resource could not be loaded.");
+
+            using (resource.Stream)
+            using (var icon = new Icon(resource.Stream))
+                return (Icon)icon.Clone();
         }
 
         /// <summary>

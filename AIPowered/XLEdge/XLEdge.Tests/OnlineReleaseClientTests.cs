@@ -15,7 +15,7 @@ namespace XLEdge.Tests
 {
     /// <summary>
     /// Stage 6: the shell's online release client - the endpoints a future orbitbootapp XLEdgeAddinController serves
-    /// ({LoginUrl}/rest/secure/xledge-addin/manifests, .../versions/{folder}/manifest, .../zip), called with the login's Bearer token.
+    /// ({LoginUrl}/rest/secure/orbit-addons/manifests?type=xledge, .../versions/{folder}/manifest?type=xledge, .../zip?type=xledge), called with the login's Bearer token.
     /// </summary>
     [TestClass]
     public class OnlineReleaseClientTests
@@ -30,7 +30,7 @@ namespace XLEdge.Tests
 
             protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
-                string path = request.RequestUri.AbsolutePath;
+                string path = request.RequestUri.GetComponents(UriComponents.PathAndQuery, UriFormat.UriEscaped);
                 lock (Requests)
                 {
                     Requests.Add(request.Method + " " + request.RequestUri.GetComponents(UriComponents.PathAndQuery, UriFormat.UriEscaped));
@@ -43,7 +43,8 @@ namespace XLEdge.Tests
             }
         }
 
-        internal const string Base = "/reporting/rest/secure/xledge-addin";
+        internal const string Base = "/reporting/rest/secure/orbit-addons";
+        internal const string AddinTypeQuery = "?type=xledge";
         internal static LoginInfo Login(string url = "https://host/reporting") => new LoginInfo { LoginUrl = url, LoginToken = "tok", LoginUserName = "u", IsLoggedIn = true };
 
         internal static string Entry(string version, string date, string folder) =>
@@ -54,14 +55,14 @@ namespace XLEdge.Tests
         public void Client_ListsTheServersReleases_WithTheBearerToken()
         {
             var server = new FakeServer();
-            server.Bodies[Base + "/manifests"] = System.Text.Encoding.UTF8.GetBytes("[" + Entry("11.1.3.0", "2026-11-03T10:00:00", "vA") + "," + Entry("11.1.4.0", "2026-11-10T10:00:00", "vB") + "]");
+            server.Bodies[Base + "/manifests" + AddinTypeQuery] = System.Text.Encoding.UTF8.GetBytes("[" + Entry("11.1.3.0", "2026-11-03T10:00:00", "vA") + "," + Entry("11.1.4.0", "2026-11-10T10:00:00", "vB") + "]");
             using (var client = new OnlineReleaseClient(Login(), new RecordingLogger(), server))
             {
                 var releases = client.GetReleasesAsync(CancellationToken.None).GetAwaiter().GetResult();
                 CollectionAssert.AreEqual(new[] { "vA", "vB" }, releases.Select(r => r.FolderName).ToArray());
                 CollectionAssert.AreEqual(new[] { "11.1.3.0", "11.1.4.0" }, releases.Select(r => r.Version).ToArray());
             }
-            CollectionAssert.AreEqual(new[] { "GET " + Base + "/manifests" }, server.Requests);
+            CollectionAssert.AreEqual(new[] { "GET " + Base + "/manifests" + AddinTypeQuery }, server.Requests);
             CollectionAssert.AreEqual(new[] { "Bearer tok" }, server.Authorization);
         }
 
@@ -70,15 +71,15 @@ namespace XLEdge.Tests
         {
             var server = new FakeServer();
             string folder = "v11.1.3.0_2026-11-03T10-00-00";
-            server.Bodies[Base + "/versions/" + folder + "/manifest"] = System.Text.Encoding.UTF8.GetBytes("[" + Entry("11.1.3.0", "2026-11-03T10:00:00", folder) + "]");
-            server.Bodies[Base + "/versions/" + folder + "/zip"] = new byte[] { 1, 2, 3 };
+            server.Bodies[Base + "/versions/" + folder + "/manifest" + AddinTypeQuery] = System.Text.Encoding.UTF8.GetBytes("[" + Entry("11.1.3.0", "2026-11-03T10:00:00", folder) + "]");
+            server.Bodies[Base + "/versions/" + folder + "/zip" + AddinTypeQuery] = new byte[] { 1, 2, 3 };
             using (var client = new OnlineReleaseClient(Login(), new RecordingLogger(), server))
             {
                 var (manifest, zip) = client.DownloadAsync(folder, CancellationToken.None).GetAwaiter().GetResult();
                 StringAssert.Contains(manifest, folder);
                 CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, zip);
             }
-            CollectionAssert.AreEqual(new[] { "GET " + Base + "/versions/" + folder + "/manifest", "GET " + Base + "/versions/" + folder + "/zip" }, server.Requests);
+            CollectionAssert.AreEqual(new[] { "GET " + Base + "/versions/" + folder + "/manifest" + AddinTypeQuery, "GET " + Base + "/versions/" + folder + "/zip" + AddinTypeQuery }, server.Requests);
 
             var odd = new FakeServer();
             using (var client = new OnlineReleaseClient(Login(), new RecordingLogger(), odd))
@@ -144,10 +145,10 @@ namespace XLEdge.Tests
         public void Client_LoginUrlWithTrailingSlash_IsTrimmed()
         {
             var server = new FakeServer();
-            server.Bodies[Base + "/manifests"] = System.Text.Encoding.UTF8.GetBytes("[" + Entry("11.1.3.0", "2026-11-03T10:00:00", "vA") + "]");
+            server.Bodies[Base + "/manifests" + AddinTypeQuery] = System.Text.Encoding.UTF8.GetBytes("[" + Entry("11.1.3.0", "2026-11-03T10:00:00", "vA") + "]");
             using (var client = new OnlineReleaseClient(Login("https://host/reporting/"), new RecordingLogger(), server))
                 client.GetReleasesAsync(CancellationToken.None).GetAwaiter().GetResult();
-            CollectionAssert.AreEqual(new[] { "GET " + Base + "/manifests" }, server.Requests);
+            CollectionAssert.AreEqual(new[] { "GET " + Base + "/manifests" + AddinTypeQuery }, server.Requests);
         }
     }
 
