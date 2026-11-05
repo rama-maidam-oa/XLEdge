@@ -21,8 +21,9 @@ try {
     $coreDll = Join-Path $TargetDir 'XLEdge.Addin.Core.dll'
     $contractsDll = Join-Path $TargetDir 'XLEdge.Contracts.dll'
 
-    # Assembly version without loading (no file lock).
-    $version = [Reflection.AssemblyName]::GetAssemblyName($coreDll).Version.ToString()
+    # Assembly version without loading (no file lock). Three parts (11.1.3), as GLSense's manifest writes it.
+    $asmVersion = [Reflection.AssemblyName]::GetAssemblyName($coreDll).Version
+    $version = '{0}.{1}.{2}' -f $asmVersion.Major, $asmVersion.Minor, $asmVersion.Build
 
     # ContractInfo.Version is a constant: read it in a child process so this one never locks the DLL. The path goes
     # through the environment, not the command text, so a quote or '$' in it cannot break or inject into the command.
@@ -38,7 +39,7 @@ try {
     $fileName = "$folderName.zip"
 
     $notesFile = Join-Path $projectDir 'ReleaseNotes.txt'
-    $notes = 'XLEdge core build'
+    $notes = 'Published by the XLEdge build process'
     if (Test-Path -LiteralPath $notesFile) {
         $first = Get-Content -LiteralPath $notesFile -TotalCount 1
         if ($first -and $first.Trim()) { $notes = $first.Trim() }
@@ -75,17 +76,24 @@ try {
     try { $checksum = ([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($zipPath)))).Replace('-', '') }
     finally { $sha.Dispose() }
 
-    $entryObject = [ordered]@{
-        version         = $version
-        releaseDate     = $releaseDate
-        folderName      = $folderName
-        fileName        = $fileName
-        checksum        = $checksum
-        notes           = $notes
-        mandatory       = $false
-        contractVersion = $contractVersion
-    }
-    $json = ConvertTo-Json -InputObject @([pscustomobject]$entryObject) -Depth 3
+    # Same fields, order and layout as GLSense's manifest.json (GLSense.Addin.Core\post_build.cmd), plus XLEdge's
+    # contractVersion, which the loader needs to refuse a core built against a newer contract.
+    $quote = { param($s) '"' + (($s -replace '\\', '\\') -replace '"', '\"' -replace "`r", '\r' -replace "`n", '\n' -replace "`t", '\t') + '"' }
+    $json = @(
+        '[',
+        '  {',
+        "    ""version"": $(& $quote $version),",
+        "    ""releaseDate"": $(& $quote $releaseDate),",
+        '    "release": false,',
+        "    ""folderName"": $(& $quote $folderName),",
+        "    ""fileName"": $(& $quote $fileName),",
+        "    ""checksum"": $(& $quote $checksum),",
+        "    ""notes"": $(& $quote $notes),",
+        '    "mandatory": false,',
+        "    ""contractVersion"": $contractVersion",
+        '  }',
+        ']'
+    ) -join "`r`n"
     [IO.File]::WriteAllText((Join-Path $outDir 'manifest.json'), $json, (New-Object Text.UTF8Encoding $false))
 
     # Release: the MSI's first core - a byte copy of the published zip under a fixed name, so the setup project never changes

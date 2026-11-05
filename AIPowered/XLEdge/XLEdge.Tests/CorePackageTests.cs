@@ -186,12 +186,12 @@ namespace XLEdge.Tests
         [TestMethod]
         public void ReleaseNotes_FirstLine_BecomesTheNotes_Trimmed()
         {
-            foreach (var (notes, expected) in new[] { ("  fixes the totals  \r\n# comment", "fixes the totals"), ("\r\n# comment", "XLEdge core build") })
+            foreach (var (notes, expected) in new[] { ("  fixes the totals  \r\n# comment", "fixes the totals"), ("\r\n# comment", "Published by the XLEdge build process") })
                 using (var t = new TempFolder())
                 {
                     var (exit, output, setup) = RunCorePostBuild(t, "Debug", notes);
                     Assert.AreEqual(0, exit, output);
-                    StringAssert.Contains(File.ReadAllText(Path.Combine(setup, @"Debug\Manifest\manifest.json")), "\"notes\":  \"" + expected + "\"");
+                    StringAssert.Contains(File.ReadAllText(Path.Combine(setup, @"Debug\Manifest\manifest.json")), "\"notes\": \"" + expected + "\"");
                 }
             Assert.IsTrue(File.Exists(Path.Combine(TwinRoot, @"XLEdge.Addin.Core\ReleaseNotes.txt")), "the project carries its ReleaseNotes.txt");
         }
