@@ -34,6 +34,9 @@ namespace XLEdge
 
         private static Icon LoadTaskPaneIcon()
         {
+            // Touching PackUriHelper registers the pack: scheme; without it (no WPF loaded yet in Excel) the Uri below
+            // parses "application:,,," as a host:port and throws UriFormatException "Invalid port specified".
+            _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
             StreamResourceInfo resource = Application.GetResourceStream(
                 new Uri("pack://application:,,,/XLEdge;component/Resources/Orbit.ico", UriKind.Absolute));
             if (resource == null)
