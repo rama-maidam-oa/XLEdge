@@ -59,7 +59,10 @@ namespace XLEdge.Views
             bool online = login != null && login.IsLoggedIn && !string.IsNullOrWhiteSpace(login.LoginUrl);
             RbOnline.IsEnabled = online;
             RbOnline.ToolTip = online ? OnlineToolTipText : LoggedOutToolTip;
-            LstOnline.ItemsSource = OnlineRows;
+            GridOnline.ItemsSource = OnlineRows;
+            // Same start-up as GLSense: Online when logged in, otherwise Offline.
+            if (online) RbOnline.IsChecked = true;
+            else RbOffline.IsChecked = true;
         }
 
         /// <summary>Whether the Online source can be chosen (logged in to XLEdge).</summary>
@@ -205,6 +208,18 @@ namespace XLEdge.Views
             if (OnlinePanel == null || OfflinePanel == null) return; // during InitializeComponent
             OnlinePanel.Visibility = IsOnlineSelected ? Visibility.Visible : Visibility.Collapsed;
             OfflinePanel.Visibility = IsOnlineSelected ? Visibility.Collapsed : Visibility.Visible;
+            ResetValidation();
+            // Same prompts as GLSense; a stale online list is cleared on re-entering Online.
+            if (IsOnlineSelected)
+            {
+                foreach (OnlineReleaseRow row in OnlineRows) row.PropertyChanged -= Row_PropertyChanged;
+                OnlineRows.Clear();
+                TxtStatus.Text = "Click \"Check for Updates\" to see every release not yet on this machine.";
+            }
+            else
+            {
+                TxtStatus.Text = "Click \"Browse...\" to select a folder to scan for a manifest.json + zip pair.";
+            }
             UpdateReloadEnabled();
         }
 
@@ -373,6 +388,13 @@ namespace XLEdge.Views
             if (BtnReload == null) return;
             if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(new Action(UpdateReloadEnabled)); return; }
             BtnReload.IsEnabled = !_busy && (IsOnlineSelected ? OnlineRows.Any(r => r.IsChecked) : _candidate != null);
+            // Same labels as GLSense's picker (its separate Fetch/Reload buttons).
+            int count = OnlineRows.Count(r => r.IsChecked);
+            BtnReload.Content = !IsOnlineSelected ? "Reload"
+                : count > 0 ? $"Fetch Selected & Reload ({count})" : "Fetch Selected & Reload";
+            BtnReload.ToolTip = !IsOnlineSelected
+                ? "Stage the validated version and reload XLEdge without restarting Excel."
+                : "Download every checked version, catalog it, then reload XLEdge onto the newest available version without restarting Excel.";
         }
 
         // ------------------------------------------------------------------
@@ -447,7 +469,7 @@ namespace XLEdge.Views
             BusyProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
             BtnBrowse.IsEnabled = !busy;
             BtnCheck.IsEnabled = !busy;
-            LstOnline.IsEnabled = !busy;
+            GridOnline.IsEnabled = !busy;
             UpdateReloadEnabled();
             // Cancel stays usable while an online check or download runs (it stops it); an offline scan is local and short.
             BtnCancel.IsEnabled = !busy || IsOnlineSelected;
