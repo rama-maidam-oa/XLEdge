@@ -175,6 +175,9 @@ drilldown; an attachment download; a Logs report; Reload Add-in then a report th
 WARN in the log names a path still to fix.
 
 ## OISR fixes carried into 11.1.3
+**Standing rule (developer, 10-Nov-2026): every fix gets a same-issue sweep.** Name the bug's pattern, search every other
+window/handler/code path here and in GLSense (both trees) for the same shape, fix the matches or list them as open with the
+reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a recorded sweep is not finished.
 - **11.1.2 release of 03-Nov-2026** (`5da5d37`, MSI in orbitbootapp `release/ORBIT11.1.2` `600efa7d08`; both tickets in QA
   Review) merged into 11.1.3 (`e52f964`), so the classic baseline (`XLEdge\`) = released 11.1.2; the twin core carries the
   same changes, so `CorePortParityTests` stay exact (no new TwinSubstitution). VB not ported (developer's decision).
@@ -189,6 +192,67 @@ WARN in the log names a path still to fix.
 - Golden values regenerated from the released 11.1.2 `bin\Release\XLEdge.dll` (5da5d37): new cases for both tickets; one earlier
   value changed on purpose - th-TH `ToExcelCellValue("28.10.2026","DATE")` was the serial -152004 and is now the text
   `'28-Oct-1483` (the pinned th-TH defect below, now visible as text instead of `####`). `CoreHelperGoldenTests` asserts the QA cases.
+- **OISR-22869** (Reports does nothing in a workbook opened after login; 11.1.3 only): 11.1.2's `XLEdgeLogin(true)` toggled
+  ADX's `TaskPaneInstance`, which ADX had already made for every Excel window. The core's `TaskPanes.TaskPaneInstance` is null
+  until a window's content is embedded, so the toggle returned without doing anything. A null pane now falls through to the
+  create-and-show path. Test: `CorePaneTests.ShowHide_ActiveWindowWithoutAPane_ShowsANewPane` (fails without the fix).
+  Same-issue sweep (pattern: active window's pane is null → silent return): every `GetPaneInstance()`/`TaskPaneInstance`
+  caller. Fine as is: `InvokedFromGLSense`, `adxExcelAppEvents1_WorkbookActivate`, `ReportGenerator.ReleaseTaskPaneFocusToExcelAsync`
+  (they only act on a pane that is already visible), `LaunchExcelPane` (creates one). **Open:** `RibEdgeParamRefreshBook_OnClick`
+  and `RibEdgeParamRefresh_OnClick` return silently when the active window has no pane (e.g. Book2 opened after login).
+  Creating the pane there isn't enough: the re-run is a script on the pane's loaded web page, which a new pane hasn't loaded
+  yet. Needs the developer's decision (see the 10-Nov summary).
+- **OISR-22777 QA (09-Nov)**, `XLEdgeMessageWindow` (the bug is in 11.1.2 too; not ported): long broadcast lines were hidden
+  under the message scrollbar (the ScrollViewer's template draws it over the content; the text grid now has an 18px right
+  margin), and the OK button was cut off at 125% scaling (`AutoFitOnce` measured the height with unlimited width; it now
+  measures again at the final width). Checked by rendering the window from the built core (long message, before/after).
+  Same-issue sweep: (a) overlaid scrollbar - it comes from the Wpf.Ui theme XLEdge loads for every window
+  (`WpfUiBootstrapper`), so every plain `ScrollViewer` is affected. `XLEdgeGLAccountsWindow`'s segment list (scrolls past
+  350px, ~8+ segments; the High boxes are at the right edge) got the same 18px right margin. `XLEdgeAbout` only has the
+  card border under it - nothing hidden, left as is. GLSense no longer uses Wpf.Ui, so it isn't affected. (b) height measured
+  before the final width - `XLEdgeMessageWindow` is the only window with its own auto-fit; GLSense's `GLMessageWindow` stays
+  on `SizeToContent`, which re-measures at the real width.
+- **OISR-22143 QA (09-Nov)**, report OISR-21508 after Book Refresh with DEPTNO = 10: the request and the rows were right
+  (log: payload `deptno = 10`, every row 10), but Excel showed 12 rows against the web's 11. `ReportGenerator.ParseCsv` read
+  the response with `StringReader.ReadLine`, so a quoted value containing a line break (ENAME "CRLF" typed with Enter) was
+  split: `10,777,"CRLF` lost its SAL and `",2100` became a junk row (Record Count 12). It now appends the next line while
+  the record has an odd number of quotes. Checked on the built DLL by reflection: the reported record, LF-only, escaped
+  `""`, a comma inside quotes, an unclosed quote. Same-issue sweep: `ParseCsv` is XLEdge's only CSV parser (first run,
+  Sheet/Book Refresh, Process screen Excel data); GLSense doesn't parse CSV. The legacy `11.1.3\XLEdge` project has the
+  same code and was not changed.
+- **OISR-22130 QA (09-Nov)**, GL Accounts Segment Selection: the scrollbar still covered the column header row ("Segment
+  Name / Low / High"), since the header was inside the ScrollViewer. The header row now sits outside it (above the
+  scrolling rows); header and rows both keep the 18px right margin so the columns line up. QA also attached `XLEdgeAbout`
+  with the scrollbar over the cards' right edge and the progress bar: its content now has the same 18px right margin
+  (supersedes "left as is" above). Checked by rendering the GL Accounts window from the built core (3 and 9 segments).
+  Same-issue sweep: the remaining plain `ScrollViewer`s were checked in the 22777 sweep; only these two windows
+  had content under the scrollbar.
+  Issue 3 (wording): the Options checkbox already reads "Show segment selection window when selecting segments", but the
+  ORACLE_GL_SEGMENT_VALUES cell's input/error messages (`ParamsControlSheetBuilder`) still said "...on selection"; both
+  now use the Options wording (221/225 and 208/255 characters, Excel's limits). Existing Control Sheets keep the old text
+  until they are created again. Issue 2 (dropdowns): not applicable - the LOVs depend on the responsibility and ledger.
+- Both are deliberate differences from 11.1.2: `AddinModuleMethods_MatchXLEdge11_1_2` (XLEdgeLogin) and
+  `PortedFiles_AreByteIdenticalToXLEdge11_1_2` (XLEdgeMessageWindow.xaml/.cs) report them; no TwinSubstitution added.
+- **OISR-22874** (closing Excel with a core dialog open - e.g. the GL Accounts picker - showed "Thread was being aborted" and
+  Office then disabled the add-in, so the ribbon was gone on the next start): `AddinBeginShutdown` ran inside the dialog's
+  message loop, and `CoreHost.Shutdown` unloaded the core's AppDomain from a thread that still had core frames on its stack, so
+  the runtime aborted it. `CoreHost.Shutdown` now asks `IsBusy` first; when busy it still runs the core's `Shutdown` but skips
+  the unload (Excel is exiting). Shell change (needs an MSI). Test: `CoreHostTests.Shutdown_WhileTheCoreIsBusy_ShutsItDownWithoutUnloading`.
+  The report-runner 500 in the same ticket ("Could not find Entity for id: 123") is a server error.
+  Same-issue sweep (pattern: AppDomain unload while the current thread is inside a core call): `CoreHost.Reload` already refuses
+  while busy; GLSense's `AddinModule_AddinBeginShutdown` had the same bug and is fixed (GLSense CLAUDE.md §103); its
+  `ReloadAddinCore` can't run inside a core dialog. Nothing left open.
+- **OISR-22872** (QA on GLSense's Reload / Version History windows; the developer asked for every change to be ported here):
+  - Version dates are shown like the About window's date (`ReleaseDates.Display`, "dd-MMM-yyyy hh:mm tt", display only)
+    in the history grid, the loaded-version line, the Online list and details, and the offline/no-update messages.
+  - A 404 on the release index (`NoUpdatesHere`) or nothing new now logs "No updates found." and shows a "No Updates
+    Found" box instead of an error line.
+  - Version History has a read-only notes box for the selected version. The Source tooltips explain
+    Install/Online/Offline. The Remove tooltip and confirm say it deletes this computer's copy only (the server is not
+    changed, and Online lists it again).
+  - Ribbon ScreenTip "XLEdge Version History". SuperTips and `CoreHost` errors no longer say "core version".
+  - Tests updated: `OfflineReleaseScannerTests` (message text), `CoreHostTests` (error text), `RibbonParityTests` (ScreenTip).
+  - Targeted run 73/73. Shell change (needs an MSI).
 
 ## Pending stages
 
