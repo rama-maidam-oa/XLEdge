@@ -45,10 +45,18 @@ namespace XLEdge.Views
                 this.UpdateLayout();
 
                 double fitWidth = Math.Max(this.MinWidth, Math.Min(this.MaxWidth, this.ActualWidth));
-                double fitHeight = Math.Max(this.MinHeight, Math.Min(this.MaxHeight, this.ActualHeight));
 
+                // OISR-22777: measure the height again at the final width. The first pass measures
+                // with unlimited width, so its height could be for fewer wrapped lines than are shown
+                // (OK button cut off at 125% scaling), and a long message wrapped as if its scrollbar
+                // took no room (line ends hidden under the scrollbar).
                 this.SizeToContent = SizeToContent.Manual;
                 this.Width = fitWidth;
+                this.SizeToContent = SizeToContent.Height;
+                this.UpdateLayout();
+
+                double fitHeight = Math.Max(this.MinHeight, Math.Min(this.MaxHeight, this.ActualHeight));
+                this.SizeToContent = SizeToContent.Manual;
                 this.Height = fitHeight;
             }
             catch (Exception ex)
