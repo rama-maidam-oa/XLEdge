@@ -123,7 +123,7 @@ namespace XLEdge.Views
 
         private string LoadedStatusText(ReleaseRow loaded)
         {
-            if (loaded != null) return $"Currently loaded: version {VersionText.Display(loaded.Version)}, version date {loaded.ReleaseDate}.";
+            if (loaded != null) return $"Currently loaded: version {VersionText.Display(loaded.Version)}, version date {loaded.ReleaseDateDisplay}.";
             string version = _context.Version;
             // Not necessarily an error: the running release's folder may have been reconciled away.
             return string.IsNullOrWhiteSpace(version)
@@ -133,7 +133,10 @@ namespace XLEdge.Views
 
         private void GridReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            bool selected = GridReleases.SelectedItem is ReleaseRow;
+            var row = GridReleases.SelectedItem as ReleaseRow;
+            bool selected = row != null;
+            TxtSelectedNotes.Text = row == null ? "Select a version to see its notes."
+                : string.IsNullOrWhiteSpace(row.Notes) ? "No notes recorded for this version." : row.Notes;
             BtnLoad.IsEnabled = selected;
             BtnRemove.IsEnabled = selected;
         }
@@ -192,9 +195,10 @@ namespace XLEdge.Views
             }
 
             MessageBoxResult confirmation = MessageBox.Show(this,
-                $"Remove version {VersionText.Display(row.Version)} dated {row.ReleaseDate} from this machine?\n\n" +
-                "This permanently deletes its local files and history entry. " +
-                "The version can be loaded again later from its manifest.json and zip, if you still have them.",
+                $"Remove version {VersionText.Display(row.Version)} dated {row.ReleaseDateDisplay} from this computer?\n\n" +
+                "Its files and its entry in this list are deleted from this computer only. " +
+                "Nothing is removed from the server: if the server still offers this version, " +
+                "Reload Add-in > Online > Check for Updates lists it again and it can be downloaded again.",
                 "Remove Version", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             if (confirmation != MessageBoxResult.Yes) return;
 

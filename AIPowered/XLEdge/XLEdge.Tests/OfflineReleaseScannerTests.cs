@@ -38,7 +38,7 @@ namespace XLEdge.Tests
                 Assert.AreEqual(files.Zip, r.ZipPath);
                 Assert.AreEqual("11.1.3.0", r.Release.Version);
                 long kb = (long)Math.Round(new FileInfo(files.Zip).Length / 1024.0);
-                Assert.AreEqual($"Ready to reload: version 11.1.3, released 2026-10-28T10:00:00 ({kb} KB).", r.Message);
+                Assert.AreEqual($"Ready to reload: version 11.1.3, version date 28-Oct-2026 10:00 AM ({kb} KB).", r.Message);
             }
         }
 
@@ -86,7 +86,7 @@ namespace XLEdge.Tests
                 var r = OfflineReleaseScanner.Scan(t.Path, "11.1.2.0", Loaded);
                 Assert.IsFalse(r.Ok);
                 Assert.IsTrue(r.NotNewer);
-                Assert.AreEqual($"No updates available.\n\nYou already have the latest version: 11.1.2 (released {Loaded}).\n\nChecked release: 11.1.3 ({Loaded}).", r.Message);
+                Assert.AreEqual("No updates found.\n\nYou already have the latest version: 11.1.2 (version date 20-Oct-2026 10:00 AM).\n\nChecked version: 11.1.3 (20-Oct-2026 10:00 AM).", r.Message);
                 Assert.IsTrue(OfflineReleaseScanner.Scan(t.Path, "11.1.2.0", "not a date").Ok, "unparseable loaded date counts as older");
                 Assert.IsTrue(OfflineReleaseScanner.Scan(t.Path, null, null).Ok, "nothing loaded");
             }

@@ -191,7 +191,7 @@ namespace XLEdge.Views
             else if (result.NotNewer)
             {
                 LogStep("No newer version available.");
-                MessageBox.Show(this, result.Message, "No Updates Available", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, result.Message, "No Updates Found", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
@@ -243,7 +243,7 @@ namespace XLEdge.Views
             CancellationToken token = _onlineWork.Token;
             try
             {
-                LogStep("Asking the XLEdge server for its versions...");
+                LogStep("Checking the server for updates...");
                 IReadOnlyList<VersionInfo> releases;
                 using (IOnlineReleaseSource source = _sourceFactory(_login))
                     releases = await source.GetReleasesAsync(token);
@@ -259,13 +259,17 @@ namespace XLEdge.Views
                     }
                 });
                 int fresh = rows.Count(r => r.IsSelectable);
-                if (rows.Count == 0) LogWarning("The server has no XLEdge versions.");
-                else if (fresh == 0) LogStep($"The server has {rows.Count} version(s); you already have all of them.");
+                if (fresh == 0) ShowNoUpdates();
                 else LogSuccess($"The server has {rows.Count} version(s), {fresh} new. Tick the ones to download; the newest one ticked is loaded.");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 LogStep("Check cancelled.");
+            }
+            catch (OnlineReleaseException ex) when (ex.Message == OnlineReleaseClient.NoUpdatesHere)
+            {
+                // OISR-22872: no release list on the server (404) just means no updates - not an error.
+                ShowNoUpdates();
             }
             catch (OnlineReleaseException ex)
             {
@@ -279,6 +283,18 @@ namespace XLEdge.Views
             {
                 SetBusy(false);
             }
+        }
+
+        private void ShowNoUpdates()
+        {
+            LogStep("No updates found.");
+            OnUi(() =>
+            {
+                if (_isClosed) return;
+                MessageBox.Show(this,
+                    $"No updates found.\n\nYou already have the latest version: {VersionText.Display(_context.Version)} (version date {ReleaseDates.Display(_context.ReleaseDate)}).",
+                    "No Updates Found", MessageBoxButton.OK, MessageBoxImage.Information);
+            });
         }
 
         private void Row_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e) => UpdateReloadEnabled();
@@ -305,7 +321,7 @@ namespace XLEdge.Views
                     foreach (OnlineReleaseRow row in chosen)
                     {
                         if (token.IsCancellationRequested) break;
-                        LogStep($"Downloading {VersionText.Display(row.Version)} (released {row.ReleaseDate})...");
+                        LogStep($"Downloading {VersionText.Display(row.Version)} ({row.ReleaseDateDisplay})...");
                         try
                         {
                             (string manifest, byte[] zip) = await source.DownloadAsync(row.FolderName, token);

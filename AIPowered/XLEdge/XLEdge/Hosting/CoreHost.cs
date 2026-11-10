@@ -23,7 +23,7 @@ namespace XLEdge.Hosting
     {
         private const string StartTitle = "XLEdge";
         private const string ReloadTitle = "Reload XLEdge Add-in";
-        internal const string StuckUnloadMessage = "The previous XLEdge core version did not close within 5 seconds. XLEdge keeps working; restart Excel before installing or switching versions again.";
+        internal const string StuckUnloadMessage = "The previous XLEdge version did not close within 5 seconds. XLEdge keeps working; restart Excel before installing or switching versions again.";
 
         private readonly IXLEdgeContext _context;
         private readonly ICoreLoader _loader;
@@ -61,14 +61,14 @@ namespace XLEdge.Hosting
                 if (release == null)
                 {
                     Log(l => l.LogError("CoreHost.Start: no usable XLEdge core release."));
-                    _ui.ShowError("XLEdge could not find a usable core version. Use Reload Add-in to load one, or reinstall XLEdge. Check the XLEdge log for details.", StartTitle);
+                    _ui.ShowError("XLEdge could not find a usable version of the add-in. Use Reload Add-in to load one, or reinstall XLEdge. Check the XLEdge log for details.", StartTitle);
                     return false;
                 }
 
                 Exception failure = TryLoad(release);
                 if (failure != null)
                 {
-                    _ui.ShowError($"XLEdge could not load core version {VersionText.Display(release.Version)}: {failure.Message}", StartTitle);
+                    _ui.ShowError($"XLEdge could not load version {VersionText.Display(release.Version)}: {failure.Message}", StartTitle);
                     return false;
                 }
                 return true;
@@ -146,7 +146,7 @@ namespace XLEdge.Hosting
                     }
                     else if (release == null)
                     {
-                        error = "Reload failed - no usable XLEdge core version was found. The previous version has been closed; use Reload Add-in again.";
+                        error = "Reload failed - no usable XLEdge version was found. The previous version has been closed; use Reload Add-in again.";
                     }
                     else
                     {

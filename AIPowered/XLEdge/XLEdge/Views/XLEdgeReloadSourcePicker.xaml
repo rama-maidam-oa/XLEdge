@@ -331,7 +331,7 @@
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="VERSION" Binding="{Binding DisplayVersion, Mode=OneWay}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
-                                <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDate, Mode=OneWay}" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDateDisplay, Mode=OneWay}" SortMemberPath="ReleaseDate" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="NOTES" Binding="{Binding Notes, Mode=OneWay}" Width="*" MinWidth="180" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText, Mode=OneWay}" Width="140" MinWidth="140" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                             </DataGrid.Columns>
@@ -367,7 +367,7 @@
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Version:" Style="{StaticResource DetailLabel}"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,2" Text="{Binding DisplayVersion, Mode=OneWay}"/>
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Version Date:" Style="{StaticResource DetailLabel}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,2" Text="{Binding ReleaseDate, Mode=OneWay}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,2" Text="{Binding ReleaseDateDisplay, Mode=OneWay}"/>
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Status:" Style="{StaticResource DetailLabel}"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,2" Text="{Binding StatusText, Mode=OneWay}"/>
                             <TextBlock Grid.Row="3" Grid.Column="0" Text="Notes:" Style="{StaticResource DetailLabel}"/>

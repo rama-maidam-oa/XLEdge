@@ -74,12 +74,12 @@ namespace XLEdge.Views
             if (loaded != null && (candidate == null || candidate <= loaded))
             {
                 result.NotNewer = true;
-                result.Message = $"No updates available.\n\nYou already have the latest version: {VersionText.Display(loadedVersion)} (released {loadedReleaseDate}).\n\nChecked release: {VersionText.Display(release.Version)} ({release.ReleaseDate}).";
+                result.Message = $"No updates found.\n\nYou already have the latest version: {VersionText.Display(loadedVersion)} (version date {ReleaseDates.Display(loadedReleaseDate)}).\n\nChecked version: {VersionText.Display(release.Version)} ({ReleaseDates.Display(release.ReleaseDate)}).";
                 return result;
             }
 
             result.Ok = true;
-            result.Message = $"Ready to reload: version {VersionText.Display(release.Version)}, released {release.ReleaseDate} ({Math.Round(length / 1024.0):0} KB).";
+            result.Message = $"Ready to reload: version {VersionText.Display(release.Version)}, version date {ReleaseDates.Display(release.ReleaseDate)} ({Math.Round(length / 1024.0):0} KB).";
             return result;
         }
 
@@ -116,5 +116,13 @@ namespace XLEdge.Views
 
         public static DateTime? TryParse(string value) =>
             DateTime.TryParseExact(value?.Trim(), Formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : (DateTime?)null;
+
+        /// <summary>OISR-22872: a version date as the windows show it (like the About window's build date); display only.</summary>
+        public static string Display(string value)
+        {
+            DateTime? parsed = TryParse(value);
+            if (parsed == null) return value?.Trim() ?? string.Empty;
+            return parsed.Value.ToString(value.Trim().Length > 11 ? "dd-MMM-yyyy hh:mm tt" : "dd-MMM-yyyy", CultureInfo.InvariantCulture);
+        }
     }
 }

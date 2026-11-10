@@ -219,7 +219,7 @@ namespace XLEdge.Tests
             s.Catalog.StartRelease = null;
             Assert.IsFalse(s.Host.Start());
             Assert.IsNull(s.Host.Addin);
-            CollectionAssert.AreEqual(new[] { "XLEdge: XLEdge could not find a usable core version. Use Reload Add-in to load one, or reinstall XLEdge. Check the XLEdge log for details." }, s.Ui.Errors);
+            CollectionAssert.AreEqual(new[] { "XLEdge: XLEdge could not find a usable version of the add-in. Use Reload Add-in to load one, or reinstall XLEdge. Check the XLEdge log for details." }, s.Ui.Errors);
             Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")), "Reload must still work");
         }
 
@@ -233,7 +233,7 @@ namespace XLEdge.Tests
             Assert.IsNull(s.Context.ActiveFolderName);
             Assert.IsNull(s.Context.Version);
             CollectionAssert.DoesNotContain(s.R.Events, "Remember:vA");
-            Assert.AreEqual("XLEdge: XLEdge could not load core version ver-vA: bad core", s.Ui.Errors.Single());
+            Assert.AreEqual("XLEdge: XLEdge could not load version ver-vA: bad core", s.Ui.Errors.Single());
         }
 
         // ---- Reload ------------------------------------------------------------------------
@@ -319,7 +319,7 @@ namespace XLEdge.Tests
             s.Loader.UnloadResult = false;
             Assert.IsTrue(s.Host.Reload(() => Setup.Release("vB")), "the next core still loads");
             Assert.AreSame(s.Addins["vB"], s.Host.Addin);
-            CollectionAssert.AreEqual(new[] { "Reload XLEdge Add-in: The previous XLEdge core version did not close within 5 seconds. XLEdge keeps working; restart Excel before installing or switching versions again." }, s.Ui.Errors);
+            CollectionAssert.AreEqual(new[] { "Reload XLEdge Add-in: The previous XLEdge version did not close within 5 seconds. XLEdge keeps working; restart Excel before installing or switching versions again." }, s.Ui.Errors);
 
             s.Loader.UnloadResult = true;
             Assert.IsTrue(s.Host.Reload(() => Setup.Release("vA")));
@@ -416,7 +416,7 @@ namespace XLEdge.Tests
             Assert.IsFalse(s.Host.Reload(() => null));
             int closed = s.R.Events.IndexOf("ProgressClosed"), error = s.R.Events.IndexOf("Error");
             Assert.IsTrue(closed >= 0 && error > closed, string.Join(", ", s.R.Events));
-            Assert.AreEqual("Reload XLEdge Add-in: Reload failed - no usable XLEdge core version was found. The previous version has been closed; use Reload Add-in again.", s.Ui.Errors.Single());
+            Assert.AreEqual("Reload XLEdge Add-in: Reload failed - no usable XLEdge version was found. The previous version has been closed; use Reload Add-in again.", s.Ui.Errors.Single());
             Assert.IsNull(s.Host.Addin);
             Assert.IsNull(s.Context.ActiveFolderName);
         }

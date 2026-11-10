@@ -328,7 +328,7 @@ namespace XLEdge
             this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReload.ScreenTip = "Reload Add-in";
-            this.RibReload.SuperTip = "Load a new XLEdge core version from a folder without restarting Excel.";
+            this.RibReload.SuperTip = "Check for a newer XLEdge version - online from the server you are logged in to or from a folder on this computer - and load it without restarting Excel. No reinstall is needed.";
             this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
             // 
             // adxRibbonGroup7
@@ -361,9 +361,9 @@ namespace XLEdge
             this.RibVersionHistory.ImageList = this.ImageList_HotReload32;
             this.RibVersionHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibVersionHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibVersionHistory.ScreenTip = "Version History";
+            this.RibVersionHistory.ScreenTip = "XLEdge Version History";
             this.RibVersionHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
-            this.RibVersionHistory.SuperTip = "Browse every XLEdge core version installed on this machine, and load any of them without restarting Excel.";
+            this.RibVersionHistory.SuperTip = "See every XLEdge version installed or downloaded on this computer, with its date, source and notes. Load any of them, or remove one you no longer need, without restarting Excel.";
             this.RibVersionHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibVersionHistory_OnClick);
             // 
             // adxRibbonGroup8

@@ -13,11 +13,25 @@ namespace XLEdge.Views
         /// <summary>The version as shown (11.1.3, not 11.1.3.0).</summary>
         public string DisplayVersion => VersionText.Display(Version);
         public string ReleaseDate { get; set; }
+        public string ReleaseDateDisplay => ReleaseDates.Display(ReleaseDate);
         public string Source { get; set; }
+        public string SourceDescription => DescribeSource(Source);
         public string Notes { get; set; }
         public string FolderName { get; set; }
         public bool IsCurrentlyLoaded { get; set; }
         public int ContractVersion { get; set; }
+
+        /// <summary>OISR-22872: the Source cell tooltip explains where the version came from.</summary>
+        internal static string DescribeSource(string source)
+        {
+            switch (source?.Trim().ToLowerInvariant())
+            {
+                case "install": return "Install - came with the XLEdge installer and was set up automatically when Excel started.";
+                case "online": return "Online - downloaded from the server with Reload Add-in > Online.";
+                case "offline": return "Offline - loaded from a folder on this computer with Reload Add-in > Offline.";
+                default: return source ?? string.Empty;
+            }
+        }
     }
 
     internal static class ReleaseHistoryRows

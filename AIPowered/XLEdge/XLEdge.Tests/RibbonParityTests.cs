@@ -92,7 +92,7 @@ namespace XLEdge.Tests
                 string.Join(" | ", reload));
             var history = shell["RibVersionHistory"];
             CollectionAssert.IsSubsetOf(new[] { "Caption = \"Version History\"", "ImageList = this.ImageList_HotReload32", "Image = 34",
-                "Size = AddinExpress.MSO.ADXRibbonXControlSize.Large", "ScreenTip = \"Version History\"" }, history.ToArray(), string.Join(" | ", history));
+                "Size = AddinExpress.MSO.ADXRibbonXControlSize.Large", "ScreenTip = \"XLEdge Version History\"" }, history.ToArray(), string.Join(" | ", history));
 
             var ribbonFields = shell.Keys.Where(k => k.StartsWith("Rib", StringComparison.Ordinal) || k.StartsWith("adxRibbon", StringComparison.Ordinal) || k == "TabXLEdge");
             CollectionAssert.AreEquivalent(TodaysControls.Concat(new[] { "RibReload", "RibVersionHistory" }).ToArray(), ribbonFields.ToArray());
