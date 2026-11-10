@@ -2129,9 +2129,13 @@ namespace XLEdge
                             XLEdgeAppState.Instance.EdgePaneShown = false;
                         }
                     }
+
+                    return;
                 }
 
-                return;
+                // OISR-22869: an Excel window opened after login (e.g. a new workbook) has no pane yet.
+                // In 11.1.2 Add-in Express had already made one, so this toggle found it; here there is
+                // none, and Reports did nothing. Create and show the pane below instead.
             }
 
             try

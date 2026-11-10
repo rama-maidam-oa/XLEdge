@@ -248,6 +248,26 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void ShowHide_ActiveWindowWithoutAPane_ShowsANewPane()
+        {
+            // OISR-22869: a workbook opened after login has no pane yet; Reports must create one, not do nothing.
+            Win32Test.OnSta(() =>
+            {
+                using (var t = new TempFolder())
+                using (var instance = new InstanceServer())
+                using (var excel1 = NewPane())
+                using (var excel2 = NewPane())
+                using (var core = new LoadedCore(t, session: "{\"LoginUrl\":\"" + instance.Url + "\",\"LoginToken\":\"t\",\"IsLoginCompleted\":true}"))
+                {
+                    core.Addin.CreateTaskPaneContent(excel1.Handle);
+                    core.Ribbon.ActiveWindow = excel2.Handle;
+                    core.Addin.OnRibbonAction("RibEdgeShowHide", null);
+                    CollectionAssert.Contains(core.Ribbon.Calls, "ShowTaskPane", string.Join(" | ", core.Ribbon.Calls));
+                }
+            });
+        }
+
+        [TestMethod]
         public void Logout_LogsEveryPaneOut_HidesThem_AndTheNextCoreIsLoggedOut()
         {
             Win32Test.OnSta(() =>
