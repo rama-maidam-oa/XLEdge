@@ -212,7 +212,14 @@ namespace XLEdge.Hosting
         {
             _shutdownRequested = true;
             if (_busy) return;
-            UnloadCore(Addin, "CoreHost.Shutdown");
+
+            // OISR-22874: Excel can close while a core dialog is open (e.g. the GL Accounts picker); this then runs inside that
+            // dialog's message loop, and unloading the core's AppDomain from here aborts this thread. The ThreadAbortException
+            // reached Add-in Express and Office disabled the add-in. Excel is exiting, so the domain is left loaded in that case.
+            bool coreBusy = CoreIsBusy();
+            if (coreBusy)
+                Log(l => l.LogWarn("CoreHost.Shutdown: the core is busy (e.g. a dialog is open) - shutting it down without unloading it."));
+            UnloadCore(Addin, "CoreHost.Shutdown", unloadDomain: !coreBusy);
         }
 
         // ---- helpers -------------------------------------------------------------------
@@ -270,7 +277,7 @@ namespace XLEdge.Hosting
         }
 
         /// <summary>Shuts the core down and unloads it; false when the unload did not finish (or failed).</summary>
-        private bool UnloadCore(IXLEdgeAddin old, string caller)
+        private bool UnloadCore(IXLEdgeAddin old, string caller, bool unloadDomain = true)
         {
             Addin = null;
             if (old != null)
@@ -279,6 +286,11 @@ namespace XLEdge.Hosting
                 catch (Exception ex) { Log(l => l.LogError(caller + ": detaching the task panes failed.", ex.ToString())); }
                 try { old.Shutdown(); }
                 catch (Exception ex) { Log(l => l.LogError(caller + ": the core's Shutdown failed.", ex.ToString())); }
+            }
+            if (!unloadDomain)
+            {
+                ClearRelease();
+                return false;
             }
             bool unloaded;
             try { unloaded = _loader.Unload(_context); }

@@ -384,6 +384,19 @@ namespace XLEdge.Tests
         }
 
         [TestMethod]
+        public void Shutdown_WhileTheCoreIsBusy_ShutsItDownWithoutUnloading()
+        {
+            // OISR-22874: Excel closed while a core dialog was open; unloading from inside it aborted the thread.
+            var s = new Setup();
+            s.Host.Start();
+            s.Addins["vA"].Busy = true;
+            s.R.Events.Clear();
+            s.Host.Shutdown();
+            CollectionAssert.AreEqual(new[] { "Detach:vA", "Shutdown:vA" }, s.R.Events);
+            Assert.IsNull(s.Host.Addin);
+        }
+
+        [TestMethod]
         public void Reload_OpenWindowsDeclined_ChangesNothing()
         {
             var s = new Setup();
