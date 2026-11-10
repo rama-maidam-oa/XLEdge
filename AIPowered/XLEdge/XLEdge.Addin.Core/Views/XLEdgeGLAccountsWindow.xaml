@@ -106,6 +106,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -114,63 +115,57 @@
                                FontSize="12" Foreground="#6B7280" Margin="0,0,0,15" TextWrapping="Wrap"
                                VerticalAlignment="Center"/>
 
-                    <!-- Scrollable segment list -->
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="350">
+                    <!-- OISR-22130: the column headers sit outside the ScrollViewer so the scrollbar never covers them.
+                         The theme's ScrollViewer draws its scrollbar over the content (OISR-22777), so the header and
+                         the rows both keep an 18px right margin and stay aligned. -->
+                    <Border Grid.Row="1" Style="{StaticResource SegmentRowStyle}" Background="#E5E7EB" Margin="0,0,18,5">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                            <!-- Headers - with VerticalAlignment="Center" -->
-                            <Border Grid.Row="0" Style="{StaticResource SegmentRowStyle}" Background="#E5E7EB">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <TextBlock Grid.Column="0" Text="Segment Name" 
-                                               Style="{StaticResource SegmentHeaderStyle}" 
-                                               HorizontalAlignment="Left" Width="Auto" Margin="10,0,0,0"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="1" Text="Low" Style="{StaticResource SegmentHeaderStyle}"
-                                               VerticalAlignment="Center" Margin="10,0,0,0"/>
-                                    <TextBlock Grid.Column="2" Text="High" Style="{StaticResource SegmentHeaderStyle}"
-                                               VerticalAlignment="Center" Margin="10,0,0,0"/>
-                                </Grid>
-                            </Border>
-
-                            <!-- Dynamic segment rows - with proper alignment -->
-                            <ItemsControl Grid.Row="1" x:Name="SegmentItemsControl" Margin="0,5,0,0">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Style="{StaticResource SegmentRowStyle}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="100"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-
-                                                <TextBlock Grid.Column="0" Text="{Binding SegmentName}" 
-                                                           Style="{StaticResource SegmentLabelStyle}"
-                                                           VerticalAlignment="Center"/>
-                                                <TextBox Grid.Column="1" Text="{Binding Low, UpdateSourceTrigger=PropertyChanged}" 
-                                                         Style="{StaticResource SegmentTextBoxStyle}"
-                                                         VerticalContentAlignment="Center"
-                                                         Tag="{Binding SegmentName}"/>
-                                                <TextBox Grid.Column="2" Text="{Binding High, UpdateSourceTrigger=PropertyChanged}" 
-                                                         Style="{StaticResource SegmentTextBoxStyle}"
-                                                         VerticalContentAlignment="Center"
-                                                         Tag="{Binding SegmentName}"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <TextBlock Grid.Column="0" Text="Segment Name" 
+                                       Style="{StaticResource SegmentHeaderStyle}" 
+                                       HorizontalAlignment="Left" Width="Auto" Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="Low" Style="{StaticResource SegmentHeaderStyle}"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="High" Style="{StaticResource SegmentHeaderStyle}"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
                         </Grid>
+                    </Border>
+
+                    <!-- Scrollable segment rows -->
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" MaxHeight="350">
+                        <ItemsControl x:Name="SegmentItemsControl" Margin="0,0,18,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource SegmentRowStyle}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="100"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+    
+                                            <TextBlock Grid.Column="0" Text="{Binding SegmentName}" 
+                                                       Style="{StaticResource SegmentLabelStyle}"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="1" Text="{Binding Low, UpdateSourceTrigger=PropertyChanged}" 
+                                                     Style="{StaticResource SegmentTextBoxStyle}"
+                                                     VerticalContentAlignment="Center"
+                                                     Tag="{Binding SegmentName}"/>
+                                            <TextBox Grid.Column="2" Text="{Binding High, UpdateSourceTrigger=PropertyChanged}" 
+                                                     Style="{StaticResource SegmentTextBoxStyle}"
+                                                     VerticalContentAlignment="Center"
+                                                     Tag="{Binding SegmentName}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </ScrollViewer>
                 </Grid>
             </Border>
