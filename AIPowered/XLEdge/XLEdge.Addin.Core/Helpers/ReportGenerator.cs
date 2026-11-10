@@ -5178,6 +5178,14 @@ namespace XLEdge.Helpers
             string line;
             while ((line = reader.ReadLine()) != null)
             {
+                // OISR-22143: a quoted value can contain a line break (e.g. an ENAME typed with Enter).
+                // ReadLine splits it, which cut the record in two (lost columns + a junk row). An odd
+                // number of quotes means the record is still open, so keep the next line in it.
+                string next;
+                while (line.Count(c => c == '"') % 2 == 1 && (next = reader.ReadLine()) != null)
+                {
+                    line += "\n" + next;
+                }
                 yield return ParseCsvLine(line);
             }
         }
