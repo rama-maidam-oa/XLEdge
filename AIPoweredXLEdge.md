@@ -264,6 +264,12 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - Verified in Excel (Debug): a keyboard paste into J7 was undone (log "undid a change to J7"), J7 back to 591663.
   - Same-issue sweep (pattern: validation-only lock): the GL Accounts row's Value1 (`SetupGLSegmentValidation`) has the same
     paste gap - left open: the GL Accounts window writes that cell itself, so it needs a skip flag first. 11.1.2 not changed.
+- **OISR-22887** (every core window slow the first time, fast after; host windows not affected): the core AppDomain was
+  created with `LoaderOptimization.SingleDomain`, so .NET Framework/WPF assemblies loaded domain-bound there and were
+  JIT-compiled instead of using their native images; each new window type hit new WPF code. `AddinDomainLoader` now uses
+  `MultiDomainHost`: only GAC assemblies are shared; the core's own assemblies (release folder) still unload with the domain.
+  - Measured (fresh Excel, About): first open 2.16 s -> 0.63 s; warm opens 0.53 s either way. Version History (host) 0.65 s.
+  - Loader/CoreHost/CorePane tests 47/47. Host change (loader runs in the shell), needs an MSI.
 
 ## Pending stages
 

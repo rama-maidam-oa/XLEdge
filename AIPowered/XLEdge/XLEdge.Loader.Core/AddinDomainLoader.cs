@@ -56,9 +56,10 @@ namespace XLEdge.Loader.Core
                 throw new FileNotFoundException("XLEdge core not found: " + coreDll, coreDll);
             }
 
-            // SingleDomain: nothing is loaded domain-neutral, whatever the host process uses, so every assembly of the core
-            // domain really goes away when it is unloaded.
-            var setup = new AppDomainSetup { ApplicationBase = folder, ApplicationName = "XLEdgeCore", LoaderOptimization = LoaderOptimization.SingleDomain };
+            // MultiDomainHost (OISR-22887): only GAC assemblies (.NET Framework, WPF) are shared, so they use their native
+            // images; with SingleDomain they were JIT-compiled again here and every core window was slow the first time.
+            // The core's own assemblies (release folder, not in the GAC) still load into this domain and go away on unload.
+            var setup = new AppDomainSetup { ApplicationBase = folder, ApplicationName = "XLEdgeCore", LoaderOptimization = LoaderOptimization.MultiDomainHost };
             string config = coreDll + ".config";
             if (File.Exists(config)) setup.ConfigurationFile = config;
 
