@@ -253,6 +253,17 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - Ribbon ScreenTip "XLEdge Version History". SuperTips and `CoreHost` errors no longer say "core version".
   - Tests updated: `OfflineReleaseScannerTests` (message text), `CoreHostTests` (error text), `RibbonParityTests` (ScreenTip).
   - Targeted run 73/73. Shell change (needs an MSI).
+- **OISR-22129** follow-up (QA 09-Nov: copy/paste still changed the Responsibility Operator/Value1 on the Parameters Control
+  Sheet; 11.1.3 only, developer's call): the row's lock was data validation only (`SetupOracleRespIdValidation`), which stops
+  typing but not a paste, Delete or fill; `Locked` does nothing on an unprotected sheet. Run sends Value1 as `ORACLE_RESP_ID`.
+  - The shell now handles `SheetChange` and forwards it only for "Parameters Control Sheet" when the change reaches columns
+    I:K. `ParamsControlSheetBuilder.RevertResponsibilityEdit` undoes a change that reaches I:K of the ORACLE_RESP_ID row
+    (`Application.Undo` with events off) and shows "Responsibility edits are strictly prohibited". Skipped while
+    `ShowOrRebuild` writes the sheet. A script/macro write can't be undone: logged, and the message asks to recreate the sheet.
+  - Older cores log "no handler" for the new event. Shell change (needs an MSI).
+  - Verified in Excel (Debug): a keyboard paste into J7 was undone (log "undid a change to J7"), J7 back to 591663.
+  - Same-issue sweep (pattern: validation-only lock): the GL Accounts row's Value1 (`SetupGLSegmentValidation`) has the same
+    paste gap - left open: the GL Accounts window writes that cell itself, so it needs a skip flag first. 11.1.2 not changed.
 
 ## Pending stages
 

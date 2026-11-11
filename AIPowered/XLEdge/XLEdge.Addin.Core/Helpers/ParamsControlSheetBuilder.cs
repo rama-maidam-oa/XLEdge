@@ -24,8 +24,13 @@ namespace XLEdge.Helpers
         // Store display values reference for extra parameters
         private static Dictionary<string, string> _extraParamDisplayValues = new Dictionary<string, string>();
 
+        // OISR-22129: set while ShowOrRebuild writes the sheet (so XLEdge's own writes aren't undone) and while an edit is undone.
+        private static bool _building;
+        private static bool _reverting;
+
         public static void ShowOrRebuild()
         {
+            _building = true;
             try
             {
 
@@ -87,6 +92,94 @@ namespace XLEdge.Helpers
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, $"{nameof(ShowOrRebuild)}: Unexpected error");
+            }
+            finally
+            {
+                _building = false;
+            }
+        }
+
+        /// <summary>
+        /// OISR-22129: the Responsibility row's validation stops typing, but not a paste, Delete or fill. Undoes any change on
+        /// the Parameters Control Sheet that reaches Operator/Value1/Value2 (I:K) of the ORACLE_RESP_ID row; Run sends Value1
+        /// as the responsibility ID.
+        /// </summary>
+        internal static void RevertResponsibilityEdit(Excel.Worksheet sheet, Excel.Range target)
+        {
+            if (_building || _reverting || sheet == null || target == null) return;
+            Excel.Range locked = null, overlap = null;
+            try
+            {
+                if (!string.Equals(sheet.Name, ControlSheetName, StringComparison.OrdinalIgnoreCase)) return;
+                int row = FindResponsibilityRow(sheet);
+                if (row < 0) return;
+                Excel.Application app = sheet.Application;
+                locked = sheet.Range[sheet.Cells[row, 9], sheet.Cells[row, 11]];
+                overlap = app.Intersect(target, locked);
+                if (overlap == null) return;
+
+                _reverting = true;
+                bool undone = false;
+                bool events = app.EnableEvents;
+                app.EnableEvents = false;
+                try
+                {
+                    app.Undo();
+                    undone = true;
+                    LogUtility.LogWarn($"{nameof(RevertResponsibilityEdit)}: undid a change to {target.Address[false, false]} (Responsibility row {row}).");
+                }
+                catch (COMException ex)
+                {
+                    LogUtility.LogWarn($"{nameof(RevertResponsibilityEdit)}: could not undo the change to {target.Address[false, false]} - {ex.Message}");
+                }
+                finally
+                {
+                    app.EnableEvents = events;
+                }
+
+                MessageFunctions.XLEdgeMessage(
+                    undone
+                        ? "Responsibility edits are strictly prohibited." + Environment.NewLine + "The change has been undone."
+                        : "Responsibility edits are strictly prohibited." + Environment.NewLine + "The change could not be undone. Please recreate the Parameters Control Sheet.",
+                    System.Windows.Forms.MessageBoxIcon.Warning,
+                    System.Windows.Forms.MessageBoxButtons.OK);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, nameof(RevertResponsibilityEdit));
+            }
+            finally
+            {
+                _reverting = false;
+                if (overlap != null) Marshal.ReleaseComObject(overlap);
+                if (locked != null) Marshal.ReleaseComObject(locked);
+            }
+        }
+
+        /// <summary>The row whose Parameter Type (D) is extraParameters and Parameter Name (E) is ORACLE_RESP_ID; -1 if none.</summary>
+        private static int FindResponsibilityRow(Excel.Worksheet sheet)
+        {
+            Excel.Range last = null, block = null;
+            try
+            {
+                last = (Excel.Range)sheet.Cells[sheet.Rows.Count, 5];
+                int lastRow = last.End[Excel.XlDirection.xlUp].Row;
+                if (lastRow < 4) return -1;
+                block = sheet.Range[sheet.Cells[4, 4], sheet.Cells[lastRow, 5]];
+                if (!(block.Value2 is object[,] values)) return -1;
+                int r0 = values.GetLowerBound(0), c0 = values.GetLowerBound(1);
+                for (int r = r0; r <= values.GetUpperBound(0); r++)
+                {
+                    if (string.Equals(values[r, c0] as string, "extraParameters", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(values[r, c0 + 1] as string, "ORACLE_RESP_ID", StringComparison.OrdinalIgnoreCase))
+                        return 4 + r - r0;
+                }
+                return -1;
+            }
+            finally
+            {
+                if (block != null) Marshal.ReleaseComObject(block);
+                if (last != null) Marshal.ReleaseComObject(last);
             }
         }
 

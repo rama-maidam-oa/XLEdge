@@ -81,8 +81,8 @@ namespace XLEdge
         }
 
         /// <summary>
-        /// The names in a forwarded event's arguments, as the shell sends them: SheetSelectionChange {sheet, address, cell count,
-        /// workbook}, SheetActivate / SheetBeforeDelete {sheet, workbook}, SheetFollowHyperlink {sheet, cell, screen tip,
+        /// The names in a forwarded event's arguments, as the shell sends them: SheetSelectionChange and SheetChange {sheet,
+        /// address, cell count, workbook},SheetActivate / SheetBeforeDelete {sheet, workbook}, SheetFollowHyperlink {sheet, cell, screen tip,
         /// sub-address, text, workbook, shape (a hyperlink on a shape has no cell)}, WorkbookActivate {workbook}. New arguments are
         /// only ever appended, so a shell that sends fewer still works (a missing workbook means the active one). Null for an
         /// event the core does not handle.
@@ -93,7 +93,8 @@ namespace XLEdge
             string Arg(int index) => index < args.Length ? args[index] as string : null;
             switch (eventName)
             {
-                case "SheetSelectionChange": return new EventTarget { Sheet = Arg(0), Address = Arg(1), Workbook = Arg(3) };
+                case "SheetSelectionChange":
+                case "SheetChange": return new EventTarget { Sheet = Arg(0), Address = Arg(1), Workbook = Arg(3) };
                 case "SheetActivate":
                 case "SheetBeforeDelete": return new EventTarget { Sheet = Arg(0), Workbook = Arg(1) };
                 case "SheetFollowHyperlink": return new EventTarget { Sheet = Arg(0), Address = Arg(1), Workbook = Arg(5), Shape = Arg(6) };
@@ -120,6 +121,14 @@ namespace XLEdge
                     Excel.Worksheet sheet = Sheet(target.Sheet, target.Workbook);
                     Excel.Range range = Range(sheet, target.Address);
                     if (sheet != null && range != null) adxExcelAppEvents1_SheetSelectionChange(null, sheet, range);
+                    return;
+                }
+                case "SheetChange":
+                {
+                    // OISR-22129: the shell only sends changes on the Parameters Control Sheet in columns I:K.
+                    Excel.Worksheet sheet = Sheet(target.Sheet, target.Workbook);
+                    Excel.Range range = Range(sheet, target.Address);
+                    if (sheet != null && range != null) Helpers.ParamsControlSheetBuilder.RevertResponsibilityEdit(sheet, range);
                     return;
                 }
                 case "SheetActivate":

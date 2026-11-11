@@ -385,6 +385,37 @@ namespace XLEdge
             ForwardEvent("SheetSelectionChange", () => new object[] { SheetName(sheet), Address(target), CellCount(target), WorkbookName(sheet) });
         }
 
+        // OISR-22129: only edits on the Parameters Control Sheet that reach Operator/Value1/Value2 (columns I:K) go to the core,
+        // which undoes them on the Responsibility row; every other cell change in Excel stops here.
+        private void adxExcelAppEvents1_SheetChange(object sender, object sheet, object range)
+        {
+            var target = range as Excel.Range;
+            if (target == null || !string.Equals(SheetName(sheet), "Parameters Control Sheet", StringComparison.OrdinalIgnoreCase) || !TouchesColumnsIToK(target)) return;
+            ForwardEvent("SheetChange", () => new object[] { SheetName(sheet), Address(target), CellCount(target), WorkbookName(sheet) });
+        }
+
+        private static bool TouchesColumnsIToK(Excel.Range target)
+        {
+            Excel.Areas areas = null;
+            try
+            {
+                areas = target.Areas;
+                for (int i = 1; i <= areas.Count; i++)
+                {
+                    Excel.Range area = areas[i];
+                    try
+                    {
+                        int first = area.Column, last = first + area.Columns.Count - 1;
+                        if (first <= 11 && last >= 9) return true;
+                    }
+                    finally { Marshal.ReleaseComObject(area); }
+                }
+                return false;
+            }
+            catch (COMException) { return false; }
+            finally { if (areas != null) Marshal.ReleaseComObject(areas); }
+        }
+
         private void adxExcelAppEvents1_SheetActivate(object sender, object hostObj) =>
             ForwardEvent("SheetActivate", () => new object[] { SheetName(hostObj), WorkbookName(hostObj) });
 
@@ -433,6 +464,7 @@ namespace XLEdge
         {
             if (adxExcelAppEvents1 == null) return;
             adxExcelAppEvents1.SheetSelectionChange -= adxExcelAppEvents1_SheetSelectionChange;
+            adxExcelAppEvents1.SheetChange -= adxExcelAppEvents1_SheetChange;
             adxExcelAppEvents1.SheetActivate -= adxExcelAppEvents1_SheetActivate;
             adxExcelAppEvents1.WorkbookActivate -= adxExcelAppEvents1_WorkbookActivate;
             adxExcelAppEvents1.SheetFollowHyperlink -= adxExcelAppEvents1_SheetFollowHyperlink;
