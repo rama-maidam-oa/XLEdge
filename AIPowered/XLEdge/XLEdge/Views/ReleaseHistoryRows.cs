@@ -16,7 +16,6 @@ namespace XLEdge.Views
         public string ReleaseDateDisplay => ReleaseDates.Display(ReleaseDate);
         public string Source { get; set; }
         public string SourceDescription => DescribeSource(Source);
-        public string Notes { get; set; }
         public string FolderName { get; set; }
         public bool IsCurrentlyLoaded { get; set; }
         public int ContractVersion { get; set; }
@@ -52,7 +51,6 @@ namespace XLEdge.Views
                     Version = e.Version,
                     ReleaseDate = e.ReleaseDate,
                     Source = e.Source,
-                    Notes = e.Notes,
                     FolderName = e.FolderName,
                     ContractVersion = e.ContractVersion,
                     IsCurrentlyLoaded = !string.IsNullOrWhiteSpace(activeFolder)

@@ -26,7 +26,6 @@ namespace XLEdge.Tests
             CollectionAssert.AreEqual(new[] { "vC", "vB", "vA", "vX" }, rows.Select(r => r.FolderName).ToArray());
             CollectionAssert.AreEqual(new[] { false, true, false, false }, rows.Select(r => r.IsCurrentlyLoaded).ToArray());
             Assert.AreEqual("Online", rows[0].Source);
-            Assert.AreEqual("n-vC", rows[0].Notes);
         }
 
         [TestMethod]

@@ -135,8 +135,6 @@ namespace XLEdge.Views
         {
             var row = GridReleases.SelectedItem as ReleaseRow;
             bool selected = row != null;
-            TxtSelectedNotes.Text = row == null ? "Select a version to see its notes."
-                : string.IsNullOrWhiteSpace(row.Notes) ? "No notes recorded for this version." : row.Notes;
             BtnLoad.IsEnabled = selected;
             BtnRemove.IsEnabled = selected;
         }

@@ -253,6 +253,8 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - Ribbon ScreenTip "XLEdge Version History". SuperTips and `CoreHost` errors no longer say "core version".
   - Tests updated: `OfflineReleaseScannerTests` (message text), `CoreHostTests` (error text), `RibbonParityTests` (ScreenTip).
   - Targeted run 73/73. Shell change (needs an MSI).
+  - Follow-up (11-Nov-2026, developer): the NOTES column and the notes box were removed from Version History again
+    (GLSense too); `ReleaseRow.Notes` dropped. Notes stay in ReleaseHistory.json.
 - **OISR-22129** follow-up (QA 09-Nov: copy/paste still changed the Responsibility Operator/Value1 on the Parameters Control
   Sheet; 11.1.3 only, developer's call): the row's lock was data validation only (`SetupOracleRespIdValidation`), which stops
   typing but not a paste, Delete or fill; `Locked` does nothing on an unprotected sheet. Run sends Value1 as `ORACLE_RESP_ID`.
