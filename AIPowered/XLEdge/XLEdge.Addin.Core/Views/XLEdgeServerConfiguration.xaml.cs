@@ -338,7 +338,16 @@ namespace XLEdge.Views
 
         private void BtnGo_Click(object sender, RoutedEventArgs e)
         {
-            UrlInstance selectedInstance = dgInstances.SelectedItem as UrlInstance ?? urlInstances.FirstOrDefault(u => u.IsDefault);
+            // OISR-22914: fall back to the default only when nothing is selected - a selected blank row (or the
+            // grid's empty add-row, which is not a UrlInstance) warns instead of silently opening the default server.
+            object selectedItem = dgInstances.SelectedItem;
+            UrlInstance selectedInstance = selectedItem as UrlInstance ?? (selectedItem == null ? urlInstances.FirstOrDefault(u => u.IsDefault) : null);
+
+            if (selectedItem != null && string.IsNullOrWhiteSpace(selectedInstance?.Address))
+            {
+                UpdateStatus("Server address is empty for the selected row.", StatusMessageType.Warning);
+                return;
+            }
 
             if (selectedInstance == null)
             {
@@ -366,6 +375,14 @@ namespace XLEdge.Views
         {
             if (dgInstances.SelectedItem is UrlInstance selectedInstance)
             {
+                // OISR-22914: SetDefaultInstance changes the in-memory default before SaveConfiguration validates, so an
+                // incomplete row must be refused here or it becomes the (unsaved) default.
+                if (string.IsNullOrWhiteSpace(selectedInstance.Name) || string.IsNullOrWhiteSpace(selectedInstance.Address))
+                {
+                    UpdateStatus("Enter the Instance Name and URL Address before setting it as default.", StatusMessageType.Warning);
+                    return;
+                }
+
                 var currentPersistedDefault = urlInstances.FirstOrDefault(u => u.IsDefault);
 
                 if (currentPersistedDefault == selectedInstance &&
@@ -438,12 +455,7 @@ namespace XLEdge.Views
         {
             if (dgInstances.SelectedItem is UrlInstance selectedInstance)
             {
-                if (string.IsNullOrWhiteSpace(selectedInstance.Name) && string.IsNullOrWhiteSpace(selectedInstance.Address))
-                {
-                    UpdateStatus("Selected row is empty. Enter an Instance Name and URL Address, or select a different row to delete.", StatusMessageType.Warning);
-                    return;
-                }
-
+                // OISR-22914: a blank row can be deleted like any other (it was never written to disk).
                 string instanceName = string.IsNullOrWhiteSpace(selectedInstance.Name)
                                         ? "this instance"
                                         : $"'{selectedInstance.Name}'";
@@ -454,6 +466,8 @@ namespace XLEdge.Views
                     $"Are you sure you want to delete instance {instanceName}?",
                     yesAction: () =>
                     {
+                        // A just-added row may still be in the grid's AddNew transaction, where Remove throws.
+                        dgInstances.CommitEdit(DataGridEditingUnit.Row, true);
                         urlInstances.Remove(selectedInstance);
 
                         if (wasDefault && urlInstances.Any())
@@ -595,7 +609,6 @@ namespace XLEdge.Views
                 txtStatus.Text = message;
                 txtStatus.Style = (Style)FindResource(GetStatusStyleKey(messageType));
                 StatusBorder.Style = (Style)FindResource(GetStatusBorderStyleKey(messageType));
-                AdjustWindowWidthToContent();
             }));
         }
 
@@ -668,7 +681,10 @@ namespace XLEdge.Views
                 }
             }
 
+                // OISR-22914: blank rows (the grid's add-row committed with nothing typed) are never saved, so they
+                // must not survive in the session cache either - GetConfigurationSnapshots reads it before the XML.
             if (!File.Exists(xmlFilePath))
+                    .Where(instance => instance.HasAnyData)
             {
                 return new List<UrlInstanceSnapshot>();
             }

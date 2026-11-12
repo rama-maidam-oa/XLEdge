@@ -282,6 +282,19 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - Same-issue sweep (pattern: a checkbox column bound to selection state instead of the data it labels): no other
     `DataGridCheckBoxColumn` in the core binds `IsSelected`; the `Delete` re-sync workaround (`BtnDelete_Click`) now
     simply reloads a view that was already correct.
+- **OISR-22914** (Server Configuration: an empty instance could be kept and made default but not deleted; developer: blank
+  entries must not be kept, a blank row must be deletable, GO on a blank row warns): clicking into the grid's add-row
+  committed an empty `UrlInstance`; `UpdateCachedConfiguration` copied it into the static `CachedConfiguration`, which
+  `GetConfigurationSnapshots` reads before the XML, so it came back on every reopen in the session (never on disk:
+  `SaveConfiguration` rejects it). `SetDefaultInstance` moved the in-memory default to it before Save failed, and
+  `BtnDelete_Click` refused rows with no name and URL.
+  - `UpdateCachedConfiguration` skips rows with no name and no URL. Set as Default refuses a row missing either.
+    Delete accepts a blank row (same confirm; `CommitEdit(Row)` first, since Remove throws during AddNew).
+  - GO: falls back to the default only when nothing is selected; a selected row without a URL (or the add-row, which
+    is not a `UrlInstance` and used to fall through to the default) shows "Server address is empty for the selected row."
+  - 11.1.3 only; `XLEdgeServerConfiguration.xaml.cs` is now also a deliberate difference reported by the parity test.
+  - Same-issue sweep (pattern: placeholder/blank grid row treated as data): the other core grids are read-only lists
+    (GL Accounts, drilldown picker, About); nothing else adds rows.
 
 ## Pending stages
 
