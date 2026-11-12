@@ -644,26 +644,6 @@ namespace XLEdge.Views
             }
         }
 
-        private void AdjustWindowWidthToContent()
-        {
-            var content = Content as FrameworkElement;
-            if (content == null)
-            {
-                return;
-            }
-
-            UpdateLayout();
-            content.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-
-            double desiredWidth = content.DesiredSize.Width;
-            double clampedWidth = Math.Max(MinWidth, Math.Min(MaxWidth, desiredWidth));
-
-            if (!double.IsNaN(clampedWidth) && clampedWidth > 0)
-            {
-                Width = clampedWidth;
-            }
-        }
-
         private List<UrlInstanceSnapshot> GetConfigurationSnapshots()
         {
             lock (CachedConfigurationLock)
@@ -681,10 +661,7 @@ namespace XLEdge.Views
                 }
             }
 
-                // OISR-22914: blank rows (the grid's add-row committed with nothing typed) are never saved, so they
-                // must not survive in the session cache either - GetConfigurationSnapshots reads it before the XML.
             if (!File.Exists(xmlFilePath))
-                    .Where(instance => instance.HasAnyData)
             {
                 return new List<UrlInstanceSnapshot>();
             }
@@ -704,7 +681,10 @@ namespace XLEdge.Views
         {
             lock (CachedConfigurationLock)
             {
+                // OISR-22914: blank rows (the grid's add-row committed with nothing typed) are never saved, so they
+                // must not survive in the session cache either - GetConfigurationSnapshots reads it before the XML.
                 CachedConfiguration = urlInstances
+                    .Where(instance => instance.HasAnyData)
                     .Select(instance => new UrlInstanceSnapshot
                     {
                         Name = instance.Name,

@@ -295,6 +295,15 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - 11.1.3 only; `XLEdgeServerConfiguration.xaml.cs` is now also a deliberate difference reported by the parity test.
   - Same-issue sweep (pattern: placeholder/blank grid row treated as data): the other core grids are read-only lists
     (GL Accounts, drilldown picker, About); nothing else adds rows.
+- **OISR-22915** (Server Configuration window changed size on Delete / Save / GO): every `UpdateStatus` called
+  `AdjustWindowWidthToContent`, which measured the window at unlimited width (so the status text never wrapped) and set
+  `Width` to that, clamped to 850-900 - each message length gave a different width. Ported unchanged from 11.1.2 (Stage 2e).
+  The call and the method are removed; the window opens at a fixed `Width="850"` (what the short load message gave) and
+  the status text wraps in its `*` column. Manual resizing within 850-900 still works.
+  - 11.1.3 only; reported by the parity test with the 22913/22914 changes to the same view.
+  - Same-issue sweep (pattern: window width recomputed on every content/status change): `DpiAwareWindow.FitToAvailableWorkArea`
+    runs once on Loaded; `XLEdgeMessageWindow` fits once (`AutoFitOnce`); `XLEdgeDrilldownReports` sizes once from its list.
+    No other window resizes after it is shown.
 
 ## Pending stages
 
