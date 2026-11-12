@@ -272,6 +272,16 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   `MultiDomainHost`: only GAC assemblies are shared; the core's own assemblies (release folder) still unload with the domain.
   - Measured (fresh Excel, About): first open 2.16 s -> 0.63 s; warm opens 0.53 s either way. Version History (host) 0.65 s.
   - Loader/CoreHost/CorePane tests 47/47. Host change (loader runs in the shell), needs an MSI.
+- **OISR-22913** (Server Configuration: the Default tick moved to whichever row was clicked): the Default column was bound
+  to `UrlInstance.IsSelected`, which `DgInstances_SelectionChanged` sets on the clicked row. The saved default
+  (`IsDefault`, changed only by Set as Default) was never wrong; only the display was. The column now binds
+  `IsDefault` one-way (the cell is read-only: `IsHitTestVisible=False`, and `DgInstances_BeginningEdit` cancels edits).
+  `IsSelected` and the SelectionChanged loop are left in place, unused by the view. Core change only (no MSI).
+  - 11.1.3 only (developer's call): `PortedFiles_AreByteIdenticalToXLEdge11_1_2` reports `XLEdgeServerConfiguration.xaml`
+    as a deliberate difference; no TwinSubstitution added. 11.1.2 (`XLEdge\Views`) has the same binding, not changed.
+  - Same-issue sweep (pattern: a checkbox column bound to selection state instead of the data it labels): no other
+    `DataGridCheckBoxColumn` in the core binds `IsSelected`; the `Delete` re-sync workaround (`BtnDelete_Click`) now
+    simply reloads a view that was already correct.
 
 ## Pending stages
 
