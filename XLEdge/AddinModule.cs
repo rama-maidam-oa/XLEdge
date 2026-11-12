@@ -2611,22 +2611,43 @@ namespace XLEdge
                 return;
             }
 
-            if (screenTip.Contains("attachment|"))
+            bool isAttachment = screenTip.Contains("attachment|");
+            if (!isAttachment && !screenTip.Contains("drilldown|"))
             {
-                await HandleAttachmentDownloadAsync(hyperLink.ScreenTip);
                 return;
             }
 
-            if (!screenTip.Contains("drilldown|"))
+            // OISR-22766: an attachment cell can also be a drilldown column (its ATTACHMENT link replaces the
+            // DRILLDOWN one, one hyperlink per cell). Like the Orbit web grid, one click does both: the child
+            // report opens first (QA-agreed order), then the file downloads. Original-case ScreenTip keeps ids intact.
+            string attachmentScreenTip = isAttachment ? hyperLink.ScreenTip : null;
+            try
             {
-                return;
+                await HandleDrilldownClickAsync(dataSheet, hyperLink, tableObj, tableObjName, silent: isAttachment);
             }
+            finally
+            {
+                if (isAttachment)
+                {
+                    await HandleAttachmentDownloadAsync(attachmentScreenTip);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Opens the child report for a clicked drilldown cell, resolved from the stored report metadata by the
+        /// column header. <paramref name="silent"/> (attachment clicks) suppresses the instance-mismatch and
+        /// missing-metadata popups so attachment-only columns behave as before; columns without drilldowns are a no-op.
+        /// </summary>
+        private async Task HandleDrilldownClickAsync(Excel.Worksheet dataSheet, Excel.Hyperlink hyperLink, Excel.ListObject tableObj, string tableObjName, bool silent)
+        {
+            const string MethodName = "HandleDrilldownClickAsync";
 
             // Ported from AddinModule.vb's SheetFollowHyperlink: resolve the companion parameter sheet
             // (or the data sheet itself in same-sheet mode) and refuse to drill down if the report was
             // executed under a different logged-in XLEdge instance than the current login - reuses the
             // same IT5/IT1 helper the Refresh handlers already use (isChild is irrelevant here and discarded).
-            if (!TryResolveInstanceAndChildFlag(dataSheet, tableObj, tableObjName, out _, showMismatchMessage: true))
+            if (!TryResolveInstanceAndChildFlag(dataSheet, tableObj, tableObjName, out _, showMismatchMessage: !silent))
             {
                 return;
             }
@@ -2635,7 +2656,10 @@ namespace XLEdge
 
             if (!ReportGenerator.TryGetStoredReportXml(workbook, tableObjName, out _, out string metaJson, out string storedParamsJson))
             {
-                MessageFunctions.XLEdgeMessage("Reports metadata information missing. Please rerun the report to generate.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                if (!silent)
+                {
+                    MessageFunctions.XLEdgeMessage("Reports metadata information missing. Please rerun the report to generate.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                }
                 return;
             }
 
