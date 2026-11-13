@@ -19,17 +19,17 @@ try {
     $projectDir = $PSScriptRoot
     $outDir = Join-Path $projectDir "SetupFiles\$Configuration\Manifest"
     $coreDll = Join-Path $TargetDir 'XLEdge.Addin.Core.dll'
-    $contractsDll = Join-Path $TargetDir 'XLEdge.Contracts.dll'
 
     # Assembly version without loading (no file lock). Three parts (11.1.3), as GLSense's manifest writes it.
     $asmVersion = [Reflection.AssemblyName]::GetAssemblyName($coreDll).Version
     $version = '{0}.{1}.{2}' -f $asmVersion.Major, $asmVersion.Minor, $asmVersion.Build
 
-    # ContractInfo.Version is a constant: read it in a child process so this one never locks the DLL. The path goes
-    # through the environment, not the command text, so a quote or '$' in it cannot break or inject into the command.
-    $env:XLEDGE_CONTRACTS = $contractsDll
-    $contractVersion = [int](& powershell -NoProfile -Command '([Reflection.Assembly]::LoadFile($env:XLEDGE_CONTRACTS)).GetType(''XLEdge.Contracts.ContractInfo'').GetField(''Version'').GetRawConstantValue()')
-    if ($contractVersion -lt 1) { throw "Could not read XLEdge.Contracts.ContractInfo.Version from $contractsDll" }
+    # ContractInfo.Version is read as text from its source file. Loading the DLL via [Reflection.Assembly] in a child
+    # powershell got this script quarantined by Bitdefender (CMD:Heur.BZC.PZQ.Boxter.985, 30-Oct/06-Nov/13-Nov-2026).
+    $contractInfo = Join-Path (Split-Path -Parent $projectDir) 'XLEdge.Contracts\ContractInfo.cs'
+    $match = Select-String -LiteralPath $contractInfo -Pattern 'const\s+int\s+Version\s*=\s*(\d+)\s*;' | Select-Object -First 1
+    $contractVersion = if ($match) { [int]$match.Matches[0].Groups[1].Value } else { 0 }
+    if ($contractVersion -lt 1) { throw "Could not read XLEdge.Contracts.ContractInfo.Version from $contractInfo" }
 
     $releaseDate = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)
     # Same rule as ReleaseHistoryStore.BuildFolderName: characters invalid in file names become '-'.

@@ -136,6 +136,8 @@ namespace XLEdge.Tests
             Directory.CreateDirectory(project); Directory.CreateDirectory(build); Directory.CreateDirectory(bin);
             File.Copy(Path.Combine(TwinRoot, @"XLEdge.Addin.Core\post_build.ps1"), Path.Combine(project, "post_build.ps1"));
             File.Copy(SignScript, Path.Combine(build, "sign.ps1"));
+            Directory.CreateDirectory(t.Combine("XLEdge.Contracts"));
+            File.Copy(Path.Combine(TwinRoot, @"XLEdge.Contracts\ContractInfo.cs"), t.Combine(@"XLEdge.Contracts\ContractInfo.cs"));
             if (notes != null) File.WriteAllText(Path.Combine(project, "ReleaseNotes.txt"), notes);
             string coreBin = Path.Combine(TwinRoot, @"XLEdge.Addin.Core\bin\Debug");
             foreach (string dll in new[] { "XLEdge.Addin.Core.dll", "XLEdge.Contracts.dll" }) File.Copy(Path.Combine(coreBin, dll), Path.Combine(bin, dll));

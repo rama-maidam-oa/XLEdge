@@ -341,6 +341,14 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   `[TestCategory("Excel")]` tests run — the developer's call. After that, run them ×3 and their mutants.
 - Twin and today's XLEdge share assembly name / key / ProgId `XLEdge.AddinModule`: only one can be registered at a time.
 - adxregistrator needed the ADX DLLs copied into `bin\Debug` (dev-only step).
+- **Bitdefender quarantined `XLEdge.Addin.Core\post_build.ps1`** three times (30-Oct, 06-Nov, 13-Nov-2026;
+  `CMD:Heur.BZC.PZQ.Boxter.985`, records in `C:\Program Files\Bitdefender\Endpoint Security\Quarantine`), so it showed as
+  deleted in git. Cause, by elimination: its child `powershell -Command '[Reflection.Assembly]::LoadFile(...)'` that read
+  `ContractInfo.Version` (sign.ps1, run the same `-ExecutionPolicy Bypass -File` way, was never flagged). Fixed 13-Nov-2026:
+  the version is read as text from `XLEdge.Contracts\ContractInfo.cs`; `CorePackageTests` copies that file into its layout.
+  Build + 15 `CorePackageTests` passed, nothing quarantined. An IT exclusion for `D:\SQLLite_Test\` was also requested.
+  Same-issue sweep: no other `[Reflection.Assembly]::Load*`/`-EncodedCommand`/`IEX` in any build script under
+  `D:\SQLLite_Test`. If it happens again: `git checkout -- XLEdge.Addin.Core/post_build.ps1` and check the quarantine.
 - An untracked `.github/` folder (someone's Copilot instructions) exists in `<checkout>` — not created by this work, left alone.
 - **GLSense here:** `D:\SQLLite_Test\GLSense` (main checkout) is on **11.1.3**; 11.1.2 is the worktree
   `D:\SQLLite_Test\worktrees\GLSense-11.1.2`. MSBuild cannot build GLSense from this session (its strong-name key
