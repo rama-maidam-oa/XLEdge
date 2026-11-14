@@ -305,6 +305,75 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
     runs once on Loaded; `XLEdgeMessageWindow` fits once (`AutoFitOnce`); `XLEdgeDrilldownReports` sizes once from its list.
     No other window resizes after it is shown.
 
+### Reopened 13-Nov-2026 (QA) - second round, 14-Nov-2026
+- **OISR-22913 / 22914 / 22915 retest ran a pre-fix core.** QA's 13-Nov videos show messages that only the pre-fix code has
+  ("Selected row is empty...", "The selected instance has no URL address configured."); the shipped 12-Nov MSI
+  (`d18a24b158`, SHA256 59AC03...) contains the fixed core (checked by `msiexec /a` + strings in the DLL). VM (ExcelSmoke
+  `Tests\UpgradeCore-XLEdge.ps1`): 11-Nov MSI + Excel, uninstall, 12-Nov MSI -> the 12-Nov core loads (the uninstall
+  removes `AddinCore`, incl. `SelectedRelease.txt`). Installing over the 11-Nov MSI is refused (msiexec 1638, same
+  ProductCode), so QA must have uninstalled. Most likely QA reopened Excel while the previous `EXCEL.EXE` was still
+  running (it can linger 60-75 s, GLSense CLAUDE.md 71, or after a login, GLSense CLAUDE.md 111) - the new window then
+  runs in the old process with the old core. No code defect found for 22913/22915.
+- **OISR-22914** (QA: an empty instance should not be addable at all): clicking into the grid's add-row and leaving it
+  still committed a blank `UrlInstance` that stayed listed for that window session (not saved, deletable). New
+  `DgInstances_RowEditEnding`: a new row (`IEditableCollectionView.IsAddingNew`, it is `CurrentAddItem`) with neither a
+  name nor a URL is cancelled (`CancelEdit(Row)` + `CancelNew`) instead of added. The VM test showed that alone was not
+  enough: `CellEditEnding`'s "Instance Name is a mandatory field." cancelled the cell edit first, so the row commit never
+  ran and the blank row stayed. `CellEditEnding` now drops a still-blank new row (nothing typed) instead of showing that
+  error; a new row with partial data still gets the mandatory messages. Delete on the blank new row cancels the add
+  (Remove throws during AddNew). `LoadConfiguration` no longer lists a blank entry from `ORBIT_URLS.xml` (an older build
+  could have written one). Existing rows are never touched.
+  - Same-issue sweep (pattern: blank add-row committed): the other core grids are read-only (see 22914 above).
+- **OISR-22777** (QA01, 125%: the broadcast popup's bottom and OK button below the taskbar; the size was right): WPF's
+  `CenterOwner` placed `XLEdgeMessageWindow` for its XAML size (340x200), then `AutoFitOnce` grew it right and down
+  (only Width/Height set) and `DisableAutoSizing` turned off `DpiAwareWindow`'s re-centering and work-area clamp. Now
+  `AutoFitOnce` caps `MaxHeight` at the work area of Excel's monitor and, after fitting, centers the window over Excel
+  inside that work area (Win32 `MonitorFromWindow`/`GetMonitorInfo`; `System.Windows.Forms.Screen` was tried first and
+  left SystemEvents' hidden `.NET-BroadcastEventWindow` alive after the core unloaded - caught by
+  `CoreWindowsTests.Windows_OpenFromTheCore_AreListed_AndNothingSurvivesTheUnload`). A minimized Excel (rect at
+  -32000) centers on the work area instead. Applies to every XLEdge message.
+- **OISR-22915** (developer, 14-Nov: a wrapped status made the footer buttons taller): the status text and the buttons
+  shared one footer card, so a two-line status grew the card and stretched the buttons. They are now two cards in the
+  same row: the status card (`*`) grows with its text; the buttons card is `Auto`, `VerticalAlignment=Top`, own height.
+  Layout only (`XLEdgeServerConfiguration.xaml`). Commit `4f2875a`.
+  - Same-issue sweep (pattern: wrapping status sharing a card with buttons): GLSense's Server Configuration status is a
+    single non-wrapping line; no other XLEdge window has a wrapping status beside buttons.
+- VM (ExcelSmoke `Tests\Offline-XLEdge.ps1`, no login, Debug build 14-Nov 02:06): 22913 tick stays on the default, 22914
+  no blank row after leaving the add-row, 22915 width 850 through Save / Delete->No / Set as Default, 22777 message
+  centered on Excel (dx=0, dy=0) inside the work area - all pass. Login-dependent checks (22129 Control Sheet, 22937
+  report run, 22777 with real broadcast messages) wait for QA02 (GLSense CLAUDE.md 111).
+  - Same-issue sweep (pattern: window resized after placement with re-centering disabled): only `XLEdgeMessageWindow`
+    sets `DisableAutoSizing`. GLSense's message window re-centers after resizing (GLSense CLAUDE.md 33).
+- **OISR-22129** (QA 13-Nov: the "Responsibility edits are strictly prohibited" message shown ~8 times; video: an
+  earlier, unrelated edit in I14 was undone too): `RevertResponsibilityEdit` called `Application.Undo` on every Change
+  that touched I:K of the ORACLE_RESP_ID row without checking the values changed. Excel raises Change for J7 after its
+  validation box is cancelled although nothing changed, so each Undo removed the next entry on Excel's undo stack (the
+  user's other edits) and showed the message. Now `CreateControlSheet` remembers the row's I:K values in hidden sheet
+  Names `XLEdge_RespLock_I/J/K` (`n:`/`s:`/`e:` = number/text/empty; they survive Reload and save); a Change with the
+  values unchanged does nothing (no Undo, no message). A real change is that edit, so `Undo` reverts all of it (a paste
+  over A:K too, and the validation it replaced); if the row still differs, the remembered values are written back (text
+  with `NumberFormat "@"`, as the sheet is built, so a numeric-looking ID stays text) and I:K re-locked. One message per
+  real edit. A sheet built by an older version (no Names) behaves as before (Undo).
+  - Same-issue sweep (pattern: `Application.Undo` as a revert): `RevertResponsibilityEdit` was the only caller and the
+    only SheetChange consumer in XLEdge; GLSense has none.
+- **OISR-22937** (ribbon listed only some drilldown columns; not a regression - 11.1.2 and VB do the same): `UpdateTabLabel`
+  looked only at the table's first data row, and links are added only to non-empty cells, so a column whose first value
+  is blank was left out. It now asks each column of the whole data body for its links (one COM call per column); the
+  caption is cut at 1000 characters with "..." (`CapRibbonCaption`, Office labels hold 1024).
+  - Same-issue sweep (pattern: first data row taken as representative): `ReportGenerator.CaptureFirstRowFormulas` and the
+    RefreshSync clean-up read the first row for table formula columns, which fill the whole column - correct there.
+- **OISR-22887** (QA: still slow): measured in the VM (ExcelSmoke `Tests\Perf-XLEdge.ps1`, Debug build, no login):
+  Server Configuration first open ~1.2 s, second ~0.04 s; About and Version History ~0.03-0.07 s. The ~1.2 s is WPF's
+  one-time start-up in the core AppDomain (the first core window of a session). `AddinEntry.StartWpfUi` now posts
+  `WarmUpWindows` at `ApplicationIdle`: builds a never-shown `XLEdgeMessageWindow` with a `DataGrid`, measures, closes.
+  First Server Configuration open is now ~0.34 s. Not measured (needs a login): login page, report open/refresh,
+  Reload - mostly server and WebView2 time. Left as is by decision: the strict online revocation check on each HTTPS
+  call (`StrictCertificateValidator`).
+  - Same-issue sweep: GLSense has no such first-window cost (checked for the 11-Nov fix).
+- Targeted tests (CorePortParityTests, CoreHandlersTests, CoreHandlersExcelTests, CoreWindowsTests): same 4 failures as
+  before these changes (the 3 known 11.1.2-parity tests, `UpdateTabLabel` now also listed, and
+  `Broadcast_ShowsTheInstancesMessages_AsInXLEdge11_1_2`); 7 Excel tests skipped (Inconclusive on this machine).
+
 ## Pending stages
 
 - **3** — remaining pane/login items not covered by 2e, if the Excel check finds any (spec §5 phase 3 was pulled into 2e).
