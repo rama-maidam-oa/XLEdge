@@ -640,6 +640,22 @@ namespace XLEdge
             }
         }
 
+        // OISR-22129: the Responsibility row's validation stops typing but not a paste, Delete or fill; RevertResponsibilityEdit
+        // undoes a change that reaches I:K of that row on the Parameters Control Sheet (it checks the sheet and row itself).
+        private void adxExcelAppEvents1_SheetChange(object sender, object sheet, object range)
+        {
+            try
+            {
+                if (sheet is Excel.Worksheet ws && range is Excel.Range target &&
+                    string.Equals(ws.Name, "Parameters Control Sheet", StringComparison.OrdinalIgnoreCase))
+                    ParamsControlSheetBuilder.RevertResponsibilityEdit(ws, target);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "SheetChange - Parameters Control Sheet");
+            }
+        }
+
         private void adxExcelAppEvents1_SheetSelectionChange(object sender, object sheet, object range)
         {
             if (!XLEdgeAppState.Instance.IsLoginCompleted)
@@ -1888,6 +1904,7 @@ namespace XLEdge
                 }
 
                 adxExcelAppEvents1.SheetSelectionChange -= adxExcelAppEvents1_SheetSelectionChange;
+                adxExcelAppEvents1.SheetChange -= adxExcelAppEvents1_SheetChange;
                 adxExcelAppEvents1.SheetActivate -= adxExcelAppEvents1_SheetActivate;
                 adxExcelAppEvents1.WorkbookActivate -= adxExcelAppEvents1_WorkbookActivate;
                 adxExcelAppEvents1.SheetFollowHyperlink -= adxExcelAppEvents1_SheetFollowHyperlink;
