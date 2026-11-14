@@ -245,10 +245,35 @@ namespace XLEdge.Addin.Core
             {
                 WpfUiBootstrapper.Init(XLEdgeAppConstants.GLAccentHex, XLEdgeAppConstants.GLTheme);
                 WpfUiBootstrapper.PreloadResources();
+
+                // OISR-22887: the first core window of a session took ~1.2 s longer than later ones (VM, 14-Nov): WPF's
+                // one-time start-up in this AppDomain (JIT, the shared window base, icons, the DataGrid template). Do it
+                // once in the background when Excel is idle, so the first window the user opens is as fast as the rest.
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(WarmUpWindows), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             }
             catch (Exception ex)
             {
                 Log(ex, "AddinEntry.Initialize (WPF-UI)");
+            }
+        }
+
+        /// <summary>OISR-22887: builds (never shows) a message window and a DataGrid, then discards them.</summary>
+        private void WarmUpWindows()
+        {
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var window = new XLEdge.Views.XLEdgeMessageWindow(string.Empty, System.Windows.Forms.MessageBoxIcon.Information);
+                var grid = new System.Windows.Controls.DataGrid { Width = 200, Height = 100 };
+                window.Content = grid;
+                window.Measure(new System.Windows.Size(400, 300));
+                window.Arrange(new System.Windows.Rect(0, 0, 400, 300));
+                window.Close();
+                Logger?.LogDebug($"AddinEntry: windows warmed up in {sw.ElapsedMilliseconds} ms.");
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug($"AddinEntry: window warm-up skipped - {ex.Message}");
             }
         }
 
