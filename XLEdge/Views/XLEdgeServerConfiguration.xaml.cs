@@ -95,7 +95,8 @@ namespace XLEdge.Views
                 var snapshots = GetConfigurationSnapshots();
                 urlInstances.Clear();
 
-                foreach (var snapshot in snapshots)
+                // OISR-22914: never list a blank entry (no name and no URL), e.g. one an older build left in the file.
+                foreach (var snapshot in snapshots.Where(s => !string.IsNullOrWhiteSpace(s.Name) || !string.IsNullOrWhiteSpace(s.Address)))
                 {
                     var instance = new UrlInstance
                     {
@@ -318,6 +319,25 @@ namespace XLEdge.Views
             }
         }
 
+        // OISR-22914 (13-Nov): clicking into the empty add-row and leaving it committed a blank instance that stayed listed
+        // for the rest of the window session. A new row with neither a name nor a URL is now discarded instead of added.
+        private void DgInstances_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
+        {
+            if (e.EditAction != DataGridEditAction.Commit || !(e.Row.Item is UrlInstance instance) || instance.HasAnyData) return;
+            if (!(dgInstances.Items is System.ComponentModel.IEditableCollectionView view) || !view.IsAddingNew || view.CurrentAddItem != instance) return;
+
+            e.Cancel = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (view.IsAddingNew && view.CurrentAddItem == instance)
+                {
+                    dgInstances.CancelEdit(DataGridEditingUnit.Row);
+                    if (view.IsAddingNew) view.CancelNew();
+                }
+                instance.PropertyChanged -= UrlInstance_PropertyChanged;
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
         private void DgInstances_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (dgInstances.SelectedItem is UrlInstance selectedInstance)
@@ -338,7 +358,16 @@ namespace XLEdge.Views
 
         private void BtnGo_Click(object sender, RoutedEventArgs e)
         {
-            UrlInstance selectedInstance = dgInstances.SelectedItem as UrlInstance ?? urlInstances.FirstOrDefault(u => u.IsDefault);
+            // OISR-22914: fall back to the default only when nothing is selected - a selected blank row (or the
+            // grid's empty add-row, which is not a UrlInstance) warns instead of silently opening the default server.
+            object selectedItem = dgInstances.SelectedItem;
+            UrlInstance selectedInstance = selectedItem as UrlInstance ?? (selectedItem == null ? urlInstances.FirstOrDefault(u => u.IsDefault) : null);
+
+            if (selectedItem != null && string.IsNullOrWhiteSpace(selectedInstance?.Address))
+            {
+                UpdateStatus("Server address is empty for the selected row.", StatusMessageType.Warning);
+                return;
+            }
 
             if (selectedInstance == null)
             {
@@ -366,6 +395,14 @@ namespace XLEdge.Views
         {
             if (dgInstances.SelectedItem is UrlInstance selectedInstance)
             {
+                // OISR-22914: SetDefaultInstance changes the in-memory default before SaveConfiguration validates, so an
+                // incomplete row must be refused here or it becomes the (unsaved) default.
+                if (string.IsNullOrWhiteSpace(selectedInstance.Name) || string.IsNullOrWhiteSpace(selectedInstance.Address))
+                {
+                    UpdateStatus("Enter the Instance Name and URL Address before setting it as default.", StatusMessageType.Warning);
+                    return;
+                }
+
                 var currentPersistedDefault = urlInstances.FirstOrDefault(u => u.IsDefault);
 
                 if (currentPersistedDefault == selectedInstance &&
@@ -438,12 +475,7 @@ namespace XLEdge.Views
         {
             if (dgInstances.SelectedItem is UrlInstance selectedInstance)
             {
-                if (string.IsNullOrWhiteSpace(selectedInstance.Name) && string.IsNullOrWhiteSpace(selectedInstance.Address))
-                {
-                    UpdateStatus("Selected row is empty. Enter an Instance Name and URL Address, or select a different row to delete.", StatusMessageType.Warning);
-                    return;
-                }
-
+                // OISR-22914: a blank row can be deleted like any other (it was never written to disk).
                 string instanceName = string.IsNullOrWhiteSpace(selectedInstance.Name)
                                         ? "this instance"
                                         : $"'{selectedInstance.Name}'";
@@ -454,6 +486,19 @@ namespace XLEdge.Views
                     $"Are you sure you want to delete instance {instanceName}?",
                     yesAction: () =>
                     {
+                        // OISR-22914: a blank new row can't be committed any more (DgInstances_RowEditEnding), so it is
+                        // still being added: cancel the add instead of removing it (Remove throws during AddNew).
+                        if (dgInstances.Items is IEditableCollectionView adding && adding.IsAddingNew && adding.CurrentAddItem == selectedInstance)
+                        {
+                            dgInstances.CancelEdit(DataGridEditingUnit.Row);
+                            if (adding.IsAddingNew) adding.CancelNew();
+                            UpdateStatus("Instance deleted.", StatusMessageType.Info);
+                            ResetRibbonIfLoggedOut();
+                            return;
+                        }
+
+                        // A just-added row may still be in the grid's AddNew transaction, where Remove throws.
+                        dgInstances.CommitEdit(DataGridEditingUnit.Row, true);
                         urlInstances.Remove(selectedInstance);
 
                         if (wasDefault && urlInstances.Any())
@@ -523,6 +568,23 @@ namespace XLEdge.Views
             if (e.EditAction == DataGridEditAction.Commit)
             {
                 var column = e.Column.Header.ToString();
+
+                // OISR-22914: leaving the empty add-row (nothing typed) is not an error - drop the new row. The mandatory
+                // message below cancelled the cell edit, which kept the blank row in the grid and never reached RowEditEnding.
+                if (e.Row.Item is UrlInstance pending && !pending.HasAnyData && e.EditingElement is TextBox pendingBox &&
+                    string.IsNullOrWhiteSpace(pendingBox.Text) &&
+                    dgInstances.Items is IEditableCollectionView adding && adding.IsAddingNew && adding.CurrentAddItem == pending)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (adding.IsAddingNew && adding.CurrentAddItem == pending)
+                        {
+                            dgInstances.CancelEdit(DataGridEditingUnit.Row);
+                            if (adding.IsAddingNew) adding.CancelNew();
+                        }
+                    }), System.Windows.Threading.DispatcherPriority.Background);
+                    return;
+                }
 
                 if (column == "Instance Name" && e.EditingElement is TextBox textBox)
                 {
@@ -595,7 +657,6 @@ namespace XLEdge.Views
                 txtStatus.Text = message;
                 txtStatus.Style = (Style)FindResource(GetStatusStyleKey(messageType));
                 StatusBorder.Style = (Style)FindResource(GetStatusBorderStyleKey(messageType));
-                AdjustWindowWidthToContent();
             }));
         }
 
@@ -688,7 +749,10 @@ namespace XLEdge.Views
         {
             lock (CachedConfigurationLock)
             {
+                // OISR-22914: blank rows (the grid's add-row committed with nothing typed) are never saved, so they
+                // must not survive in the session cache either - GetConfigurationSnapshots reads it before the XML.
                 CachedConfiguration = urlInstances
+                    .Where(instance => instance.HasAnyData)
                     .Select(instance => new UrlInstanceSnapshot
                     {
                         Name = instance.Name,

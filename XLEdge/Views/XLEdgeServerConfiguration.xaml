@@ -69,6 +69,7 @@
                           ScrollViewer.VerticalScrollBarVisibility="Auto"
                           BeginningEdit="DgInstances_BeginningEdit"
                           CellEditEnding="DgInstances_CellEditEnding"
+                          RowEditEnding="DgInstances_RowEditEnding"
                           InitializingNewItem="DgInstances_InitializingNewItem"
                           SelectionChanged="DgInstances_SelectionChanged">
                     <DataGrid.ColumnHeaderStyle>
