@@ -229,7 +229,8 @@
                             </DataGridTextColumn.EditingElementStyle>
                         </DataGridTextColumn>
                         <!-- Default Column with CheckBox -->
-                        <DataGridCheckBoxColumn Header="Default" Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.8*">
+                        <!-- OISR-22913: shows the saved default (IsDefault), not the selected row; changed only via 'Set as Default' -->
+                        <DataGridCheckBoxColumn Header="Default" Binding="{Binding IsDefault, Mode=OneWay}" Width="0.8*">
                             <DataGridCheckBoxColumn.ElementStyle>
                                 <Style TargetType="CheckBox">
                                     <Setter Property="HorizontalAlignment" Value="Center"/>
