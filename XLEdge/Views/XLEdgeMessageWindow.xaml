@@ -119,7 +119,10 @@
                      algorithm) permanently inside this window's 600px MaxHeight budget. -->
                 <ScrollViewer Grid.Row="0" Margin="0,0,0,15" MaxHeight="380"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
-                    <Grid>
+                    <!-- OISR-22777: this ScrollViewer's template draws the scrollbar over the content
+                         (the viewport is the full width), so long lines were hidden under it. The right
+                         margin keeps the text clear of the scrollbar. -->
+                    <Grid Margin="0,0,18,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>

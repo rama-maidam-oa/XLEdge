@@ -41,15 +41,32 @@ namespace XLEdge.Views
 
             try
             {
+                Rect work = OwnerWorkAreaDip(out Point ownerCenter);
+                this.MaxHeight = Math.Min(this.MaxHeight, work.Height);   // too tall for the screen: the text scrolls
+
                 this.SizeToContent = SizeToContent.WidthAndHeight;
                 this.UpdateLayout();
 
                 double fitWidth = Math.Max(this.MinWidth, Math.Min(this.MaxWidth, this.ActualWidth));
-                double fitHeight = Math.Max(this.MinHeight, Math.Min(this.MaxHeight, this.ActualHeight));
 
+                // OISR-22777: measure the height again at the final width. The first pass measures
+                // with unlimited width, so its height could be for fewer wrapped lines than are shown
+                // (OK button cut off at 125% scaling), and a long message wrapped as if its scrollbar
+                // took no room (line ends hidden under the scrollbar).
                 this.SizeToContent = SizeToContent.Manual;
                 this.Width = fitWidth;
+                this.SizeToContent = SizeToContent.Height;
+                this.UpdateLayout();
+
+                double fitHeight = Math.Max(this.MinHeight, Math.Min(this.MaxHeight, this.ActualHeight));
+                this.SizeToContent = SizeToContent.Manual;
                 this.Height = fitHeight;
+
+                // OISR-22777 (13-Nov): CenterOwner placed the window for its XAML size (340x200) and the
+                // fit above grew it right and down from that corner, so a tall message ran below the
+                // taskbar. Center it again at its final size, inside the work area of Excel's monitor.
+                this.Left = Math.Max(work.Left, Math.Min(ownerCenter.X - fitWidth / 2, work.Right - fitWidth));
+                this.Top = Math.Max(work.Top, Math.Min(ownerCenter.Y - fitHeight / 2, work.Bottom - fitHeight));
             }
             catch (Exception ex)
             {
@@ -57,6 +74,49 @@ namespace XLEdge.Views
                 this.SizeToContent = SizeToContent.Manual;
             }
         }
+
+        /// <summary>
+        /// Work area of the monitor showing the owner (Excel), in this window's DIPs, and the owner's center
+        /// (the work area's center when there is no owner).
+        /// </summary>
+        private Rect OwnerWorkAreaDip(out Point ownerCenter)
+        {
+            // Win32 rather than System.Windows.Forms.Screen: Screen starts SystemEvents' hidden broadcast window, which
+            // would outlive the core's AppDomain on Reload Add-in.
+            IntPtr owner = new System.Windows.Interop.WindowInteropHelper(this).Owner;
+            IntPtr hwnd = owner != IntPtr.Zero ? owner : new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            var mi = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(MONITORINFO)) };
+            Matrix toDip = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+            Rect work = GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref mi)
+                ? new Rect(toDip.Transform(new Point(mi.rcWork.Left, mi.rcWork.Top)), toDip.Transform(new Point(mi.rcWork.Right, mi.rcWork.Bottom)))
+                : SystemParameters.WorkArea;
+
+            ownerCenter = new Point(work.Left + work.Width / 2, work.Top + work.Height / 2);
+            // A minimized Excel reports about (-32000,-32000): keep the work-area center then (GLSense CLAUDE.md 105).
+            if (owner != IntPtr.Zero && !IsIconic(owner) && GetWindowRect(owner, out RECT r) && r.Right > r.Left && r.Left > -30000)
+                ownerCenter = toDip.Transform(new Point((r.Left + r.Right) / 2.0, (r.Top + r.Bottom) / 2.0));
+            return work;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO info);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
         private void HeaderPanel_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ButtonState == MouseButtonState.Pressed)
