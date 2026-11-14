@@ -5,7 +5,7 @@
                       xmlns:conv="clr-namespace:XLEdge.Converters"
 					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
 					  xmlns:local="clr-namespace:XLEdge.Views" WindowStyle="None" WindowStartupLocation="CenterScreen"
-					  SizeToContent="Manual" MinWidth="850" MaxWidth="900" MinHeight="500" MaxHeight="650" ResizeMode="CanResize"
+					  SizeToContent="Manual" Width="850" MinWidth="850" MaxWidth="900" MinHeight="500" MaxHeight="650" ResizeMode="CanResize"
 					  Background="White" ShowInTaskbar="False"
                       Loaded="XLEdgeServerConfiguration_Loaded">
     <utils:DpiAwareWindow.Resources>
@@ -287,19 +287,21 @@
                 </DataGrid>
             </Border>
 
-            <!-- ================= Action Buttons Section ================= -->
-            <Border Grid.Row="2" Style="{StaticResource CompactBorderStyle}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+            <!-- ================= Status + Action Buttons (separate cards: a wrapping status never resizes the buttons) ================= -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-                    <Border x:Name="StatusBorder" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Stretch" Margin="0,0,24,0" Padding="0">
+                <Border Grid.Column="0" Style="{StaticResource CompactBorderStyle}" Margin="0,0,8,8">
+                    <Border x:Name="StatusBorder" VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="0">
                         <TextBlock x:Name="txtStatus" VerticalAlignment="Center" TextWrapping="Wrap"/>
                     </Border>
+                </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Border Grid.Column="1" Style="{StaticResource CompactBorderStyle}" VerticalAlignment="Top">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="btnGo" Content="GO >>" Style="{StaticResource DynamicContentButton}" Click="BtnGo_Click" Margin="0,0,8,0">
                             <Button.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -340,8 +342,8 @@
                             </Button.ToolTip>
                         </Button>
                     </StackPanel>
-                </Grid>
-            </Border>
+                </Border>
+            </Grid>
 
             <local:AppOverlay x:Name="AppOverlayControl" Margin="0" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
         </Grid>

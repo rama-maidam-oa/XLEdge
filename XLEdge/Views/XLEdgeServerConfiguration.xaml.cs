@@ -692,26 +692,6 @@ namespace XLEdge.Views
             }
         }
 
-        private void AdjustWindowWidthToContent()
-        {
-            var content = Content as FrameworkElement;
-            if (content == null)
-            {
-                return;
-            }
-
-            UpdateLayout();
-            content.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-
-            double desiredWidth = content.DesiredSize.Width;
-            double clampedWidth = Math.Max(MinWidth, Math.Min(MaxWidth, desiredWidth));
-
-            if (!double.IsNaN(clampedWidth) && clampedWidth > 0)
-            {
-                Width = clampedWidth;
-            }
-        }
-
         private List<UrlInstanceSnapshot> GetConfigurationSnapshots()
         {
             lock (CachedConfigurationLock)
