@@ -118,15 +118,29 @@ namespace XLEdge.Helpers
                 overlap = app.Intersect(target, locked);
                 if (overlap == null) return;
 
+                // OISR-22129 (13-Nov): Excel can raise Change for J7 without a real change (e.g. after its validation
+                // box is cancelled). Undo then undid the user's earlier, unrelated edits, one per event, each with
+                // a message. Compare with the values remembered when the sheet was built and restore only those.
+                string[] remembered = ReadRememberedResponsibilityValues(sheet);
+                if (remembered != null && ReadResponsibilityValues(sheet, row).SequenceEqual(remembered)) return;
+
                 _reverting = true;
                 bool undone = false;
                 bool events = app.EnableEvents;
                 app.EnableEvents = false;
                 try
                 {
-                    app.Undo();
-                    undone = true;
-                    LogUtility.LogWarn($"{nameof(RevertResponsibilityEdit)}: undid a change to {target.Address[false, false]} (Responsibility row {row}).");
+                    // The values really changed, so the last action is this edit: Undo reverts all of it (a paste over
+                    // A:K too, and the validation a paste replaced). If that left the row different, write it back.
+                    try { app.Undo(); } catch (COMException ex) { LogUtility.LogDebug($"{nameof(RevertResponsibilityEdit)}: Undo failed - {ex.Message}"); }
+                    if (remembered != null && !ReadResponsibilityValues(sheet, row).SequenceEqual(remembered))
+                    {
+                        for (int i = 0; i < 3; i++)
+                            WriteEncodedValue((Excel.Range)sheet.Cells[row, 9 + i], remembered[i]);
+                        SetupOracleRespIdValidation(sheet, row);   // re-locks I:K of this row (a paste replaced the validation)
+                    }
+                    undone = remembered == null || ReadResponsibilityValues(sheet, row).SequenceEqual(remembered);
+                    LogUtility.LogWarn($"{nameof(RevertResponsibilityEdit)}: reverted a change to {target.Address[false, false]} (Responsibility row {row}, restored={undone}).");
                 }
                 catch (COMException ex)
                 {
@@ -181,6 +195,71 @@ namespace XLEdge.Helpers
                 if (block != null) Marshal.ReleaseComObject(block);
                 if (last != null) Marshal.ReleaseComObject(last);
             }
+        }
+
+        // OISR-22129: the Responsibility row's Operator/Value1/Value2 as built, kept in hidden sheet Names (they survive
+        // Reload Add-in and saving the workbook). Each value is stored with its type: n: number, s: text, e: empty.
+        private static readonly string[] RespLockNames = { "XLEdge_RespLock_I", "XLEdge_RespLock_J", "XLEdge_RespLock_K" };
+
+        private static void RememberResponsibilityValues(Excel.Worksheet sheet)
+        {
+            int row = FindResponsibilityRow(sheet);
+            string[] values = row < 0 ? null : ReadResponsibilityValues(sheet, row);
+            for (int i = 0; i < 3; i++)
+            {
+                try { sheet.Names.Item(RespLockNames[i]).Delete(); } catch (COMException) { /* not there yet */ }
+                // A Name's text constant holds at most 255 characters; longer values fall back to Undo.
+                if (values != null && values[i].Length <= 250)
+                    sheet.Names.Add(RespLockNames[i], "=\"" + values[i].Replace("\"", "\"\"") + "\"", false);
+            }
+        }
+
+        private static string[] ReadRememberedResponsibilityValues(Excel.Worksheet sheet)
+        {
+            var values = new string[3];
+            for (int i = 0; i < 3; i++)
+            {
+                string refersTo;
+                try { refersTo = sheet.Names.Item(RespLockNames[i]).RefersTo as string; }
+                catch (COMException) { return null; }
+                if (refersTo == null || !refersTo.StartsWith("=\"") || !refersTo.EndsWith("\"")) return null;
+                values[i] = refersTo.Substring(2, refersTo.Length - 3).Replace("\"\"", "\"");
+            }
+            return values;
+        }
+
+        private static string[] ReadResponsibilityValues(Excel.Worksheet sheet, int row)
+        {
+            var values = new string[3];
+            for (int i = 0; i < 3; i++)
+            {
+                Excel.Range cell = (Excel.Range)sheet.Cells[row, 9 + i];
+                try
+                {
+                    object v = cell.Value2;
+                    values[i] = v == null ? "e:"
+                        : v is double d ? "n:" + d.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                        : "s:" + Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
+                }
+                finally { Marshal.ReleaseComObject(cell); }
+            }
+            return values;
+        }
+
+        private static void WriteEncodedValue(Excel.Range cell, string encoded)
+        {
+            try
+            {
+                string body = encoded.Substring(2);
+                if (encoded.StartsWith("n:")) cell.Value2 = double.Parse(body, System.Globalization.CultureInfo.InvariantCulture);
+                else if (encoded.StartsWith("s:"))
+                {
+                    cell.NumberFormat = "@";   // as WriteParameterRows builds it: a numeric-looking ID stays text
+                    cell.Value2 = body;
+                }
+                else cell.ClearContents();
+            }
+            finally { Marshal.ReleaseComObject(cell); }
         }
 
         internal static Excel.ListObject FindControlTable(Excel.Workbook workbook)
@@ -387,6 +466,15 @@ namespace XLEdge.Helpers
                 catch (Exception ex)
                 {
                     LogUtility.LogException(ex, $"{nameof(CreateControlSheet)}: Failed to setup ORACLE_RESP_ID validation");
+                }
+
+                try
+                {
+                    RememberResponsibilityValues(ctrlSheet);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"{nameof(CreateControlSheet)}: Failed to remember the Responsibility values");
                 }
 
                 // Setup the title and other UI elements
