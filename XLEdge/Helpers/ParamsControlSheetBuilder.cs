@@ -790,13 +790,13 @@ namespace XLEdge.Helpers
                                 cell.Validation.ErrorTitle = "GL Accounts";
                                 cell.Validation.ErrorMessage =
                                     "ORACLE_GL_SEGMENT_VALUES cannot be edited directly.\n" +
-                                    "Enable 'Show segment selection window on selection' in Options " +
+                                    "Enable 'Show segment selection window when selecting segments' in Options " +
                                     "(Edge ribbon > Options) to open the GL Accounts window automatically " +
                                     "when you select this cell.";
                                 cell.Validation.InputTitle = "GL Accounts";
                                 cell.Validation.InputMessage =
-                                    "To select segment values, enable 'Show segment selection window on " +
-                                    "selection' in Options (Edge ribbon > Options). Once enabled, the GL " +
+                                    "To select segment values, enable 'Show segment selection window when " +
+                                    "selecting segments' in Options (Edge ribbon > Options). Once enabled, the GL " +
                                     "Accounts window opens automatically when you select this cell.";
                                 cell.Validation.IgnoreBlank = true;
                                 cell.Validation.ShowInput = true;

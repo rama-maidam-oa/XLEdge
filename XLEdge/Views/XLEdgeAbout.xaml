@@ -97,7 +97,8 @@
         </Border>
         <!-- ================= Combined Content Section ================= -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0">
-            <StackPanel>
+            <!-- OISR-22130: the theme draws the scrollbar over the content; the right margin keeps the cards and the progress bar clear of it. -->
+            <StackPanel Margin="0,0,18,0">
                 <!-- ================= Company & Product Info Section ================= -->
                 <Border Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,4">
                     <Grid>
