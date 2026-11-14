@@ -1191,6 +1191,13 @@ namespace XLEdge
             }
         }
 
+        /// <summary>OISR-22937: Office ribbon labels hold at most 1024 characters; cut a longer caption with "…".</summary>
+        internal static string CapRibbonCaption(string caption)
+        {
+            const int Max = 1000;
+            return caption == null || caption.Length <= Max ? caption : caption.Substring(0, Max - 1) + "…";
+        }
+
         /// <summary>
         /// Refreshes the "RibSheetLabel" ribbon caption to describe the active sheet's XLEdge table
         /// (scheduled output / data report / drilldown+attachment column summary), warns if a required
@@ -1261,15 +1268,13 @@ namespace XLEdge
                     var drillCols = new List<string>();
                     var attCols = new List<string>();
 
-                    // Resize[1, colCount] (not Rows[1]) - the Rows collection's integer indexer is
-                    // declared to return object and has been observed to throw InvalidCastException at
-                    // runtime, the same category of Excel Interop early-bound-cast gotcha as
-                    // Worksheets/Sheets fixed earlier in this migration. Resize is a plain property
-                    // returning Excel.Range directly, so it's safe.
-                    Excel.Range firstDataRow = tableObj.DataBodyRange.Resize[1, tableObj.DataBodyRange.Columns.Count];
+                    // OISR-22937: look at each whole column of the table body, not only the first data row.
+                    // Links are added only to non-empty cells, so a column whose first value is blank
+                    // (links start further down) used to be left out of the label. One COM call per column.
+                    Excel.Range dataBody = tableObj.DataBodyRange;
                     try
                     {
-                        foreach (Excel.Range cell in firstDataRow.Columns)
+                        foreach (Excel.Range cell in dataBody.Columns)
                         {
                             try
                             {
@@ -1302,22 +1307,22 @@ namespace XLEdge
                     }
                     finally
                     {
-                        Marshal.ReleaseComObject(firstDataRow);
+                        Marshal.ReleaseComObject(dataBody);
                     }
 
                     ApplyRibbonState(workSheet.Parent as Excel.Workbook);
 
                     if (drillCols.Count > 0 && attCols.Count > 0)
                     {
-                        RibSheetLabel.Caption = $"This sheet has drilldown and attachment links: Drilldowns on column(s): {string.Join(", ", drillCols)}  |  Attachments on column(s): {string.Join(", ", attCols)}. By default all attachments are saved in the downloads folder.";
+                        RibSheetLabel.Caption = CapRibbonCaption($"This sheet has drilldown and attachment links: Drilldowns on column(s): {string.Join(", ", drillCols)}  |  Attachments on column(s): {string.Join(", ", attCols)}. By default all attachments are saved in the downloads folder.");
                     }
                     else if (drillCols.Count > 0)
                     {
-                        RibSheetLabel.Caption = $"This sheet has drilldown links on column(s): {string.Join(", ", drillCols)}";
+                        RibSheetLabel.Caption = CapRibbonCaption($"This sheet has drilldown links on column(s): {string.Join(", ", drillCols)}");
                     }
                     else if (attCols.Count > 0)
                     {
-                        RibSheetLabel.Caption = $"This sheet has attachment links on column(s): {string.Join(", ", attCols)}. By default all attachments are saved in the downloads folder.";
+                        RibSheetLabel.Caption = CapRibbonCaption($"This sheet has attachment links on column(s): {string.Join(", ", attCols)}. By default all attachments are saved in the downloads folder.");
                     }
                     else
                     {
