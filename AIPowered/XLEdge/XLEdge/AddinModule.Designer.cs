@@ -363,7 +363,7 @@ namespace XLEdge
             this.RibVersionHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibVersionHistory.ScreenTip = "XLEdge Version History";
             this.RibVersionHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
-            this.RibVersionHistory.SuperTip = "See every XLEdge version installed or downloaded on this computer, with its date, source and notes. Load any of them, or remove one you no longer need, without restarting Excel.";
+            this.RibVersionHistory.SuperTip = "Shows every XLEdge version installed or downloaded on this computer. Load or remove any version without restarting Excel.";
             this.RibVersionHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibVersionHistory_OnClick);
             // 
             // adxRibbonGroup8

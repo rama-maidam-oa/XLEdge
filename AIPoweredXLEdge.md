@@ -255,6 +255,9 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - Targeted run 73/73. Shell change (needs an MSI).
   - Follow-up (11-Nov-2026, developer): the NOTES column and the notes box were removed from Version History again
     (GLSense too); `ReleaseRow.Notes` dropped. Notes stay in ReleaseHistory.json.
+  - QA retest (19-Nov-2026): Version History SuperTip and Remove tooltip reworded to QA's text (same as GLSense).
+    GLSense's Check for Updates failure was its host HttpClient using the system proxy; `OnlineReleaseClient` here already
+    uses `UseProxy = false`, so nothing else to change. `RibbonParityTests` checks only the ScreenTip, not the SuperTip.
 - **OISR-22129** follow-up (QA 09-Nov: copy/paste still changed the Responsibility Operator/Value1 on the Parameters Control
   Sheet; 11.1.3 only, developer's call): the row's lock was data validation only (`SetupOracleRespIdValidation`), which stops
   typing but not a paste, Delete or fill; `Locked` does nothing on an unprotected sheet. Run sends Value1 as `ORACLE_RESP_ID`.
