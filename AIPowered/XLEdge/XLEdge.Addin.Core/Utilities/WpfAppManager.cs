@@ -15,6 +15,7 @@ namespace XLEdge.Utilities
 
         public static void EnsureApplication()
         {
+            DpiAwarenessHelper.EnableWpfPerMonitorScaling(); // OISR-23017 backstop; the add-in start sets it first
             if (Application.Current != null)
                 return;
 

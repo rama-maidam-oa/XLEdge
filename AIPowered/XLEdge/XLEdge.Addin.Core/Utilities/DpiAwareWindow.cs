@@ -260,6 +260,29 @@ namespace XLEdge.Utilities
             }
         }
 
+        // OISR-23017: the native window is created inside ShowDialog()/Show(), not in the constructor, and by then
+        // Office has usually switched Excel's thread (where XLEdge's WPF windows run) back to its own DPI awareness -
+        // so windows came out System-aware at Excel's start-up DPI. After a display-scale change with Excel open
+        // (docking/undocking, changing Scale), Windows kept mapping mouse input for the old DPI while the content was
+        // drawn at the new one: hover flickered and clicks missed. Creating the window (and, for a modal window, every
+        // popup it opens while it is up) under Per-Monitor-V2 fixes that. Every XLEdge window derives from this class
+        // and callers hold it by its own type, so all ShowDialog()/Show() calls (and the *WithOwner helpers) land here.
+        public new bool? ShowDialog()
+        {
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                return base.ShowDialog();
+            }
+        }
+
+        public new void Show()
+        {
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                base.Show();
+            }
+        }
+
         private void OnWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
             DismissActiveToast();
@@ -325,6 +348,8 @@ namespace XLEdge.Utilities
                 LogUtility.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+                if (_hwndSource != null)
+                    DpiAwarenessHelper.LogIfDpiChanged(DpiAwarenessHelper.GetMonitorDpi(_hwndSource.Handle), $"{_windowName} (opening)");
 
                 // SourceInitialized occurs after the HWND is available but before Show/ShowDialog
                 // paints the window. Complete the initial sizing and centering here so users never
@@ -421,11 +446,28 @@ namespace XLEdge.Utilities
             {
                 const int WM_DPICHANGED = 0x02E0;
 
+                // OISR-23017: WPF itself now scales Per-Monitor-V2 windows (Switch.System.Windows.DoNotScaleForDpiChanges
+                // is turned off at start-up, see DpiAwarenessHelper.EnableWpfPerMonitorScaling), so leave WM_DPICHANGED
+                // unhandled: WPF re-renders at the new DPI and moves/resizes the window to Windows' suggested rect. The
+                // old handling here (a LayoutTransform of newDpi/96 + resize, handled=true) assumed WPF never rescaled
+                // and would now double-scale. Afterwards only re-clamp to the work area.
+                if (msg == WM_DPICHANGED)
+                    DpiAwarenessHelper.LogIfDpiChanged((uint)(wParam.ToInt64() & 0xFFFF), _windowName);
+
                 if (msg == WM_DPICHANGED && !DisableAutoSizing)
                 {
-                    uint newDpi = (uint)wParam;
-                    AdjustForDpiChange(newDpi, lParam);
-                    handled = true;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            _currentScaleFactor = GetCurrentScaleFactor();
+                            EnsureFitsWorkArea();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogError($"Error re-clamping window after DPI change: {ex.Message}");
+                        }
+                    }), DispatcherPriority.Background);
                 }
             }
             catch (Exception ex)
@@ -445,40 +487,6 @@ namespace XLEdge.Utilities
             catch (Exception ex)
             {
                 LogUtility.LogError($"Error adjusting DPI: {ex.Message}");
-            }
-        }
-
-        private void AdjustForDpiChange(uint newDpi, IntPtr lParam)
-        {
-            try
-            {
-                var scaleFactor = GetScaleFactorFromDpi(newDpi);
-
-                ApplyScaleTransform(scaleFactor);
-
-                if (lParam != IntPtr.Zero)
-                {
-                    var rect = Marshal.PtrToStructure<Rect>(lParam);
-
-                    this.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            this.Left = rect.Left / scaleFactor;
-                            this.Top = rect.Top / scaleFactor;
-                            this.Width = rect.Width / scaleFactor;
-                            this.Height = rect.Height / scaleFactor;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogError($"Error resizing window: {ex.Message}");
-                        }
-                    }));
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogError($"Error in AdjustForDpiChange: {ex.Message}");
             }
         }
 
@@ -519,7 +527,7 @@ namespace XLEdge.Utilities
                 if (Content is not FrameworkElement root)
                     return;
 
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
                 var availableWidth = Math.Max(0, workArea.Width - (WorkAreaMargin * 2));
                 var availableHeight = Math.Max(0, workArea.Height - (WorkAreaMargin * 2));
 
@@ -641,7 +649,7 @@ namespace XLEdge.Utilities
 
                 // Clamp so recentering never pushes the window off the visible work area (e.g. if
                 // the old center point was near a screen edge).
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
                 if (Width < workArea.Width)
                     newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - Width));
                 if (Height < workArea.Height)
@@ -689,10 +697,56 @@ namespace XLEdge.Utilities
             return 1.0;
         }
 
-        private static double GetScaleFactorFromDpi(uint dpi)
+        // OISR-23017: the work area of the monitor this window (or its Excel owner) is on, in this window's own DIPs.
+        // SystemParameters.WorkArea is in the process's start-up (system) DPI, which after a display-scale change with
+        // Excel open no longer matches a Per-Monitor-V2 window's DPI, so windows were sized/clamped/centered against
+        // the wrong area.
+        private System.Windows.Rect GetWorkAreaDip()
         {
-            var scale = dpi / 96.0;
-            return scale > 0 ? scale : 1.0;
+            try
+            {
+                IntPtr hwnd = _hwndSource?.Handle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero)
+                    hwnd = new WindowInteropHelper(this).Owner;
+                if (hwnd != IntPtr.Zero)
+                {
+                    using (DpiAwarenessHelper.SetPerMonitorAware()) // physical pixels from GetMonitorInfo
+                    {
+                        IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                        var info = new MonitorInfo { cbSize = Marshal.SizeOf(typeof(MonitorInfo)) };
+                        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info) && info.rcWork.Width > 0)
+                        {
+                            double scale = GetCurrentScaleFactor();
+                            return new System.Windows.Rect(info.rcWork.Left / scale, info.rcWork.Top / scale,
+                                info.rcWork.Width / scale, info.rcWork.Height / scale);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error reading the monitor work area: {ex.Message}");
+            }
+
+            return SystemParameters.WorkArea;
+        }
+
+        private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MonitorInfo
+        {
+            public int cbSize;
+            public Rect rcMonitor;
+            public Rect rcWork;
+            public uint dwFlags;
         }
 
         protected double DipToPixels(double dip)
@@ -751,8 +805,17 @@ namespace XLEdge.Utilities
                 double centerY;
 
                 IntPtr ownerHwnd = new WindowInteropHelper(this).Owner;
-                if (ownerHwnd != IntPtr.Zero && GetWindowRect(ownerHwnd, out Rect ownerRectPx) &&
-                    ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
+                Rect ownerRectPx = default;
+                bool haveOwnerRect = false;
+                if (ownerHwnd != IntPtr.Zero)
+                {
+                    // OISR-23017: physical pixels regardless of the thread's current DPI context
+                    using (DpiAwarenessHelper.SetPerMonitorAware())
+                    {
+                        haveOwnerRect = GetWindowRect(ownerHwnd, out ownerRectPx);
+                    }
+                }
+                if (haveOwnerRect && ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
                 {
                     double scale = GetCurrentScaleFactor();
                     double ownerLeft = ownerRectPx.Left / scale;
@@ -765,7 +828,7 @@ namespace XLEdge.Utilities
                 }
                 else
                 {
-                    var workArea = SystemParameters.WorkArea;
+                    var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
                     centerX = workArea.Left + (workArea.Width / 2.0);
                     centerY = workArea.Top + (workArea.Height / 2.0);
                 }
@@ -805,7 +868,7 @@ namespace XLEdge.Utilities
             double newLeft = centerX - (effectiveWidth / 2.0);
             double newTop = centerY - (effectiveHeight / 2.0);
 
-            var workArea = SystemParameters.WorkArea;
+            var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
             if (effectiveWidth < workArea.Width)
                 newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
             if (effectiveHeight < workArea.Height)
@@ -848,7 +911,7 @@ namespace XLEdge.Utilities
                 double previousHeight = Height;
                 bool sizeChanged = false;
 
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
 
                 var baseMaxWidth = Math.Max(0, workArea.Width - margin);
                 var baseMaxHeight = Math.Max(0, workArea.Height - margin);

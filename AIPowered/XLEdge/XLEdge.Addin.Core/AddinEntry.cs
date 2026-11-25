@@ -29,6 +29,8 @@ namespace XLEdge.Addin.Core
         /// </summary>
         public void Initialize(IXLEdgeContext context)
         {
+            // OISR-23017: before any WPF object exists in this domain (AppContext switches are read once).
+            DpiAwarenessHelper.EnableWpfPerMonitorScaling();
             try
             {
                 _context = context;
