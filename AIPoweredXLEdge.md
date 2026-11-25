@@ -404,6 +404,7 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
 - Targeted tests: CorePortParityTests show the same 2 failures as before (`PortedFiles` - `XLEdgeAppConstants`/`DpiAwareWindow`/views/`ReportGenerator`
   differences that predate this; `AddinModuleMethods` - `UpdateTabLabel`/`XLEdgeLogin`). The twin difference in
   `DpiAwareWindow` is unchanged (the 11.1.3 SourceInitialized layout block). Not tested in Excel.
+- **Task pane checked in Excel (25-Nov-2026, Debug builds of both lines, automated): no fix needed.** 100% -> 150% and 150% -> 100% with the pane open (logged in, Reports page): the page rescales and stays fully visible, close button included; after 150 -> 100 the pane keeps its pixel width, so the page reflows (long names end in "..."). Fresh 100% with a narrow saved docking width (`ADXXLForm\Right_SizeP` = 36000, about 480 px): the pane shows in full. Unlike GLSense's Balance Configurator, the content is a WebView2 (follows the scale itself), the pane forces no minimum width (only 500 px on first show), and on 11.1.3 the content is created under the pane's DPI awareness (`PaneEmbedding.CreateUnderDpiOf`).
 
 ## Pending stages
 
