@@ -49,6 +49,9 @@ namespace XLEdge
 
         public AddinModule()
         {
+            // OISR-23017: before any WPF object exists (AppContext switches are read once).
+            DpiAwarenessHelper.EnableWpfPerMonitorScaling();
+
             // No handler anywhere previously caught a truly unhandled exception in this AppDomain
             // (only WPF-dispatcher-thread exceptions are covered elsewhere) - a background Task or
             // COM callback thread throwing unhandled here would just silently crash/vanish with

@@ -3272,3 +3272,33 @@ Pre-1900 cells are text, so Excel cannot sort or calculate them as dates (as in 
 
 **VB.NET counterpart**: same code in 11.1.1 `FormProcessBar.GetExcelCellValue`; not ported (developer's decision).
 **AIPowered XLEdge**: same change in 11.1.3.
+
+## 2026-11-25: OISR-23017 - windows flicker / need several clicks after a display-scale change (ported from GLSense)
+
+GLSense report: buttons flickered on hover and needed several clicks at 150%. It happened only when the display scale
+changed while Excel was open (docking/undocking, Settings > Display). XLEdge has the same shape. Its WPF `Application` and
+every window run on Excel's own thread, and `DpiAwareWindow` set Per-Monitor-V2 only around its constructor. But the HWND is
+created in `ShowDialog()`/`Show()`, by which time Office has put Excel's thread back to its own DPI awareness. So windows came
+out System-aware at Excel's start-up DPI, and after a scale change Windows kept mapping input for the old DPI.
+
+Fix:
+1. `DpiAwareWindow` hides `ShowDialog()`/`Show()` (`new`) and calls the base inside `DpiAwarenessHelper.SetPerMonitorAware()`.
+   Every XLEdge window derives from it and callers hold the concrete type, so the `*WithOwner` helpers and all direct calls
+   create the HWND Per-Monitor-V2.
+2. `DpiAwarenessHelper.EnableWpfPerMonitorScaling()` (`Switch.System.Windows.DoNotScaleForDpiChanges=false`) runs first in the
+   `AddinModule` constructor, with a backstop in `WpfAppManager.EnsureApplication`. `WM_DPICHANGED` is no longer handled (the
+   old newDpi/96 LayoutTransform would double-scale). WPF rescales, then `EnsureFitsWorkArea` re-clamps.
+   `AdjustForDpiChange`/`GetScaleFactorFromDpi` removed.
+3. `GetWorkAreaDip()` (the window's own monitor work area via `GetMonitorInfo` under PMv2, in its DIPs) replaces the 5
+   `SystemParameters.WorkArea` uses. `CenterOverOwnerOnce` reads the owner rect under PMv2. `GetDpiForMonitor` was imported
+   from user32 (it lives in shcore.dll) and always threw - fixed.
+4. `DpiAwarenessHelper.LogIfDpiChanged` writes one WARN per scale change (`Display scale changed: 96 DPI (100%) -> 144 DPI
+   (150%), detected by <window>`) from `WM_DPICHANGED` and each window's `SourceInitialized`. The baseline is `GetDpiForSystem()`.
+
+Same-issue sweep (pattern: WPF window HWND created outside a Per-Monitor-V2 scope): every `Show()`/`ShowDialog()`.
+`AddinModule` (GL Accounts, Options, Login Details, Server Configuration, About, drilldown picker, 3 wait windows),
+`ReportGenerator` (2 wait windows, message window) and `MessageFunctions` all use `DpiAwareWindow` subclasses held by type,
+so they are covered. `EdgeExcelPane.Show()` is the WinForms ADX pane (not changed: a docked pane gets no WM_DPICHANGED).
+`EnhancedDragDropHelper` is not a window. Build-verified; not tested in Excel.
+
+**AIPowered XLEdge**: same change in 11.1.3.
