@@ -46,5 +46,15 @@ namespace XLEdge.Contracts
         void SetTaskPaneCaption(System.IntPtr excelWindow, string caption);
         int GetTaskPaneWidth(System.IntPtr excelWindow);
         void SetTaskPaneWidth(System.IntPtr excelWindow, int width);
+
+        // Contract 6: the post-login add-in update check (login -> update check -> broadcast message).
+        /// <summary>
+        /// Asks the server (with the given login) for an XLEdge release newer than the loaded one, within <paramref name="timeoutSeconds"/>.
+        /// Returns its display text ("version (release date)"), or null when there is none or the check failed (failures are only logged).
+        /// Call it off Excel's thread: it waits for the server.
+        /// </summary>
+        string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
+        /// <summary>Downloads the release the last <see cref="FindNewerAddinRelease"/> found, logs out and reloads into it (queued on Excel's thread).</summary>
+        void ReloadToNewerAddinRelease();
     }
 }

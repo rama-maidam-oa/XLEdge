@@ -414,11 +414,18 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
 - **6 — Online update**: client done (see Stages done); the orbitbootapp `XLEdgeAddinController` is a written spec, to be built later.
 - **7 — QA & cutover**: support done (see Stages done); running the QA and the cutover are the developer's.
 
-## Contracts (`XLEdge.Contracts`, `ContractInfo.Version` = 5)
+## Contracts (`XLEdge.Contracts`, `ContractInfo.Version` = 6)
 - 1: Stage 0b. 2: `IXLEdgeContext.GetExcelDispatch` (2a). 3: session bag `GetSessionValue/SetSessionValue` (2c).
   4: `IRibbonController` pane of an Excel window — `GetActiveTaskPaneWindow`, `Get/SetTaskPaneVisible`, `SetTaskPaneCaption(IntPtr,…)`,
   `Get/SetTaskPaneWidth` (2e). 5: `IXLEdgeContext.IsGLSenseConnected()`, `CallGLSense(method, args)` — the shell looks GLSense
   up and invokes it in its own AppDomain (2f); `GetGLSenseAddinInstance()` stays but the core no longer uses it.
+  6: `IRibbonController.FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds)` / `ReloadToNewerAddinRelease()` - the
+  post-login add-in update check (26-Nov-2026): after the pane login, before the broadcast, the core
+  (`ADXExcelTaskPane1.CheckForAddinUpdateAsync`, skipped like the broadcast, e.g. a GLSense-synced login) asks the shell
+  off Excel's thread (10 s) for a released server core newer than the loaded one; "Add-in updates are available... reload?"
+  Yes = the shell (posted to Excel's thread) downloads + catalogues it, checks it is the same build, then `CoreHost.Reload`
+  (which logs out through the pane first); No / any failure (only logged) = the broadcast as before. Needs the new MSI:
+  a contract-6 core is refused by contract-5 shells.
 - Additive only; every contract change ships with a new MSI. The loader refuses a core newer than the shell. `CoreHost.TryLoad`
   clears the session values for cores < 3 and drops `XLEdge.Login` for cores < 4.
 

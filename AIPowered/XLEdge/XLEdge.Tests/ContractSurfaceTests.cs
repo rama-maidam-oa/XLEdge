@@ -43,7 +43,7 @@ namespace XLEdge.Tests
         public void ContractInfo_IsStaticWithTheCurrentVersion()
         {
             Assert.IsTrue(typeof(ContractInfo).IsAbstract && typeof(ContractInfo).IsSealed, "ContractInfo must be a static class");
-            Assert.AreEqual(5, ContractInfo.Version, "5: IXLEdgeContext, the shell calls GLSense (Stage 2f)");
+            Assert.AreEqual(6, ContractInfo.Version, "6: IRibbonController, the post-login add-in update check");
             AssertMembers(typeof(ContractInfo), "field const int Version");
         }
 
@@ -130,7 +130,8 @@ namespace XLEdge.Tests
                 "void SetTaskPaneCaption(string caption)",
                 "IntPtr GetActiveTaskPaneWindow()", "bool GetTaskPaneVisible(IntPtr excelWindow)",
                 "void SetTaskPaneVisible(IntPtr excelWindow, bool visible)", "void SetTaskPaneCaption(IntPtr excelWindow, string caption)",
-                "int GetTaskPaneWidth(IntPtr excelWindow)", "void SetTaskPaneWidth(IntPtr excelWindow, int width)");
+                "int GetTaskPaneWidth(IntPtr excelWindow)", "void SetTaskPaneWidth(IntPtr excelWindow, int width)",
+                "string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)", "void ReloadToNewerAddinRelease()");
         }
 
         [TestMethod]

@@ -242,6 +242,106 @@ namespace XLEdge
             }
         }
 
+        // ---- post-login add-in update check (contract 6) ----------------------------------------
+        // Login -> update check -> broadcast message: the core asks after its login; a failure is only logged and the login goes on.
+
+        private Online.OnlineReleaseRow _newerRelease;
+        private XLEdge.Contracts.LoginInfo _newerReleaseLogin;
+
+        /// <summary>Called by the core off Excel's thread. The newest server release newer than the loaded one, as "version (date)"; null otherwise.</summary>
+        internal string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)
+        {
+            _newerRelease = null;
+            try
+            {
+                var login = new XLEdge.Contracts.LoginInfo { LoginUrl = loginUrl, LoginToken = loginToken, IsLoggedIn = true };
+                IReadOnlyList<XLEdge.Contracts.VersionInfo> releases;
+                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds)))
+                using (var client = new Online.OnlineReleaseClient(login, _context.Logger))
+                {
+                    try { releases = client.GetReleasesAsync(cts.Token).GetAwaiter().GetResult(); }
+                    catch (Online.OnlineReleaseException ex) when (ex.Message == Online.OnlineReleaseClient.NoUpdatesHere)
+                    {
+                        _context.Logger.LogInfo("Post-login update check: the server offers no XLEdge updates.");
+                        return null;
+                    }
+                }
+                ReleaseHistoryStore.TryReadAll(_context.Paths.ReleaseHistoryFile, out List<ReleaseEntry> local);
+                DateTime loaded = Online.OnlineReleaseClassifier.ReleaseDateOrMin(_context.ReleaseDate);
+                Online.OnlineReleaseRow newest = Online.OnlineReleaseClassifier.Classify(releases, local, _context.Version, _context.ReleaseDate)
+                    .Where(r => !r.IsCurrentlyLoaded && !r.NeedsNewerInstall && !string.IsNullOrEmpty(r.FolderName)
+                                && Online.OnlineReleaseClassifier.ReleaseDateOrMin(r.ReleaseDate) > loaded)
+                    .OrderByDescending(r => Online.OnlineReleaseClassifier.ReleaseDateOrMin(r.ReleaseDate))
+                    .FirstOrDefault();
+                if (newest == null)
+                {
+                    _context.Logger.LogInfo($"Post-login update check: no release newer than {VersionText.Display(_context.Version)} ({_context.ReleaseDate}).");
+                    return null;
+                }
+                _newerRelease = newest;
+                _newerReleaseLogin = login;
+                _context.Logger.LogInfo($"Post-login update check: {newest.DisplayVersion} ({newest.ReleaseDate}) is available.");
+                return $"{newest.DisplayVersion} ({newest.ReleaseDateDisplay})";
+            }
+            catch (Exception ex)
+            {
+                try { _context?.Logger.LogWarn($"Post-login update check failed - login continues: {ex.GetType().Name}: {(ex.InnerException ?? ex).Message}"); }
+                catch (Exception) { }
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Queued on Excel's thread after the core's prompt was answered Yes: downloads the release found by FindNewerAddinRelease
+        /// (Excel's messages keep flowing meanwhile), then reloads into it - CoreHost.Reload logs out (the pane's logout) first.
+        /// </summary>
+        internal void ReloadToNewerAddinRelease()
+        {
+            Online.OnlineReleaseRow row = _newerRelease;
+            XLEdge.Contracts.LoginInfo login = _newerReleaseLogin;
+            if (row == null || login == null || Host == null || _hostWindowOpen) return;
+            _hostWindowOpen = true;
+            try
+            {
+                _context.Logger.LogInfo($"Post-login update: downloading {row.DisplayVersion} ({row.ReleaseDate}).");
+                var download = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    using (var client = new Online.OnlineReleaseClient(login, _context.Logger))
+                    {
+                        (string manifest, byte[] zip) = await client.DownloadAsync(row.FolderName, System.Threading.CancellationToken.None).ConfigureAwait(false);
+                        return _bootstrapper.ExtractAndCatalog(_context, manifest, zip, "Online");
+                    }
+                });
+                // The client's own timeout (5 minutes) ends the download; the wait only keeps Excel responsive.
+                _hostUi.WaitWhile(() => !download.IsCompleted, TimeSpan.FromMinutes(6));
+
+                string problem = null;
+                ResolvedRelease release = null;
+                if (!download.IsCompleted) problem = "the download did not finish in time";
+                else if (download.IsFaulted) problem = (download.Exception.GetBaseException()).Message;
+                else if ((release = download.Result) == null) problem = "it was refused (checksum, contract or folder - see the XLEdge log)";
+                else if (!Views.XLEdgeReloadSourcePicker.SameBuild(release, row))
+                    problem = $"the server's files for it hold {VersionText.Display(release.Version)} (released {release.ReleaseDate})";
+                if (problem != null)
+                {
+                    _context.Logger.LogWarn($"Post-login update: {row.DisplayVersion} not loaded - {problem}.");
+                    ShowMessage($"XLEdge {row.DisplayVersion} could not be downloaded: {problem}.\nXLEdge continues with the current version.", "Reload XLEdge Add-in");
+                    return;
+                }
+                _newerRelease = null;
+                if (!Host.Reload(() => release))
+                    ShowMessage($"XLEdge {row.DisplayVersion} is downloaded. When XLEdge is free, load it from Version History.", "Reload XLEdge Add-in");
+            }
+            catch (Exception ex)
+            {
+                LogError("AddinModule: the post-login update reload failed.", ex);
+            }
+            finally
+            {
+                _hostWindowOpen = false;
+            }
+        }
+
         // ---- hot reload windows -------------------------------------------------------------
 
         private void ShowReloadWindow()

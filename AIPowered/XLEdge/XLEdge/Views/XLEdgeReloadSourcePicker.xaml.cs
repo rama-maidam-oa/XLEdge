@@ -388,7 +388,7 @@ namespace XLEdge.Views
             });
         }
 
-        private static bool SameBuild(ResolvedRelease release, OnlineReleaseRow row) =>
+        internal static bool SameBuild(ResolvedRelease release, OnlineReleaseRow row) =>
             string.Equals((release.Version ?? "").Trim(), (row.Version ?? "").Trim(), StringComparison.OrdinalIgnoreCase) &&
             string.Equals((release.ReleaseDate ?? "").Trim(), (row.ReleaseDate ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
 

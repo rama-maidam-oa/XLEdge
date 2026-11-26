@@ -809,7 +809,9 @@ namespace XLEdge
 
                             try
                             {
-                                await ProcessBroadcastMessagesAsync();
+                                // Login -> add-in update check -> broadcast. Yes reloads (the shell logs out first): no broadcast then.
+                                if (!await CheckForAddinUpdateAsync())
+                                    await ProcessBroadcastMessagesAsync();
                             }
                             catch (Exception ex)
                             {
@@ -905,6 +907,51 @@ namespace XLEdge
         // Uses MessageFunctions.XLEdgeMessage - the app's existing standalone one-off-message window
         // (the C# port of VB's XLEdgeMsgDisplay) - matching VB.NET's own pattern instead of drawing
         // anything inside the pane's own control tree.
+        /// <summary>
+        /// Asks the shell (contract 6) for a newer XLEdge release and offers to reload into it. True when the user chose Yes
+        /// (the shell then downloads it, logs out and reloads). Never throws and shows nothing on failure: the check is only
+        /// logged, so the login goes on. Skipped as the broadcast is (a GLSense-synced login, a repeat of the same login).
+        /// </summary>
+        private async Task<bool> CheckForAddinUpdateAsync()
+        {
+            try
+            {
+                IRibbonController? shell = ShellPanes;
+                if (shell == null ||
+                    string.IsNullOrEmpty(appState.LoginUrl) ||
+                    _ribbonHelper.GetControlCaption("RibEdgeLogin") == appState.LoginUrl.Trim() ||
+                    string.IsNullOrWhiteSpace(appState.LoginToken) ||
+                    appState.LoginFromGLSense)
+                {
+                    return false;
+                }
+
+                string loginUrl = appState.LoginUrl.Trim(), loginToken = appState.LoginToken;
+                // Off this thread: the shell waits for the server (up to 10 s).
+                string? newer = await Task.Run(() => shell.FindNewerAddinRelease(loginUrl, loginToken, 10));
+                if (string.IsNullOrEmpty(newer)) return false;
+
+                var answer = MessageFunctions.XLEdgeMessage(
+                    $"Add-in updates are available (XLEdge {newer}).{Environment.NewLine}Do you wish to reload the add-in?",
+                    System.Windows.Forms.MessageBoxIcon.Question,
+                    System.Windows.Forms.MessageBoxButtons.YesNo);
+                if (answer != System.Windows.MessageBoxResult.Yes)
+                {
+                    LogUtility.LogInfo($"Post-login update check: the user chose not to reload into {newer}.");
+                    return false;
+                }
+
+                LogUtility.LogInfo($"Post-login update check: the user chose to reload into {newer}.");
+                shell.ReloadToNewerAddinRelease();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"Post-login update check skipped - login continues: {ex.GetType().Name}: {ex.Message}");
+                return false;
+            }
+        }
+
         private async Task ProcessBroadcastMessagesAsync()
         {
             if (string.IsNullOrEmpty(appState.LoginUrl) ||

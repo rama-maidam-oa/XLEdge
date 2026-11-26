@@ -61,6 +61,13 @@ namespace XLEdge.Tests
             public void SetTaskPaneCaption(IntPtr excelWindow, string caption) => Calls.Add($"Caption:{excelWindow}={caption}");
             public int GetTaskPaneWidth(IntPtr excelWindow) { Calls.Add("Width?:" + excelWindow); return 480; }
             public void SetTaskPaneWidth(IntPtr excelWindow, int width) => Calls.Add($"Width:{excelWindow}={width}");
+            public string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)
+            {
+                Calls.Add($"FindNewer:{loginUrl}|{loginToken}|{timeoutSeconds}");
+                if (loginUrl == "throw") throw new InvalidOperationException("boom");
+                return "11.1.3.5 (26-Nov-2026)";
+            }
+            public void ReloadToNewerAddinRelease() => Calls.Add("ReloadToNewer");
         }
 
         private static (RibbonController Controller, FakeControls Controls, FakeShell Shell) Create()
@@ -90,6 +97,17 @@ namespace XLEdge.Tests
             c.SetTaskPaneWidth(new IntPtr(0x1111), 530);
             CollectionAssert.AreEqual(new[] { "Visible?:4369", "Visible:4369=False", "Caption:4369=https://instance", "Caption:4369=", "Width?:4369", "Width:4369=530" },
                 shell.Calls.ToArray());
+        }
+
+        [TestMethod]
+        public void PostLoginUpdateCheck_GoesToTheShell_AndNeverThrows()
+        {
+            // Contract 6: a failing check returns null (logged) - the core's login then carries on to the broadcast.
+            var (c, _, shell) = Create();
+            Assert.AreEqual("11.1.3.5 (26-Nov-2026)", c.FindNewerAddinRelease("https://instance", "tok", 10));
+            Assert.IsNull(c.FindNewerAddinRelease("throw", "tok", 10));
+            c.ReloadToNewerAddinRelease();
+            CollectionAssert.AreEqual(new[] { "FindNewer:https://instance|tok|10", "FindNewer:throw|tok|10", "ReloadToNewer" }, shell.Calls.ToArray());
         }
 
         [TestMethod]

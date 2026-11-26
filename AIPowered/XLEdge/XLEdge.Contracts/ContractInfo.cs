@@ -13,7 +13,8 @@ namespace XLEdge.Contracts
     public static class ContractInfo
     {
         /// <summary>1: Stage 0b. 2: IXLEdgeContext.GetExcelDispatch (Stage 2a). 3: IXLEdgeContext session bag (Stage 2c).
-        /// 4: IRibbonController, the pane of a given Excel window (Stage 2e). 5: IXLEdgeContext, the shell calls GLSense (Stage 2f).</summary>
-        public const int Version = 5;
+        /// 4: IRibbonController, the pane of a given Excel window (Stage 2e). 5: IXLEdgeContext, the shell calls GLSense (Stage 2f).
+        /// 6: IRibbonController, the post-login add-in update check.</summary>
+        public const int Version = 6;
     }
 }
