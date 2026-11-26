@@ -65,7 +65,8 @@ namespace XLEdge.Tests
             public int GetTaskPaneWidth(IntPtr excelWindow) { lock (PaneWidth) return PaneWidth.TryGetValue(excelWindow, out int w) ? w : 400; }
             public void SetTaskPaneWidth(IntPtr excelWindow, int width) { lock (PaneWidth) PaneWidth[excelWindow] = width; Add($"PaneWidth:{excelWindow}={width}"); }
             public string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) { Add("FindNewer"); return null; }
-            public void ReloadToNewerAddinRelease() => Add("ReloadToNewer");
+            public string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) { Add("FindNewerPartner"); return null; }
+            public void ReloadToNewerAddinRelease(bool includePartner) => Add("ReloadToNewer:" + includePartner);
         }
 
         private sealed class Core : IDisposable

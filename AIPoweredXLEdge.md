@@ -425,7 +425,10 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   off Excel's thread (10 s) for a released server core newer than the loaded one; "Add-in updates are available... reload?"
   Yes = the shell (posted to Excel's thread) downloads + catalogues it, checks it is the same build, then `CoreHost.Reload`
   (which logs out through the pane first); No / any failure (only logged) = the broadcast as before. Needs the new MSI:
-  a contract-6 core is refused by contract-5 shells.
+  a contract-6 core is refused by contract-5 shells. Also `FindNewerPartnerAddinRelease` and
+  `ReloadToNewerAddinRelease(bool includePartner)`: with GLSense installed too, the logged-in add-in checks both at once
+  (the shell calls GLSense's public `CheckAddinUpdate` / `ReloadAddinUpdate` late-bound; GLSense calls XLEdge's same-named
+  public AddinModule methods) and shows one prompt: "Update both" (GLSense reloads first) / "Update XLEdge only" / "Not now".
 - Additive only; every contract change ships with a new MSI. The loader refuses a core newer than the shell. `CoreHost.TryLoad`
   clears the session values for cores < 3 and drops `XLEdge.Login` for cores < 4.
 

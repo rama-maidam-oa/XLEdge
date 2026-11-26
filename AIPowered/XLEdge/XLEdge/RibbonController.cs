@@ -103,7 +103,10 @@ namespace XLEdge
         public void SetTaskPaneWidth(IntPtr excelWindow, int width) => Guard(nameof(SetTaskPaneWidth), () => _shell.SetTaskPaneWidth(excelWindow, width));
         public string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
             Guard(nameof(FindNewerAddinRelease), () => _shell.FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds));
-        public void ReloadToNewerAddinRelease() => Guard(nameof(ReloadToNewerAddinRelease), () => _shell.ReloadToNewerAddinRelease());
+        public string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
+            Guard(nameof(FindNewerPartnerAddinRelease), () => _shell.FindNewerPartnerAddinRelease(loginUrl, loginToken, timeoutSeconds));
+        public void ReloadToNewerAddinRelease(bool includePartner) =>
+            Guard(nameof(ReloadToNewerAddinRelease), () => _shell.ReloadToNewerAddinRelease(includePartner));
 
         public override object InitializeLifetimeService() => null;
 

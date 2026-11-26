@@ -39,8 +39,10 @@ namespace XLEdge.Hosting
         public void ShowTaskPane() => _module.ShowTaskPane();
         public string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
             _module.FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds);
+        public string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
+            _module.FindNewerPartnerAddinRelease(loginUrl, loginToken, timeoutSeconds);
         // Queued: the core's prompt (its call stack) must unwind before the core is unloaded.
-        public void ReloadToNewerAddinRelease() => Post(_module.ReloadToNewerAddinRelease);
+        public void ReloadToNewerAddinRelease(bool includePartner) => Post(() => _module.ReloadToNewerAddinReleases(includePartner));
 
         public void ToggleTaskPane()
         {

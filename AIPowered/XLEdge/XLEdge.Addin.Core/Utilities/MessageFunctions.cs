@@ -24,7 +24,8 @@ namespace XLEdge.Utilities
         public static MessageBoxResult XLEdgeMessage(
                 string msg,
                 MessageBoxIcon msgIcon,
-                MessageBoxButtons buttons = MessageBoxButtons.OK)
+                MessageBoxButtons buttons = MessageBoxButtons.OK,
+                string[]? buttonCaptions = null)
         {
             try
             {
@@ -40,7 +41,7 @@ namespace XLEdge.Utilities
 
                 return WpfAppManager.InvokeOnWpfThread(() =>
                 {
-                    var win = new XLEdgeMessageWindow(msg, msgIcon, buttons);
+                    var win = new XLEdgeMessageWindow(msg, msgIcon, buttons, buttonCaptions);
 
                     if (excelHwnd != IntPtr.Zero)
                     {

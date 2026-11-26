@@ -54,7 +54,11 @@ namespace XLEdge.Contracts
         /// Call it off Excel's thread: it waits for the server.
         /// </summary>
         string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
-        /// <summary>Downloads the release the last <see cref="FindNewerAddinRelease"/> found, logs out and reloads into it (queued on Excel's thread).</summary>
-        void ReloadToNewerAddinRelease();
+        /// <summary>The same answer from GLSense when it is installed too (GLSense judges its own release); null when it is
+        /// missing, disabled, older, or its check failed. Call it off Excel's thread.</summary>
+        string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
+        /// <summary>Downloads the release the last <see cref="FindNewerAddinRelease"/> found, logs out and reloads into it (queued on
+        /// Excel's thread). <paramref name="includePartner"/>: GLSense reloads into its newer release first, then XLEdge.</summary>
+        void ReloadToNewerAddinRelease(bool includePartner);
     }
 }

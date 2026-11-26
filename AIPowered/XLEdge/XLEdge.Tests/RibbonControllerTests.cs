@@ -67,7 +67,12 @@ namespace XLEdge.Tests
                 if (loginUrl == "throw") throw new InvalidOperationException("boom");
                 return "11.1.3.5 (26-Nov-2026)";
             }
-            public void ReloadToNewerAddinRelease() => Calls.Add("ReloadToNewer");
+            public string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)
+            {
+                Calls.Add($"FindNewerPartner:{loginUrl}|{timeoutSeconds}");
+                return null;
+            }
+            public void ReloadToNewerAddinRelease(bool includePartner) => Calls.Add("ReloadToNewer:" + includePartner);
         }
 
         private static (RibbonController Controller, FakeControls Controls, FakeShell Shell) Create()
@@ -106,8 +111,10 @@ namespace XLEdge.Tests
             var (c, _, shell) = Create();
             Assert.AreEqual("11.1.3.5 (26-Nov-2026)", c.FindNewerAddinRelease("https://instance", "tok", 10));
             Assert.IsNull(c.FindNewerAddinRelease("throw", "tok", 10));
-            c.ReloadToNewerAddinRelease();
-            CollectionAssert.AreEqual(new[] { "FindNewer:https://instance|tok|10", "FindNewer:throw|tok|10", "ReloadToNewer" }, shell.Calls.ToArray());
+            Assert.IsNull(c.FindNewerPartnerAddinRelease("https://instance", "tok", 10));
+            c.ReloadToNewerAddinRelease(true);
+            CollectionAssert.AreEqual(new[] { "FindNewer:https://instance|tok|10", "FindNewer:throw|tok|10", "FindNewerPartner:https://instance|10",
+                "ReloadToNewer:True" }, shell.Calls.ToArray());
         }
 
         [TestMethod]

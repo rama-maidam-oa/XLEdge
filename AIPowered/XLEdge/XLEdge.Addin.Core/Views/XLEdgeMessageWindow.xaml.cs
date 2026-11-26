@@ -16,10 +16,17 @@ namespace XLEdge.Views
     public partial class XLEdgeMessageWindow : DpiAwareWindow
     {
         public MessageBoxResult Result { get; private set; } = MessageBoxResult.None;
+
+        // Optional captions for the buttons, in order (e.g. YesNoCancel as "Update both" / "Update XLEdge only" / "Not now").
+        private readonly string[] _buttonCaptions;
+        private int _buttonIndex;
+
         public XLEdgeMessageWindow(string message,
                                MessageBoxIcon icon,
-                               MessageBoxButtons buttons = MessageBoxButtons.OK)
+                               MessageBoxButtons buttons = MessageBoxButtons.OK,
+                               string[] buttonCaptions = null)
         {
+            _buttonCaptions = buttonCaptions;
             InitializeComponent();
 
             EnhancedDragDropHelper.EnableWindowDrag(this);
@@ -199,6 +206,9 @@ namespace XLEdge.Views
         // to fit its content, and wires its Click handler to close the window with the given result.
         private void AddDialogButton(string text, MessageBoxResult resultValue, PackIconFontAwesomeKind iconKind, Color iconColor)
         {
+            if (_buttonCaptions != null && _buttonIndex < _buttonCaptions.Length && !string.IsNullOrEmpty(_buttonCaptions[_buttonIndex]))
+                text = _buttonCaptions[_buttonIndex];
+            _buttonIndex++;
             var btn = new System.Windows.Controls.Button
             {
                 Style = (Style)this.FindResource("DynamicContentButton"),

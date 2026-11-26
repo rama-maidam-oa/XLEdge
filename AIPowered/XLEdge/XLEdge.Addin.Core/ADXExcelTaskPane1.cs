@@ -908,8 +908,9 @@ namespace XLEdge
         // (the C# port of VB's XLEdgeMsgDisplay) - matching VB.NET's own pattern instead of drawing
         // anything inside the pane's own control tree.
         /// <summary>
-        /// Asks the shell (contract 6) for a newer XLEdge release and offers to reload into it. True when the user chose Yes
-        /// (the shell then downloads it, logs out and reloads). Never throws and shows nothing on failure: the check is only
+        /// Asks the shell (contract 6) for a newer XLEdge release - and GLSense's, when it is installed too - and offers one
+        /// prompt (both: "Update both" / "Update XLEdge only" / "Not now"). True when a reload was chosen (the shell then
+        /// downloads, logs out and reloads - GLSense first when included). Never throws and shows nothing on failure: the check is only
         /// logged, so the login goes on. Skipped as the broadcast is (a GLSense-synced login, a repeat of the same login).
         /// </summary>
         private async Task<bool> CheckForAddinUpdateAsync()
@@ -927,28 +928,64 @@ namespace XLEdge
                 }
 
                 string loginUrl = appState.LoginUrl.Trim(), loginToken = appState.LoginToken;
-                // Off this thread: the shell waits for the server (up to 10 s).
-                string? newer = await Task.Run(() => shell.FindNewerAddinRelease(loginUrl, loginToken, 10));
-                if (string.IsNullOrEmpty(newer)) return false;
+                // Off this thread and at the same time: XLEdge and - when it is installed too - GLSense (each up to 10 s).
+                Task<string?> ownTask = Task.Run(() => AskShell(() => shell.FindNewerAddinRelease(loginUrl, loginToken, 10), "XLEdge"));
+                Task<string?> partnerTask = Task.Run(() => AskShell(() => shell.FindNewerPartnerAddinRelease(loginUrl, loginToken, 10), "GLSense"));
+                string? xledge = await ownTask, glsense = await partnerTask;
+                bool hasOwn = !string.IsNullOrEmpty(xledge), hasPartner = !string.IsNullOrEmpty(glsense);
+                if (!hasOwn && !hasPartner) return false;
 
-                var answer = MessageFunctions.XLEdgeMessage(
-                    $"Add-in updates are available (XLEdge {newer}).{Environment.NewLine}Do you wish to reload the add-in?",
-                    System.Windows.Forms.MessageBoxIcon.Question,
-                    System.Windows.Forms.MessageBoxButtons.YesNo);
-                if (answer != System.Windows.MessageBoxResult.Yes)
+                bool includePartner;
+                if (hasOwn && hasPartner)
                 {
-                    LogUtility.LogInfo($"Post-login update check: the user chose not to reload into {newer}.");
-                    return false;
+                    var answer = MessageFunctions.XLEdgeMessage(
+                        $"Add-in updates are available:{Environment.NewLine}" +
+                        $"    XLEdge {xledge}{Environment.NewLine}" +
+                        $"    GLSense {glsense}{Environment.NewLine}{Environment.NewLine}" +
+                        "\"Update both\" reloads XLEdge and GLSense. \"Update XLEdge only\" reloads XLEdge; GLSense stays on its current version.",
+                        System.Windows.Forms.MessageBoxIcon.Question,
+                        System.Windows.Forms.MessageBoxButtons.YesNoCancel,
+                        new[] { "Update both", "Update XLEdge only", "Not now" });
+                    if (answer != System.Windows.MessageBoxResult.Yes && answer != System.Windows.MessageBoxResult.No)
+                    {
+                        LogUtility.LogInfo($"Post-login update check: the user chose not to update (XLEdge {xledge}, GLSense {glsense}).");
+                        return false;
+                    }
+                    includePartner = answer == System.Windows.MessageBoxResult.Yes;
+                }
+                else
+                {
+                    string product = hasOwn ? $"XLEdge {xledge}" : $"GLSense {glsense}";
+                    var answer = MessageFunctions.XLEdgeMessage(
+                        $"Add-in updates are available ({product}).{Environment.NewLine}Do you wish to reload the add-in?",
+                        System.Windows.Forms.MessageBoxIcon.Question,
+                        System.Windows.Forms.MessageBoxButtons.YesNo);
+                    if (answer != System.Windows.MessageBoxResult.Yes)
+                    {
+                        LogUtility.LogInfo($"Post-login update check: the user chose not to reload into {product}.");
+                        return false;
+                    }
+                    includePartner = hasPartner;
                 }
 
-                LogUtility.LogInfo($"Post-login update check: the user chose to reload into {newer}.");
-                shell.ReloadToNewerAddinRelease();
+                LogUtility.LogInfo($"Post-login update check: reloading{(hasOwn ? $" XLEdge {xledge}" : "")}{(includePartner ? $" GLSense {glsense}" : "")}.");
+                shell.ReloadToNewerAddinRelease(includePartner);
                 return true;
             }
             catch (Exception ex)
             {
                 LogUtility.LogWarn($"Post-login update check skipped - login continues: {ex.GetType().Name}: {ex.Message}");
                 return false;
+            }
+        }
+
+        private static string? AskShell(Func<string?> check, string product)
+        {
+            try { return check(); }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"Post-login update check: {product} not checked ({ex.GetType().Name}: {ex.Message}).");
+                return null;
             }
         }
 

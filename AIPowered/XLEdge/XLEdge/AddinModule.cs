@@ -291,6 +291,61 @@ namespace XLEdge
             }
         }
 
+        // ---- the same check for the other add-in (GLSense), when both are installed ----
+        // The add-in the user logged into owns the one prompt; the other one judges its own updates (its loaded version,
+        // history) through its public CheckAddinUpdate / ReloadAddinUpdate, late-bound over COM as CallGLSense does.
+        // Missing, disabled or an older GLSense: null - the single-product prompt.
+        private readonly Dispatcher _excelDispatcher = Dispatcher.CurrentDispatcher;
+
+        /// <summary>Called by the core off Excel's thread. GLSense's newer release as "version (date)", or null.</summary>
+        internal string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)
+        {
+            try
+            {
+                // Excel's COMAddIns is read on Excel's thread (free: the core waits on a background task).
+                object glSense = _excelDispatcher.Invoke(() => _context?.GetGLSenseAddinInstance());
+                if (glSense == null) return null;
+                return glSense.GetType().InvokeMember("CheckAddinUpdate", System.Reflection.BindingFlags.InvokeMethod, null, glSense,
+                    new object[] { loginUrl, loginToken, timeoutSeconds }) as string;
+            }
+            catch (Exception ex)
+            {
+                Exception inner = (ex as System.Reflection.TargetInvocationException)?.InnerException ?? ex;
+                try { _context?.Logger.LogDebug($"Post-login update check: GLSense not checked ({inner.GetType().Name}: {inner.Message})."); }
+                catch (Exception) { }
+                return null;
+            }
+        }
+
+        /// <summary>Queued on Excel's thread: GLSense first (includePartner, synchronously), then XLEdge - never both at once.</summary>
+        internal void ReloadToNewerAddinReleases(bool includePartner)
+        {
+            if (includePartner)
+            {
+                try
+                {
+                    object glSense = _context?.GetGLSenseAddinInstance();
+                    if (glSense == null) _context?.Logger.LogWarn("Post-login update: GLSense is no longer available - not reloaded.");
+                    else
+                    {
+                        _context?.Logger.LogInfo("Post-login update: reloading GLSense first.");
+                        glSense.GetType().InvokeMember("ReloadAddinUpdate", System.Reflection.BindingFlags.InvokeMethod, null, glSense, new object[0]);
+                    }
+                }
+                catch (Exception ex) { LogError("Post-login update: reloading GLSense failed - XLEdge goes on.", ex); }
+            }
+            if (_newerRelease != null) ReloadToNewerAddinRelease();
+        }
+
+        /// <summary>Called by GLSense (late-bound, off Excel's thread) when the user logged in to GLSense: XLEdge's newer
+        /// release as "version (date)", or null. Never throws; failures are logged.</summary>
+        public string CheckAddinUpdate(string loginUrl, string loginToken, int timeoutSeconds) =>
+            FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds);
+
+        /// <summary>Called by GLSense on Excel's thread after its user chose "Update both": downloads the release
+        /// CheckAddinUpdate found and reloads XLEdge now (no XLEdge core call is on the stack), so GLSense reloads after it.</summary>
+        public void ReloadAddinUpdate() => ReloadToNewerAddinRelease();
+
         /// <summary>
         /// Queued on Excel's thread after the core's prompt was answered Yes: downloads the release found by FindNewerAddinRelease
         /// (Excel's messages keep flowing meanwhile), then reloads into it - CoreHost.Reload logs out (the pane's logout) first.

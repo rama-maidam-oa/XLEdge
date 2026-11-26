@@ -72,7 +72,8 @@ namespace XLEdge.Hosting
         void SetTaskPaneWidth(IntPtr excelWindow, int width);
         // The post-login add-in update check (contract 6).
         string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
-        void ReloadToNewerAddinRelease();
+        string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
+        void ReloadToNewerAddinRelease(bool includePartner);
     }
 
     /// <summary>Loads and unloads the core (AppDomain loader in the add-in).</summary>

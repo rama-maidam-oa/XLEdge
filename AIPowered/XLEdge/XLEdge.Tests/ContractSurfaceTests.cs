@@ -131,7 +131,9 @@ namespace XLEdge.Tests
                 "IntPtr GetActiveTaskPaneWindow()", "bool GetTaskPaneVisible(IntPtr excelWindow)",
                 "void SetTaskPaneVisible(IntPtr excelWindow, bool visible)", "void SetTaskPaneCaption(IntPtr excelWindow, string caption)",
                 "int GetTaskPaneWidth(IntPtr excelWindow)", "void SetTaskPaneWidth(IntPtr excelWindow, int width)",
-                "string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)", "void ReloadToNewerAddinRelease()");
+                "string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)",
+                "string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)",
+                "void ReloadToNewerAddinRelease(bool includePartner)");
         }
 
         [TestMethod]
