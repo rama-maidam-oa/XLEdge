@@ -405,6 +405,19 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   differences that predate this; `AddinModuleMethods` - `UpdateTabLabel`/`XLEdgeLogin`). The twin difference in
   `DpiAwareWindow` is unchanged (the 11.1.3 SourceInitialized layout block). Not tested in Excel.
 - **Task pane checked in Excel (25-Nov-2026, Debug builds of both lines, automated): no fix needed.** 100% -> 150% and 150% -> 100% with the pane open (logged in, Reports page): the page rescales and stays fully visible, close button included; after 150 -> 100 the pane keeps its pixel width, so the page reflows (long names end in "..."). Fresh 100% with a narrow saved docking width (`ADXXLForm\Right_SizeP` = 36000, about 480 px): the pane shows in full. Unlike GLSense's Balance Configurator, the content is a WebView2 (follows the scale itself), the pane forces no minimum width (only 500 px on first show), and on 11.1.3 the content is created under the pane's DPI awareness (`PaneEmbedding.CreateUnderDpiOf`).
+- **OISR-23046** (rerun after switching "Parameter values in same sheet" ON<->OFF: "This range won't work because it doesn't
+  align with the existing table", then Book Refresh: "No metadata found for this table"): every run has a new tableId (runId),
+  so a rerun never takes `PrepareExistingReportSheet` (exact-name match) but `CreateOrReuseReportSheet`'s reuse path
+  (`existingTableToReuse`, since `9373799`, 20-Aug-2026). `RewriteExistingReportTable` then resized the old table to the new
+  layout's header row (8 same-sheet / 1 separate) while its header was still on the old row - `ListObject.Resize` cannot move
+  a header row, so it threw after the table had already been renamed (no metadata saved under the new name -> the refresh
+  error). The banner remove/insert step from `PrepareExistingReportSheet` is now `ReconcileSameSheetLayout` and also runs in
+  `ResolveOrCreateReportSheet` for a reused table whose header row differs: deleting/inserting rows 1-7 shifts the table to the
+  target row before the resize. Off->on also returns the old `P_` companion sheet for deletion (matched by reportId).
+  Not changed: a table whose header the user moved to a row other than 1 or 8 still fails the resize (older than this fix).
+  - Same-issue sweep (pattern: resizing a table to a computed header row that differs from its current one): the only other
+    `ListObject.Resize` is refresh (`RefreshListObjectAsync`), which uses the table's own `HeaderRowIdx` - not affected.
+    The frozen classic 11.1.2 tree (`XLEdge\Helpers\ReportGenerator.cs`) has the same bug - not ported (developer's call).
 
 ## Pending stages
 

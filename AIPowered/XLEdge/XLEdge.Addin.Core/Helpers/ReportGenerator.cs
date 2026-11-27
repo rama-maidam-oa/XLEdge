@@ -1031,6 +1031,14 @@ namespace XLEdge.Helpers
             {
                 sheet = CreateOrReuseReportSheet(workbook, reportMeta, request, out existingTableToReuse);
                 companionSheetToDelete = null;
+
+                // OISR-23046: a rerun reuses the previous run's table (new runId = new tableId), so a
+                // "Parameter values in same sheet" change must move it to the new header row first -
+                // ListObject.Resize cannot move a table's header row.
+                if (existingTableToReuse != null)
+                {
+                    companionSheetToDelete = ReconcileSameSheetLayout(sheet, tableId, existingTableToReuse.HeaderRowRange.Row, headerRow);
+                }
             }
 
             if (sameSheet && string.IsNullOrEmpty(companionSheetToDelete))
@@ -1059,14 +1067,23 @@ namespace XLEdge.Helpers
                 LogUtility.LogException(ex, "Failed to remove existing table before rebuilding");
             }
 
+            companionSheetToDelete = ReconcileSameSheetLayout(sheet, tableId, oldHeaderRow, headerRow);
+        }
+
+        // Removes or makes room for the same-sheet banner (rows 1-7) when the header row moves between
+        // separate-sheet (row 1) and same-sheet (row 8) layout; returns the orphaned companion sheet's name, if any.
+        private static string ReconcileSameSheetLayout(Excel.Worksheet sheet, string tableId, int? oldHeaderRow, int headerRow)
+        {
             if (oldHeaderRow == 8 && headerRow == 1)
             {
                 RemoveSameSheetBanner(sheet);
             }
             else if (oldHeaderRow == 1 && headerRow == 8)
             {
-                companionSheetToDelete = TransitionSheetToSameSheetMode(sheet, tableId);
+                return TransitionSheetToSameSheetMode(sheet, tableId);
             }
+
+            return null;
         }
 
         // Extracted from BuildReportTable - handles the "sheet is switching into same-sheet mode"
