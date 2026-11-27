@@ -243,10 +243,19 @@ namespace XLEdge.Views
             CancellationToken token = _onlineWork.Token;
             try
             {
+                // Same progress lines as GLSense's Reload window.
+                LogStep("Checking login status...");
+                if (_login == null || !_login.IsLoggedIn || string.IsNullOrWhiteSpace(_login.LoginUrl))
+                {
+                    LogWarning("Not logged in - switch to Offline mode.");
+                    return;
+                }
+
                 LogStep("Checking the server for updates...");
                 IReadOnlyList<VersionInfo> releases;
                 using (IOnlineReleaseSource source = _sourceFactory(_login))
                     releases = await source.GetReleasesAsync(token);
+                LogStep("Parsing release list...");
                 ReleaseHistoryStore.TryReadAll(_context.Paths.ReleaseHistoryFile, out List<ReleaseEntry> local);
                 List<OnlineReleaseRow> rows = OnlineReleaseClassifier.Classify(releases, local, _context.Version, _context.ReleaseDate);
                 // After an await this may run on a pool thread (no synchronization context in the add-in): the list is bound.
@@ -260,7 +269,7 @@ namespace XLEdge.Views
                 });
                 int fresh = rows.Count(r => r.IsSelectable);
                 if (fresh == 0) ShowNoUpdates();
-                else LogSuccess($"The server has {rows.Count} version(s), {fresh} new. Tick the ones to download; the newest one ticked is loaded.");
+                else LogSuccess($"Found {fresh} release(s) not yet on this machine.");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {

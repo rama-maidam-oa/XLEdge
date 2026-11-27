@@ -27,7 +27,7 @@ namespace XLEdge.Online
                 rows.Add(new OnlineReleaseRow
                 {
                     Version = entry.Version, ReleaseDate = entry.ReleaseDate, Mandatory = entry.Mandatory, FolderName = entry.FolderName,
-                    FileName = entry.FileName, Checksum = entry.Checksum, Notes = entry.Notes,
+                    FileName = entry.FileName, Checksum = entry.Checksum,
                     IsCurrentlyLoaded = loaded, IsAlreadyDownloaded = downloaded,
                     NeedsNewerInstall = !loaded && !downloaded && XLEdge.Loader.Core.ContractCompatibility.RefusalReason(entry.ContractVersion) != null,
                 });

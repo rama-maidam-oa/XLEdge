@@ -418,6 +418,14 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   - Same-issue sweep (pattern: resizing a table to a computed header row that differs from its current one): the only other
     `ListObject.Resize` is refresh (`RefreshListObjectAsync`), which uses the table's own `HeaderRowIdx` - not affected.
     The frozen classic 11.1.2 tree (`XLEdge\Helpers\ReportGenerator.cs`) has the same bug - not ported (developer's call).
+- **OISR-23048** (Reload Add-in -> Online still showed the release notes; XLEdge's online-check messages differed from
+  GLSense): OISR-22872 removed notes from Version History only. `XLEdgeReloadSourcePicker.xaml` drops the NOTES grid
+  column (STATUS fills) and the details panel's `Notes:` row; `OnlineReleaseRow.Notes` and its assignment in
+  `OnlineReleaseClassifier` removed (unused). `CheckForUpdatesAsync` now logs GLSense's steps: "Checking login status..."
+  (+ "Not logged in - switch to Offline mode."), "Checking the server for updates...", "Parsing release list..." (after the
+  client's fetch+parse, which is one call here), "Found N release(s) not yet on this machine." GLSense's extra "N release(s)
+  ... not marked for release" line is not reproduced (the client filters without counting). Same change in GLSense 11.1.3
+  (`GLReloadSourcePicker`, which also fills `TxtDetailNotes` from code).
 
 ## Pending stages
 

@@ -17,7 +17,6 @@ namespace XLEdge.Online
         public string FolderName { get; set; }
         public string FileName { get; set; }
         public string Checksum { get; set; }
-        public string Notes { get; set; }
 
         public bool IsCurrentlyLoaded { get; set; }
         public bool IsAlreadyDownloaded { get; set; }
