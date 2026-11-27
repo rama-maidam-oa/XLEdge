@@ -426,6 +426,15 @@ reason, and record it in the fix's entry ("Same-issue sweep:"). A fix without a 
   client's fetch+parse, which is one call here), "Found N release(s) not yet on this machine." GLSense's extra "N release(s)
   ... not marked for release" line is not reproduced (the client filters without counting). Same change in GLSense 11.1.3
   (`GLReloadSourcePicker`, which also fills `TxtDetailNotes` from code).
+- **OISR-23048 follow-up** (27-Nov-2026, developer's call to keep it under this ticket; not in the 27-Nov release):
+  1. Login from GLSense (`AddinModule.InvokedFromGLSense`) switched Refresh / Book Refresh / Run-Submit Sheet on for every
+     workbook and never ran the ribbon check, so they stayed enabled in a workbook without reports until the next sheet
+     change. It now calls `ApplyRibbonState("ApplySheetActiveState")` (as SheetActivate; direct login already did this via
+     `ApplyLoggedInState`). GLSense's `LoginFromXLEdge` never calls back into XLEdge. Not changed: Run/Submit Book is still
+     enabled at login in both paths (the ribbon check never covered it).
+  2. `XLEdge.Shared\Logger.LogInfo` / `LogWarn` now return early when Debug mode is off, like `LogDebug` (one place for
+     shell and core, the core logs through a proxy of it). ERROR lines, exception blocks and the start/end markers are
+     always written. `LoggerTests.Debug_DroppedWhenDebugOff` now also checks INFO/WARN are dropped. Not ported to GLSense.
 
 ## Pending stages
 

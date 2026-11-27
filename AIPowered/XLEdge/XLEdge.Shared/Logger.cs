@@ -119,10 +119,16 @@ namespace XLEdge.Shared
 
         // ---- ILogger ----------------------------------------------------------------
 
-        public void LogInfo(string message) => WriteImmediate(Format("INFO  ", message));
+        // INFO and WARN are written only in debug mode, like DEBUG; errors and exceptions always are.
+        public void LogInfo(string message)
+        {
+            if (!DebugMode) return;
+            WriteImmediate(Format("INFO  ", message));
+        }
 
         public void LogWarn(string message)
         {
+            if (!DebugMode) return;
             FlushCurrent("warning logged");
             WriteImmediate(Format("WARN  ", message));
         }

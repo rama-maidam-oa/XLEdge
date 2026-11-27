@@ -105,8 +105,11 @@ namespace XLEdge.Tests
             {
                 f.Logger.LogDebug("invisible");
                 using (f.Logger.BeginLogScope("Refresh")) f.Logger.LogDebug("also invisible");
-                f.Logger.LogInfo("visible");
-                StringAssert.DoesNotMatch(f.Text(), new Regex("invisible|Refresh"));
+                f.Logger.LogInfo("info invisible");
+                f.Logger.LogWarn("warn invisible");
+                f.Logger.LogError("visible");
+                StringAssert.DoesNotMatch(f.Text(), new Regex(@"invisible|Refresh|\|INFO|\|WARN"));
+                StringAssert.Contains(f.Text(), "ERROR | ");
             }
         }
 

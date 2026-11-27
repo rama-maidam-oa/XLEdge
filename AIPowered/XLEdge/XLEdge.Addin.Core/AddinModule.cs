@@ -245,6 +245,10 @@ namespace XLEdge
                     RibEdgeParamRefreshBook.Enabled = true;
                     RibEdgeBroadcast.Enabled = true;
 
+                    // Same check as a sheet change and a direct XLEdge login: Refresh / Book Refresh / Run-Submit Sheet
+                    // stay enabled only when the active workbook/sheet has an XLEdge report.
+                    ApplyRibbonState("ApplySheetActiveState");
+
                     if (edgeExcelPane != null && edgeExcelPane.Visible && !string.IsNullOrWhiteSpace(eeToken))
                     {
                         edgeExcelPane.Activate();
